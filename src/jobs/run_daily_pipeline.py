@@ -544,6 +544,8 @@ def _signal_to_dict(signal) -> dict:
         "weight": signal.weight,
         "window_ts": signal.window_ts,
         "source_fact_ids": signal.source_fact_ids,
+        "bee_attr_id": signal.bee_attr_id,
+        "keyword_id": signal.keyword_id,
     }
 
 

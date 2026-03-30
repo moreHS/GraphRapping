@@ -276,32 +276,83 @@ async def recommend(req: RecommendRequest):
 
 @app.get("/api/graphs/product/{product_id}")
 async def product_graph(product_id: str):
+    """Build hierarchical product graph: Product → BEE_ATTR → KEYWORD (from signals)."""
     _check_loaded()
     product = next((p for p in demo_state.serving_products if p["product_id"] == product_id), None)
     if not product:
         raise HTTPException(404)
 
-    nodes = [{"id": product_id, "label": product.get("brand_name", product_id), "type": "product", "main": True}]
-    edges = []
+    # Product center node (Product only, Brand is separate)
+    nodes_map: dict[str, dict] = {
+        product_id: {"id": product_id, "label": product_id, "type": "product", "main": True}
+    }
+    edges: list[dict] = []
 
-    for field_key, edge_label, node_type in [
-        ("top_bee_attr_ids", "HAS_BEE_ATTR", "bee_attr"),
-        ("top_keyword_ids", "HAS_KEYWORD", "keyword"),
-        ("top_context_ids", "USED_IN_CONTEXT", "context"),
-        ("top_concern_pos_ids", "ADDRESSES_CONCERN", "concern_pos"),
-        ("top_concern_neg_ids", "MAY_CAUSE_CONCERN", "concern_neg"),
-        ("top_tool_ids", "USED_WITH_TOOL", "tool"),
-        ("top_comparison_product_ids", "COMPARED_WITH", "comparison"),
-        ("top_coused_product_ids", "USED_WITH_PRODUCT", "coused"),
-    ]:
-        for item in product.get(field_key, []):
-            if isinstance(item, dict):
-                nid = item.get("id", "")
-                score = item.get("score", 0)
-                nodes.append({"id": nid, "label": nid.split(":")[-1] if ":" in nid else nid, "type": node_type, "score": score})
-                edges.append({"source": product_id, "target": nid, "label": edge_label, "weight": score})
+    # Brand as separate node connected to Product
+    brand = product.get("brand_name")
+    if brand:
+        brand_id = f"brand:{brand}"
+        nodes_map[brand_id] = {"id": brand_id, "label": brand, "type": "brand"}
+        edges.append({"source": product_id, "target": brand_id, "label": "BRAND", "weight": 1})
 
-    return {"nodes": nodes, "edges": edges}
+    # Build from per-product signals (preserves BEE_ATTR → KEYWORD hierarchy)
+    signals = demo_state.product_signals.get(product_id, [])
+
+    for sig in signals:
+        family = sig.get("signal_family", "")
+        dst_id = sig.get("dst_id", "")
+        dst_label = dst_id.split(":")[-1] if ":" in dst_id else dst_id
+        bee_attr_id = sig.get("bee_attr_id")
+        keyword_id = sig.get("keyword_id")
+
+        if family == "BEE_ATTR" and dst_id:
+            # Product → BEE_ATTR
+            if dst_id not in nodes_map:
+                nodes_map[dst_id] = {"id": dst_id, "label": dst_label, "type": "bee_attr",
+                                     "score": sig.get("weight", 1), "polarity": sig.get("polarity")}
+            edges.append({"source": product_id, "target": dst_id,
+                         "label": "HAS_ATTRIBUTE", "weight": sig.get("weight", 1)})
+
+        elif family == "BEE_KEYWORD" and dst_id:
+            # BEE_ATTR → KEYWORD (hierarchical!)
+            parent = bee_attr_id or product_id
+            if dst_id not in nodes_map:
+                nodes_map[dst_id] = {"id": dst_id, "label": dst_label, "type": "keyword",
+                                     "score": sig.get("weight", 1)}
+            # Ensure parent BEE_ATTR node exists
+            if parent and parent not in nodes_map:
+                parent_label = parent.split(":")[-1] if ":" in parent else parent
+                nodes_map[parent] = {"id": parent, "label": parent_label, "type": "bee_attr", "score": 1}
+                edges.append({"source": product_id, "target": parent,
+                             "label": "HAS_ATTRIBUTE", "weight": 1})
+            edges.append({"source": parent, "target": dst_id,
+                         "label": "HAS_KEYWORD", "weight": sig.get("weight", 1)})
+
+        elif family == "CONTEXT" and dst_id:
+            if dst_id not in nodes_map:
+                nodes_map[dst_id] = {"id": dst_id, "label": dst_label, "type": "context", "score": 1}
+            edges.append({"source": product_id, "target": dst_id, "label": "USED_IN_CONTEXT", "weight": 1})
+
+        elif family == "CATALOG_VALIDATION":
+            continue  # skip catalog validation from graph
+
+        elif dst_id:
+            # Other signals → Product direct
+            node_type = family.lower().replace("_signal", "")
+            if dst_id not in nodes_map:
+                nodes_map[dst_id] = {"id": dst_id, "label": dst_label, "type": node_type, "score": 1}
+            edges.append({"source": product_id, "target": dst_id, "label": family, "weight": 1})
+
+    # Deduplicate edges
+    seen_edges = set()
+    unique_edges = []
+    for e in edges:
+        key = (e["source"], e["target"], e["label"])
+        if key not in seen_edges:
+            seen_edges.add(key)
+            unique_edges.append(e)
+
+    return {"nodes": list(nodes_map.values()), "edges": unique_edges}
 
 
 @app.get("/api/graphs/user/{user_id}")

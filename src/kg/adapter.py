@@ -116,70 +116,51 @@ def kg_result_to_facts(
         subj_type = id_to_type.get(edge.subj_entity_id, "")
         obj_type = id_to_type.get(edge.obj_entity_id, "")
 
-        # Determine predicate and modality based on edge type
-        if edge.relation_type == "HAS_ATTRIBUTE":
-            # BEE_ATTR fact: Product → BEEAttr
-            # Use product_iri as subject if available
-            subj = target_product_iri or subj_iri
-            # Get polarity from BEE_ATTR entity
-            kg_obj = kg_result.entity_map.get(edge.obj_entity_id)
-            polarity = kg_obj.polarity if kg_obj else None
+        # Use actual KG entity data — no hardcoded types
+        kg_subj = kg_result.entity_map.get(edge.subj_entity_id)
+        kg_obj = kg_result.entity_map.get(edge.obj_entity_id)
 
-            builder.add_fact(
+        if edge.relation_type == "OFFICIAL_BRAND":
+            continue  # handled by product_ingest
+
+        # Determine predicate, polarity, modality from actual KG data
+        predicate = edge.relation_type.lower()
+        if edge.relation_type in ("HAS_ATTRIBUTE", "HAS_KEYWORD"):
+            predicate = edge.relation_type  # keep original case for registry
+
+        # Polarity: from BEE_ATTR entity if available, else edge sentiment
+        polarity = None
+        if kg_obj and kg_obj.polarity:
+            polarity = kg_obj.polarity
+        elif kg_subj and kg_subj.polarity:
+            polarity = kg_subj.polarity
+        elif edge.sentiment and edge.sentiment != "NEU":
+            polarity = edge.sentiment
+
+        # Source modality: BEE if either side is BEE_ATTR/KEYWORD, else REL
+        is_bee = (kg_subj and kg_subj.entity_type in ("BEE_ATTR", "KEYWORD")) or \
+                 (kg_obj and kg_obj.entity_type in ("BEE_ATTR", "KEYWORD"))
+        modality = "BEE" if is_bee else "REL"
+
+        # Object ref kind
+        ref_kind = ObjectRefKind.CONCEPT if obj_type in ("BEEAttr", "Keyword", "Brand", "Category", "Ingredient", "TemporalContext", "Concern", "Goal") else ObjectRefKind.ENTITY
+
+        builder.add_fact(
+            review_id=review_id,
+            subject_iri=subj_iri,  # actual KG entity IRI (not hardcoded)
+            predicate=predicate,
+            object_iri=obj_iri,    # actual KG entity IRI
+            object_ref_kind=ref_kind,
+            subject_type=subj_type,  # actual KG entity type
+            object_type=obj_type,    # actual KG entity type
+            polarity=polarity,
+            source_modality=modality,
+            provenance=FactProvenance(
+                raw_table="bee_raw" if is_bee else "rel_raw",
+                raw_row_id=str(review_idx),
                 review_id=review_id,
-                subject_iri=subj,
-                predicate="has_attribute",
-                object_iri=obj_iri,
-                object_ref_kind=ObjectRefKind.CONCEPT,
-                subject_type="Product",
-                object_type="BEEAttr",
-                polarity=polarity or edge.sentiment,
-                source_modality="BEE",
-                provenance=FactProvenance(
-                    raw_table="bee_raw", raw_row_id=str(review_idx),
-                    review_id=review_id, source_modality="BEE",
-                ),
-            )
+                source_modality=modality,
+            ),
+        )
 
-        elif edge.relation_type == "HAS_KEYWORD":
-            # KEYWORD fact: BEEAttr → Keyword (propagate parent BEE_ATTR polarity)
-            kg_subj = kg_result.entity_map.get(edge.subj_entity_id)
-            kw_polarity = kg_subj.polarity if kg_subj else None
-            builder.add_fact(
-                review_id=review_id,
-                subject_iri=subj_iri,
-                predicate="HAS_KEYWORD",
-                object_iri=obj_iri,
-                object_ref_kind=ObjectRefKind.CONCEPT,
-                subject_type="BEEAttr",
-                object_type="Keyword",
-                polarity=kw_polarity,
-                source_modality="BEE",
-                provenance=FactProvenance(
-                    raw_table="bee_raw", raw_row_id=str(review_idx),
-                    review_id=review_id, source_modality="BEE",
-                ),
-            )
-
-        elif edge.relation_type == "OFFICIAL_BRAND":
-            # Skip — handled by product_ingest
-            continue
-
-        else:
-            # NER-NER relation
-            predicate = edge.relation_type.lower()
-            builder.add_fact(
-                review_id=review_id,
-                subject_iri=subj_iri,
-                predicate=predicate,
-                object_iri=obj_iri,
-                object_ref_kind=ObjectRefKind.ENTITY,
-                subject_type=subj_type,
-                object_type=obj_type,
-                polarity=edge.sentiment if edge.sentiment != "NEU" else None,
-                source_modality="REL",
-                provenance=FactProvenance(
-                    raw_table="rel_raw", raw_row_id=str(review_idx),
-                    review_id=review_id, source_modality="REL",
-                ),
-            )
+        # bee_attr_id/keyword_id on signals handled by signal_emitter auto-detection

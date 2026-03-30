@@ -48,6 +48,9 @@ class DemoState:
     # All quarantine entries
     quarantine_entries: list[dict] = field(default_factory=list)
 
+    # Per-product signal index (for graph API hierarchy)
+    product_signals: dict[str, list[dict]] = field(default_factory=dict)
+
 
 # Global singleton
 demo_state = DemoState()
@@ -133,6 +136,13 @@ def load_demo_data(
     for result in batch_result.get("review_results", []):
         rid = result.get("review_id", "")
         demo_state.bundles[rid] = result
+
+    # Per-product signal index (for hierarchical graph)
+    for result in batch_result.get("review_results", []):
+        for sig in result.get("signals", []):
+            pid = sig.get("target_product_id")
+            if pid:
+                demo_state.product_signals.setdefault(pid, []).append(sig)
 
     # Signal family distribution
     for result in batch_result.get("review_results", []):
