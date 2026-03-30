@@ -1,0 +1,48 @@
+# Keyword surface form → canonical keyword mapping
+# surface_form: [{keyword_id, label_ko}]
+
+착붙:
+  - keyword_id: kw_adhesion_good
+    label_ko: 밀착좋음
+밀착:
+  - keyword_id: kw_adhesion_good
+    label_ko: 밀착좋음
+안 떠요:
+  - keyword_id: kw_low_lifting
+    label_ko: 들뜸없음
+들뜸없:
+  - keyword_id: kw_low_lifting
+    label_ko: 들뜸없음
+얇게 발려요:
+  - keyword_id: kw_thin_spread
+    label_ko: 얇게발림
+얇게발림:
+  - keyword_id: kw_thin_spread
+    label_ko: 얇게발림
+촉촉:
+  - keyword_id: kw_moist
+    label_ko: 촉촉함
+보습:
+  - keyword_id: kw_moisturizing
+    label_ko: 보습좋음
+건조:
+  - keyword_id: kw_dry
+    label_ko: 건조함
+건조감적음:
+  - keyword_id: kw_low_dryness
+    label_ko: 건조감적음
+무향:
+  - keyword_id: kw_no_scent
+    label_ko: 무향
+향좋음:
+  - keyword_id: kw_good_scent
+    label_ko: 향좋음
+두껍게:
+  - keyword_id: kw_thick_spread
+    label_ko: 두껍게발림
+가볍게:
+  - keyword_id: kw_light_feel
+    label_ko: 가벼운사용감
+휴대편함:
+  - keyword_id: kw_portable
+    label_ko: 휴대편함

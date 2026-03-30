@@ -1,0 +1,34 @@
+# Segment dictionary: surface forms → canonical user segment concept
+건성:
+  concept_id: segment_dry_skin
+  label_ko: 건성피부
+지성:
+  concept_id: segment_oily_skin
+  label_ko: 지성피부
+복합성:
+  concept_id: segment_combination_skin
+  label_ko: 복합성피부
+민감성:
+  concept_id: segment_sensitive_skin
+  label_ko: 민감성피부
+건성 피부:
+  concept_id: segment_dry_skin
+  label_ko: 건성피부
+지성 피부:
+  concept_id: segment_oily_skin
+  label_ko: 지성피부
+10대:
+  concept_id: segment_teens
+  label_ko: 10대
+20대:
+  concept_id: segment_20s
+  label_ko: 20대
+30대:
+  concept_id: segment_30s
+  label_ko: 30대
+40대:
+  concept_id: segment_40s
+  label_ko: 40대
+50대:
+  concept_id: segment_50s
+  label_ko: 50대

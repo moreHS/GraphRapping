@@ -1,0 +1,198 @@
+# BEE Attribute Dictionary (39 types)
+# bee_attr_raw (from extraction) → canonical concept
+
+# Product Physical (8)
+패키지/용기_디자인:
+  attr_id: bee_attr_package_design
+  label_ko: 패키지디자인
+  label_en: Package Design
+단품_디자인:
+  attr_id: bee_attr_item_design
+  label_ko: 단품디자인
+  label_en: Item Design
+용량:
+  attr_id: bee_attr_volume
+  label_ko: 용량
+  label_en: Volume
+구성:
+  attr_id: bee_attr_composition
+  label_ko: 구성
+  label_en: Composition
+제형:
+  attr_id: bee_attr_formulation
+  label_ko: 제형
+  label_en: Formulation
+품질:
+  attr_id: bee_attr_quality
+  label_ko: 품질
+  label_en: Quality
+성분:
+  attr_id: bee_attr_ingredient_quality
+  label_ko: 성분품질
+  label_en: Ingredient Quality
+유통기한:
+  attr_id: bee_attr_expiry
+  label_ko: 유통기한
+  label_en: Expiry
+
+# Performance (14)
+발색력:
+  attr_id: bee_attr_color_payoff
+  label_ko: 발색력
+  label_en: Color Payoff
+색상:
+  attr_id: bee_attr_color
+  label_ko: 색상
+  label_en: Color
+광감:
+  attr_id: bee_attr_glow
+  label_ko: 광감
+  label_en: Glow
+발림성:
+  attr_id: bee_attr_spreadability
+  label_ko: 발림성
+  label_en: Spreadability
+컬링/볼륨:
+  attr_id: bee_attr_curl_volume
+  label_ko: 컬링볼륨
+  label_en: Curl Volume
+펄감:
+  attr_id: bee_attr_shimmer
+  label_ko: 펄감
+  label_en: Shimmer
+표현력:
+  attr_id: bee_attr_expressiveness
+  label_ko: 표현력
+  label_en: Expressiveness
+세정력:
+  attr_id: bee_attr_cleansing_power
+  label_ko: 세정력
+  label_en: Cleansing Power
+밀착력:
+  attr_id: bee_attr_adhesion
+  label_ko: 밀착력
+  label_en: Adhesion
+보습력:
+  attr_id: bee_attr_moisturizing_power
+  label_ko: 보습력
+  label_en: Moisturizing Power
+지속력:
+  attr_id: bee_attr_lasting_power
+  label_ko: 지속력
+  label_en: Lasting Power
+커버력:
+  attr_id: bee_attr_coverage
+  label_ko: 커버력
+  label_en: Coverage
+흡수력:
+  attr_id: bee_attr_absorption
+  label_ko: 흡수력
+  label_en: Absorption
+효과:
+  attr_id: bee_attr_effect
+  label_ko: 효과
+  label_en: Effect
+
+# Negative Phenomena (6)
+부작용/손상:
+  attr_id: bee_attr_side_effect
+  label_ko: 부작용
+  label_en: Side Effect
+가루날림:
+  attr_id: bee_attr_powder_fallout
+  label_ko: 가루날림
+  label_en: Powder Fallout
+뭉침:
+  attr_id: bee_attr_clumping
+  label_ko: 뭉침
+  label_en: Clumping
+무너짐:
+  attr_id: bee_attr_breakdown
+  label_ko: 무너짐
+  label_en: Breakdown
+번짐:
+  attr_id: bee_attr_smudging
+  label_ko: 번짐
+  label_en: Smudging
+백탁현상:
+  attr_id: bee_attr_white_cast
+  label_ko: 백탁현상
+  label_en: White Cast
+
+# User Experience (6)
+사용감:
+  attr_id: bee_attr_texture_feel
+  label_ko: 사용감
+  label_en: Texture Feel
+향:
+  attr_id: bee_attr_scent
+  label_ko: 향
+  label_en: Scent
+맛:
+  attr_id: bee_attr_taste
+  label_ko: 맛
+  label_en: Taste
+편리성:
+  attr_id: bee_attr_convenience
+  label_ko: 편리성
+  label_en: Convenience
+활용성:
+  attr_id: bee_attr_versatility
+  label_ko: 활용성
+  label_en: Versatility
+휴대성:
+  attr_id: bee_attr_portability
+  label_ko: 휴대성
+  label_en: Portability
+
+# Commerce (5)
+배송:
+  attr_id: bee_attr_delivery
+  label_ko: 배송
+  label_en: Delivery
+서비스:
+  attr_id: bee_attr_service
+  label_ko: 서비스
+  label_en: Service
+판촉:
+  attr_id: bee_attr_promotion
+  label_ko: 판촉
+  label_en: Promotion
+충성도:
+  attr_id: bee_attr_loyalty
+  label_ko: 충성도
+  label_en: Loyalty
+인지가격:
+  attr_id: bee_attr_perceived_price
+  label_ko: 인지가격
+  label_en: Perceived Price
+
+# English aliases (mapping to same IDs)
+Adhesion:
+  attr_id: bee_attr_adhesion
+  label_ko: 밀착력
+  label_en: Adhesion
+Spreadability:
+  attr_id: bee_attr_spreadability
+  label_ko: 발림성
+  label_en: Spreadability
+Moisturizing Power:
+  attr_id: bee_attr_moisturizing_power
+  label_ko: 보습력
+  label_en: Moisturizing Power
+Scent:
+  attr_id: bee_attr_scent
+  label_ko: 향
+  label_en: Scent
+Effect:
+  attr_id: bee_attr_effect
+  label_ko: 효과
+  label_en: Effect
+Portability:
+  attr_id: bee_attr_portability
+  label_ko: 휴대성
+  label_en: Portability
+Expressiveness:
+  attr_id: bee_attr_expressiveness
+  label_ko: 표현력
+  label_en: Expressiveness

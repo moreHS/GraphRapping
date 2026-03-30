@@ -1,0 +1,61 @@
+# DATE context classification dictionary
+# Used by date_splitter.py for rule-based classification
+
+temporal_context:
+  day_part:
+    - 아침
+    - 저녁
+    - 밤
+    - 오전
+    - 오후
+    - 낮
+    - 새벽
+    - morning
+    - evening
+    - night
+    - afternoon
+  routine_step:
+    - 세안후
+    - 세안 후
+    - 클렌징후
+    - 클렌징 후
+    - 화장전
+    - 화장 전
+    - 샤워후
+    - 샤워 후
+    - 토너 바른 후
+    - after cleansing
+    - after washing
+    - before makeup
+  season:
+    - 봄
+    - 여름
+    - 가을
+    - 겨울
+    - 환절기
+    - 장마
+    - spring
+    - summer
+    - fall
+    - autumn
+    - winter
+
+frequency:
+  patterns:
+    - 매일
+    - 매번
+    - 하루에 1번
+    - 하루 1회
+    - 주 2회
+    - daily
+    - every day
+
+duration:
+  patterns:
+    - 주째
+    - 일째
+    - 달째
+    - 동안
+    - weeks
+    - days
+    - months

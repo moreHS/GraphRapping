@@ -1,0 +1,171 @@
+registry_version,input_predicate,subject_type,object_type,polarity,qualifier_required,qualifier_type,output_signal_family,output_edge_type,output_dst_type,output_transform,output_weight_rule,if_unresolved_action,notes
+v1,has_attribute,Product,BEEAttr,,N,,BEE_ATTR,HAS_BEE_ATTR_SIGNAL,BEEAttr,identity,bee_weight,,BEE_ATTR 유지
+v1,HAS_KEYWORD,BEEAttr,Keyword,,N,,BEE_KEYWORD,HAS_BEE_KEYWORD_SIGNAL,Keyword,product_linkage,bee_weight,,BEE_ATTR→KEYWORD helper (product_linkage transform)
+v1,used_on,Product,TemporalContext,,N,,CONTEXT,USED_IN_CONTEXT_SIGNAL,TemporalContext,identity,default_weight,QUARANTINE,DATE를 context로 정규화
+v1,time_of_use,Product,TemporalContext,,N,,CONTEXT,USED_IN_CONTEXT_SIGNAL,TemporalContext,identity,default_weight,QUARANTINE,used_on과 함께 context
+v1,used_with,Product,Tool,,N,,TOOL,USED_WITH_TOOL_SIGNAL,Tool,identity,default_weight,QUARANTINE,Tool 분기
+v1,used_with,Product,Product,,N,,COUSED_PRODUCT,USED_WITH_PRODUCT_SIGNAL,Product,identity,default_weight,QUARANTINE,Product 분기 (co-use)
+v1,addresses,Product,Concern,POS,N,,CONCERN_POS,ADDRESSES_CONCERN_SIGNAL,Concern,identity,default_weight,QUARANTINE,need/issue 해결
+v1,treats,Product,Concern,,N,,CONCERN_POS,ADDRESSES_CONCERN_SIGNAL,Concern,identity,default_weight,QUARANTINE,문제 완화
+v1,benefits,Product,Concern,,N,,CONCERN_POS,ADDRESSES_CONCERN_SIGNAL,Concern,identity,default_weight,QUARANTINE,object=Concern일 때
+v1,benefits,Product,UserSegment,,N,,SEGMENT,TARGETED_AT_SEGMENT_SIGNAL,UserSegment,identity,default_weight,QUARANTINE,object=UserSegment일 때
+v1,benefits_user,Product,UserSegment,,N,,SEGMENT,TARGETED_AT_SEGMENT_SIGNAL,UserSegment,identity,default_weight,QUARANTINE,일반 사용자 효익
+v1,causes,Product,Concern,NEG,N,,CONCERN_NEG,MAY_CAUSE_CONCERN_SIGNAL,Concern,identity,default_weight,QUARANTINE,부정 concern 유발
+v1,caused_by,Concern,Product,,N,,CONCERN_NEG,MAY_CAUSE_CONCERN_SIGNAL,Concern,reverse,default_weight,QUARANTINE,방향 뒤집기
+v1,affects,Product,Concern,POS,N,,CONCERN_POS,ADDRESSES_CONCERN_SIGNAL,Concern,identity,default_weight,QUARANTINE,긍정 affect
+v1,affects,Product,Concern,NEG,N,,CONCERN_NEG,MAY_CAUSE_CONCERN_SIGNAL,Concern,identity,default_weight,QUARANTINE,부정 affect
+v1,affected_by,Concern,Product,,N,,CONCERN_POS,ADDRESSES_CONCERN_SIGNAL,Concern,reverse,default_weight,QUARANTINE,방향 뒤집기
+v1,comparison_with,Product,Product,,N,,COMPARISON,COMPARED_WITH_SIGNAL,Product,identity,default_weight,,product-product 비교
+v1,recommended_to,Product,UserSegment,,Y,segment,SEGMENT,RECOMMENDED_TO_SEGMENT_SIGNAL,UserSegment,identity,default_weight,QUARANTINE,segment 승격 필요
+v1,targeted_at,Product,UserSegment,,N,,SEGMENT,TARGETED_AT_SEGMENT_SIGNAL,UserSegment,identity,default_weight,QUARANTINE,age/skin type 등
+v1,targeted_by,UserSegment,Product,,N,,SEGMENT,TARGETED_AT_SEGMENT_SIGNAL,UserSegment,reverse,default_weight,QUARANTINE,inverse
+v1,has_ingredient,Product,Ingredient,,N,,CATALOG_VALIDATION,CATALOG_VALIDATION_SIGNAL,Ingredient,identity,default_weight,,정본은 상품 DB
+v1,ingredient_of,Ingredient,Product,,N,,CATALOG_VALIDATION,CATALOG_VALIDATION_SIGNAL,Ingredient,reverse,default_weight,,inverse
+v1,brand_of,Product,Brand,,N,,CATALOG_VALIDATION,CATALOG_VALIDATION_SIGNAL,Brand,identity,default_weight,,정본은 상품 DB
+v1,produces,Brand,Product,,N,,CATALOG_VALIDATION,CATALOG_VALIDATION_SIGNAL,Brand,reverse,default_weight,,inverse
+v1,produced_by,Product,Brand,,N,,CATALOG_VALIDATION,CATALOG_VALIDATION_SIGNAL,Brand,identity,default_weight,,inverse
+v1,variant_of,Product,Product,,N,,CATALOG_VALIDATION,CATALOG_VALIDATION_SIGNAL,Product,identity,default_weight,,catalog 정본
+v1,belongs_to,Product,Category,,N,,CATALOG_VALIDATION,CATALOG_VALIDATION_SIGNAL,Category,identity,default_weight,,catalog 정본
+v1,used_by,ReviewerProxy,Product,,N,,,,,,,DROP,reviewer proxy 기반
+v1,uses,ReviewerProxy,Product,,N,,,,,,,DROP,reviewer proxy 기반
+v1,applied_by,ReviewerProxy,Product,,N,,,,,,,DROP,reviewer proxy 기반
+v1,experienced_by,ReviewerProxy,Product,,N,,,,,,,DROP,reviewer proxy raw
+v1,applied_to,Product,TemporalContext,,N,,CONTEXT,USED_IN_CONTEXT_SIGNAL,TemporalContext,identity,default_weight,QUARANTINE,부위/표면/객체
+v1,used_for,Product,Concern,,N,,CONCERN_POS,ADDRESSES_CONCERN_SIGNAL,Concern,identity,default_weight,QUARANTINE,goal/concern 분기
+v1,duration_of_use,Product,Duration,,N,,,,,,,KEEP_CANONICAL_ONLY,stat 성격
+v1,frequency_of_use,Product,Frequency,,N,,,,,,,KEEP_CANONICAL_ONLY,stat 성격
+v1,not_used_by,ReviewerProxy,Product,,N,,,,,,,DROP,raw 유지
+v1,experiences,Product,Concern,,N,,CONCERN_POS,ADDRESSES_CONCERN_SIGNAL,Concern,identity,default_weight,QUARANTINE,문맥 의존
+v1,addressed_by_treatment,Concern,Product,,N,,,,,,,KEEP_CANONICAL_ONLY,운영 추천 우선순위 낮음
+v1,attribute_of,BEEAttr,Product,,N,,,,,,,KEEP_CANONICAL_ONLY,inverse - L2 보존
+v1,has_part,Product,Product,,N,,,,,,,KEEP_CANONICAL_ONLY,optional
+v1,part_of,Product,Product,,N,,,,,,,KEEP_CANONICAL_ONLY,optional
+v1,has_instance,Product,Product,,N,,,,,,,KEEP_CANONICAL_ONLY,optional
+v1,instance_of,Product,Product,,N,,,,,,,KEEP_CANONICAL_ONLY,optional
+v1,describes,Product,Keyword,,N,,,,,,,KEEP_CANONICAL_ONLY,dictionary 힌트
+v1,described_by,Keyword,Product,,N,,,,,,,KEEP_CANONICAL_ONLY,inverse
+v1,perceives,ReviewerProxy,Product,,N,,,,,,,DROP,reviewer proxy raw
+v1,perceived_by,Product,ReviewerProxy,,N,,,,,,,DROP,inverse
+v1,related_to,Product,Product,,N,,COMPARISON,COMPARED_WITH_SIGNAL,Product,identity,default_weight,QUARANTINE,범위 넓음
+v1,recommended_by,ReviewerProxy,Product,,N,,,,,,,DROP,provenance raw
+v1,addressed_to,Product,UserSegment,,N,,SEGMENT,TARGETED_AT_SEGMENT_SIGNAL,UserSegment,identity,default_weight,QUARANTINE,캠페인/카피
+v1,available_to,Product,UserSegment,,N,,,,,,,KEEP_CANONICAL_ONLY,접근 가능 대상
+v1,purchases,ReviewerProxy,Product,,N,,,,,,,DROP,실회원 purchase graph만 사용
+v1,purchased_by,Product,ReviewerProxy,,N,,,,,,,DROP,inverse
+v1,sells,Product,Product,,N,,,,,,,KEEP_CANONICAL_ONLY,채널/판매처
+v1,sold_by,Product,Product,,N,,,,,,,KEEP_CANONICAL_ONLY,inverse
+v1,provided_to,Product,ReviewerProxy,,N,,,,,,,DROP,샘플/제공
+v1,provided_by,ReviewerProxy,Product,,N,,,,,,,DROP,inverse
+v1,gifted_by,ReviewerProxy,Product,,N,,,,,,,DROP,프로모션
+v1,gifted_to,Product,ReviewerProxy,,N,,,,,,,DROP,inverse
+v1,owns,ReviewerProxy,Product,,N,,,,,,,DROP,reviewer proxy
+v1,owned_by,Product,ReviewerProxy,,N,,,,,,,DROP,inverse
+v1,price_of,Product,PriceBand,,N,,CATALOG_VALIDATION,CATALOG_VALIDATION_SIGNAL,PriceBand,identity,default_weight,,정본은 상품 DB
+v1,available_in,Product,Product,,N,,,,,,,KEEP_CANONICAL_ONLY,pack/format/channel
+v1,requires,Product,Product,,N,,,,,,,KEEP_CANONICAL_ONLY,usage fit
+v1,required_by,Product,Product,,N,,,,,,,KEEP_CANONICAL_ONLY,inverse
+v1,information_from,Product,Product,,N,,,,,,,DROP,추천 직접 활용 낮음
+v1,information_to,Product,Product,,N,,,,,,,DROP,inverse
+v1,same_entity,,,,,,,,,,,,,merge rule - not stored
+v1,no_relationship,,,,,,,,,,,,,drop
+v1,child_of,Person,Person,,N,,,,,,,KEEP_CANONICAL_ONLY,optional household
+v1,parent_of,Person,Person,,N,,,,,,,KEEP_CANONICAL_ONLY,optional household
+v1,family_member_of,Person,Person,,N,,,,,,,KEEP_CANONICAL_ONLY,optional household
+v1,OFFICIAL_BRAND,Product,Brand,,N,,CATALOG_VALIDATION,CATALOG_VALIDATION_SIGNAL,Brand,identity,default_weight,,metadata 기반 자동 생성
+v1,used_by,Product,ReviewerProxy,,N,,,,,,,KEEP_CANONICAL_ONLY,리뷰어 사용 경험
+v1,used_by,Category,ReviewerProxy,,N,,,,,,,KEEP_CANONICAL_ONLY,카테고리 사용 경험
+v1,used_by,TemporalContext,ReviewerProxy,,N,,,,,,,KEEP_CANONICAL_ONLY,시간별 사용 경험
+v1,used_by,Volume,ReviewerProxy,,N,,,,,,,KEEP_CANONICAL_ONLY,용량별 사용 경험
+v1,used_by,Brand,ReviewerProxy,,N,,,,,,,KEEP_CANONICAL_ONLY,브랜드 사용 경험
+v1,used_by,Event,ReviewerProxy,,N,,,,,,,KEEP_CANONICAL_ONLY,이벤트 사용 경험
+v1,used_by,Ingredient,ReviewerProxy,,N,,,,,,,KEEP_CANONICAL_ONLY,성분 사용 경험
+v1,used_by,Color,ReviewerProxy,,N,,,,,,,KEEP_CANONICAL_ONLY,색상 사용 경험
+v1,benefits,Category,ReviewerProxy,,N,,,,,,,KEEP_CANONICAL_ONLY,카테고리 혜택 경험
+v1,benefits,Event,ReviewerProxy,,N,,,,,,,KEEP_CANONICAL_ONLY,이벤트 혜택 경험
+v1,benefits,Volume,ReviewerProxy,,N,,,,,,,KEEP_CANONICAL_ONLY,용량 혜택 경험
+v1,benefits,Ingredient,ReviewerProxy,,N,,,,,,,KEEP_CANONICAL_ONLY,성분 혜택 경험
+v1,benefits,Color,TemporalContext,,N,,,,,,,KEEP_CANONICAL_ONLY,색상-시간 관계
+v1,experienced_by,Category,ReviewerProxy,,N,,,,,,,KEEP_CANONICAL_ONLY,카테고리 경험
+v1,applied_by,Event,ReviewerProxy,,N,,,,,,,KEEP_CANONICAL_ONLY,이벤트 적용 경험
+v1,perceived_by,Category,ReviewerProxy,,N,,,,,,,KEEP_CANONICAL_ONLY,카테고리 인식
+v1,perceived_by,Color,ReviewerProxy,,N,,,,,,,KEEP_CANONICAL_ONLY,색상 인식
+v1,time_of_use,TemporalContext,ReviewerProxy,,N,,,,,,,KEEP_CANONICAL_ONLY,시간대 사용
+v1,used_on,TemporalContext,ReviewerProxy,,N,,,,,,,KEEP_CANONICAL_ONLY,시점 사용
+v1,information_from,Event,ReviewerProxy,,N,,,,,,,KEEP_CANONICAL_ONLY,정보 출처
+v1,used_for,ReviewerProxy,Product,,N,,,,,,,KEEP_CANONICAL_ONLY,리뷰어 용도
+v1,used_for,Category,ReviewerProxy,,N,,,,,,,KEEP_CANONICAL_ONLY,카테고리 용도
+v1,used_for,Volume,ReviewerProxy,,N,,,,,,,KEEP_CANONICAL_ONLY,용량 용도
+v1,targeted_at,Color,ReviewerProxy,,N,,,,,,,KEEP_CANONICAL_ONLY,색상 타겟
+v1,comparison_with,Category,ReviewerProxy,,N,,,,,,,KEEP_CANONICAL_ONLY,카테고리 비교
+v1,recommended_to,ReviewerProxy,Product,,N,,,,,,,KEEP_CANONICAL_ONLY,리뷰어 추천 대상
+v1,recommended_to,Event,ReviewerProxy,,N,,,,,,,KEEP_CANONICAL_ONLY,이벤트 추천
+v1,recommended_to,ReviewerProxy,ReviewerProxy,,N,,,,,,,KEEP_CANONICAL_ONLY,리뷰어간 추천
+v1,recommended_by,TemporalContext,ReviewerProxy,,N,,,,,,,KEEP_CANONICAL_ONLY,시점 추천
+v1,applied_to,TemporalContext,Product,,N,,,,,,,KEEP_CANONICAL_ONLY,시간맥락-제품
+v1,applied_to,Category,Product,,N,,,,,,,KEEP_CANONICAL_ONLY,카테고리-제품
+v1,applied_to,Category,TemporalContext,,N,,,,,,,KEEP_CANONICAL_ONLY,카테고리-시간
+v1,applied_to,TemporalContext,Category,,N,,,,,,,KEEP_CANONICAL_ONLY,시간-카테고리
+v1,applied_to,Category,Category,,N,,,,,,,KEEP_CANONICAL_ONLY,카테고리간
+v1,applied_to,Ingredient,Product,,N,,,,,,,KEEP_CANONICAL_ONLY,성분-제품
+v1,applied_to,Product,Category,,N,,,,,,,KEEP_CANONICAL_ONLY,제품-카테고리
+v1,used_on,TemporalContext,Product,,N,,,,,,,KEEP_CANONICAL_ONLY,시점-제품
+v1,used_on,Category,Product,,N,,,,,,,KEEP_CANONICAL_ONLY,카테고리-제품
+v1,used_on,Category,TemporalContext,,N,,,,,,,KEEP_CANONICAL_ONLY,카테고리-시간
+v1,time_of_use,TemporalContext,Product,,N,,,,,,,KEEP_CANONICAL_ONLY,시간-제품
+v1,time_of_use,TemporalContext,TemporalContext,,N,,,,,,,KEEP_CANONICAL_ONLY,시간간
+v1,used_for,TemporalContext,Product,,N,,,,,,,KEEP_CANONICAL_ONLY,시간용도-제품
+v1,used_for,Category,Product,,N,,,,,,,KEEP_CANONICAL_ONLY,카테고리용도-제품
+v1,used_for,Category,TemporalContext,,N,,,,,,,KEEP_CANONICAL_ONLY,카테고리-시간
+v1,used_for,Volume,Product,,N,,,,,,,KEEP_CANONICAL_ONLY,용량용도
+v1,used_by,TemporalContext,Product,,N,,,,,,,KEEP_CANONICAL_ONLY,시간-제품사용
+v1,used_by,Category,Product,,N,,,,,,,KEEP_CANONICAL_ONLY,카테고리-제품사용
+v1,used_by,Volume,Product,,N,,,,,,,KEEP_CANONICAL_ONLY,용량-제품사용
+v1,used_by,Product,Product,,N,,,,,,,KEEP_CANONICAL_ONLY,제품간 사용
+v1,used_by,ReviewerProxy,Category,,N,,,,,,,KEEP_CANONICAL_ONLY,리뷰어-카테고리
+v1,frequency_of_use,TemporalContext,Product,,N,,,,,,,KEEP_CANONICAL_ONLY,빈도-제품
+v1,frequency_of_use,TemporalContext,TemporalContext,,N,,,,,,,KEEP_CANONICAL_ONLY,빈도간
+v1,frequency_of_use,Product,TemporalContext,,N,,,,,,,KEEP_CANONICAL_ONLY,제품-빈도
+v1,duration_of_use,TemporalContext,Product,,N,,,,,,,KEEP_CANONICAL_ONLY,기간-제품
+v1,duration_of_use,TemporalContext,TemporalContext,,N,,,,,,,KEEP_CANONICAL_ONLY,기간간
+v1,affects,TemporalContext,Category,,N,,,,,,,KEEP_CANONICAL_ONLY,시간-카테고리 영향
+v1,affects,Category,Category,,N,,,,,,,KEEP_CANONICAL_ONLY,카테고리간 영향
+v1,affects,Ingredient,Category,,N,,,,,,,KEEP_CANONICAL_ONLY,성분-카테고리 영향
+v1,affects,Event,Category,,N,,,,,,,KEEP_CANONICAL_ONLY,이벤트-카테고리 영향
+v1,affects,Category,Ingredient,,N,,,,,,,KEEP_CANONICAL_ONLY,카테고리-성분 영향
+v1,affects,Category,ReviewerProxy,,N,,,,,,,KEEP_CANONICAL_ONLY,카테고리-리뷰어 영향
+v1,related_to,Event,Product,,N,,,,,,,KEEP_CANONICAL_ONLY,이벤트-제품 관련
+v1,related_to,Category,TemporalContext,,N,,,,,,,KEEP_CANONICAL_ONLY,카테고리-시간 관련
+v1,related_to,Category,Category,,N,,,,,,,KEEP_CANONICAL_ONLY,카테고리간 관련
+v1,related_to,Volume,Category,,N,,,,,,,KEEP_CANONICAL_ONLY,용량-카테고리 관련
+v1,related_to,Color,Category,,N,,,,,,,KEEP_CANONICAL_ONLY,색상-카테고리 관련
+v1,attribute_of,Category,Product,,N,,,,,,,KEEP_CANONICAL_ONLY,카테고리 속성
+v1,attribute_of,Volume,Product,,N,,,,,,,KEEP_CANONICAL_ONLY,용량 속성
+v1,describes,Category,Product,,N,,,,,,,KEEP_CANONICAL_ONLY,카테고리 설명
+v1,describes,Color,Product,,N,,,,,,,KEEP_CANONICAL_ONLY,색상 설명
+v1,describes,Category,Category,,N,,,,,,,KEEP_CANONICAL_ONLY,카테고리간 설명
+v1,comparison_with,Category,Product,,N,,,,,,,KEEP_CANONICAL_ONLY,카테고리-제품 비교
+v1,comparison_with,Category,Category,,N,,,,,,,KEEP_CANONICAL_ONLY,카테고리간 비교
+v1,comparison_with,Brand,Product,,N,,,,,,,KEEP_CANONICAL_ONLY,브랜드-제품 비교
+v1,comparison_with,Brand,Category,,N,,,,,,,KEEP_CANONICAL_ONLY,브랜드-카테고리 비교
+v1,provided_to,Product,Category,,N,,,,,,,KEEP_CANONICAL_ONLY,제품-카테고리 제공
+v1,provided_to,Category,Category,,N,,,,,,,KEEP_CANONICAL_ONLY,카테고리간 제공
+v1,not_used_by,Product,Category,,N,,,,,,,KEEP_CANONICAL_ONLY,미사용 카테고리
+v1,used_with,Category,Product,,N,,,,,,,KEEP_CANONICAL_ONLY,카테고리와 함께 사용
+v1,used_with,Category,Category,,N,,,,,,,KEEP_CANONICAL_ONLY,카테고리간 함께 사용
+v1,affected_by,Category,Product,,N,,,,,,,KEEP_CANONICAL_ONLY,카테고리 영향받음
+v1,benefits,Category,Product,,N,,,,,,,KEEP_CANONICAL_ONLY,카테고리 혜택-제품
+v1,benefits,Category,Event,,N,,,,,,,KEEP_CANONICAL_ONLY,카테고리 혜택-이벤트
+v1,benefits,Event,Product,,N,,,,,,,KEEP_CANONICAL_ONLY,이벤트 혜택-제품
+v1,benefits,Event,Event,,N,,,,,,,KEEP_CANONICAL_ONLY,이벤트간 혜택
+v1,perceived_by,Category,Product,,N,,,,,,,KEEP_CANONICAL_ONLY,카테고리 인식-제품
+v1,has_part,Category,Product,,N,,,,,,,KEEP_CANONICAL_ONLY,카테고리 구성
+v1,part_of,Category,Product,,N,,,,,,,KEEP_CANONICAL_ONLY,카테고리 소속
+v1,treats,Category,Product,,N,,,,,,,KEEP_CANONICAL_ONLY,카테고리 치료
+v1,produces,Brand,Category,,N,,,,,,,KEEP_CANONICAL_ONLY,브랜드-카테고리 생산
+v1,belongs_to,Brand,Category,,N,,,,,,,KEEP_CANONICAL_ONLY,브랜드-카테고리 소속
+v1,has_ingredient,Volume,Product,,N,,,,,,,KEEP_CANONICAL_ONLY,용량-성분
+v1,ingredient_of,Event,Product,,N,,,,,,,KEEP_CANONICAL_ONLY,이벤트-성분
+v1,purchases,Event,Product,,N,,,,,,,KEEP_CANONICAL_ONLY,구매 이벤트
+v1,recommended_by,Product,Event,,N,,,,,,,KEEP_CANONICAL_ONLY,이벤트 추천
+v1,recommended_by,Product,Product,,N,,,,,,,KEEP_CANONICAL_ONLY,제품간 추천
+v1,produces,Product,Product,,N,,,,,,,KEEP_CANONICAL_ONLY,제품간 생산

@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GraphRapping 데모</title>
+<link rel="stylesheet" href="/static/app.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<script src="https://cdn.jsdelivr.net/npm/cytoscape@3/dist/cytoscape.min.js"></script>
+</head>
+<body>
+
+<div class="header">
+  <h1>GraphRapping</h1>
+  <button class="btn btn-primary btn-sm" onclick="runPipeline()">파이프라인 실행</button>
+  <input class="input" style="width:80px" id="reviewLimit" value="100" placeholder="리뷰 수">
+  <span class="status" id="headerStatus">데이터 미로드</span>
+</div>
+
+<div class="layout">
+  <nav class="nav">
+    <a href="#" class="active" onclick="showSection('dashboard')">📊 대시보드</a>
+    <a href="#" onclick="showSection('explorer')">🔍 데이터 탐색기</a>
+    <a href="#" onclick="showSection('recommend')">💡 추천 테스터</a>
+    <a href="#" onclick="showSection('graph')">🕸️ 그래프 뷰어</a>
+    <a href="#" onclick="showSection('quarantine')">🚧 격리함</a>
+  </nav>
+
+  <div class="main">
+    <!-- Dashboard -->
+    <div class="section active" id="sec-dashboard">
+      <div class="kpi-grid" id="kpiGrid"></div>
+      <div class="panel"><h2>신호 패밀리 분포</h2><div class="chart-container"><canvas id="chartSignal"></canvas></div></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+        <div class="panel"><h2>관계 타입 TOP 15</h2><div class="chart-container"><canvas id="chartRelation"></canvas></div></div>
+        <div class="panel"><h2>BEE 속성 분포</h2><div class="chart-container"><canvas id="chartBee"></canvas></div></div>
+      </div>
+    </div>
+
+    <!-- Data Explorer -->
+    <div class="section" id="sec-explorer">
+      <div style="display:flex;gap:8px;margin-bottom:16px">
+        <button class="btn btn-primary btn-sm" onclick="loadReviews()">리뷰</button>
+        <button class="btn btn-sm" onclick="loadProducts()">상품</button>
+        <button class="btn btn-sm" onclick="loadUsers()">유저</button>
+      </div>
+      <div class="panel" id="explorerContent"><div class="empty">데이터를 로드 후 탭을 선택하세요</div></div>
+      <div class="detail-panel" id="explorerDetail" style="display:none"></div>
+    </div>
+
+    <!-- Recommendation Tester -->
+    <div class="section" id="sec-recommend">
+      <div style="display:grid;grid-template-columns:280px 1fr;gap:16px">
+        <div class="panel">
+          <h2>추천 설정</h2>
+          <div style="margin:8px 0">
+            <label style="font-size:12px;color:var(--text2)">유저 선택</label>
+            <select class="input" id="recUser" style="margin-top:4px"></select>
+          </div>
+          <div style="margin:8px 0">
+            <label style="font-size:12px;color:var(--text2)">모드</label>
+            <select class="input" id="recMode" style="margin-top:4px">
+              <option value="explore">탐색 (Explore)</option>
+              <option value="strict">엄격 (Strict)</option>
+              <option value="compare">비교 (Compare)</option>
+            </select>
+          </div>
+          <h3>가중치 조절</h3>
+          <div id="weightSliders"></div>
+          <div class="slider-group">
+            <label><span>shrinkage_k</span><span id="skVal">10</span></label>
+            <input type="range" min="1" max="50" value="10" id="shrinkageK" oninput="document.getElementById('skVal').textContent=this.value">
+          </div>
+          <div class="slider-group">
+            <label><span>다양성 가중치</span><span id="dwVal">0.10</span></label>
+            <input type="range" min="0" max="30" value="10" id="diversityW" oninput="document.getElementById('dwVal').textContent=(this.value/100).toFixed(2)">
+          </div>
+          <button class="btn btn-primary" style="width:100%;margin-top:12px" onclick="runRecommend()">추천 실행</button>
+        </div>
+        <div>
+          <div id="recMeta" style="margin-bottom:12px"></div>
+          <div id="recResults"><div class="empty">유저를 선택하고 추천을 실행하세요</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Graph Viewer -->
+    <div class="section" id="sec-graph">
+      <div style="display:flex;gap:8px;margin-bottom:12px">
+        <select class="input" id="graphTarget" style="width:200px">
+          <option value="">그래프 대상 선택...</option>
+        </select>
+        <button class="btn btn-primary btn-sm" onclick="loadGraph()">그래프 로드</button>
+      </div>
+      <div id="graph-container"></div>
+    </div>
+
+    <!-- Quarantine -->
+    <div class="section" id="sec-quarantine">
+      <div class="kpi-grid" id="quarantineKpi"></div>
+      <div class="panel">
+        <h2>격리 항목</h2>
+        <div id="quarantineList"><div class="empty">격리함 데이터 로딩 중...</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

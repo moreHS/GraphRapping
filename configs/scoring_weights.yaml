@@ -1,0 +1,33 @@
+# Scoring weights for recommendation engine
+# Sum should be ~1.0 (before shrinkage)
+
+features:
+  keyword_match: 0.28
+  residual_bee_attr_match: 0.12
+  context_match: 0.15
+  concern_fit: 0.15
+  ingredient_match: 0.10
+  brand_match_conf_weighted: 0.08
+  goal_fit: 0.08
+  category_affinity: 0.05
+  freshness_boost: 0.05
+
+# Evidence shrinkage: shrinked = raw * (support / (support + k))
+shrinkage_k: 10
+
+# Brand confidence weight by source
+brand_confidence:
+  purchase: 1.0
+  chat_strong: 0.7
+  chat_weak: 0.4
+
+# Recommendation modes
+modes:
+  strict:
+    category_mismatch: zero_out
+  explore:
+    category_mismatch: penalty
+    category_penalty: 0.3
+  compare:
+    category_mismatch: allow
+    comparison_neighbor: true

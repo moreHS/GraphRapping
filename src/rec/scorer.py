@@ -1,0 +1,121 @@
+"""
+Scorer: linear scoring + evidence shrinkage + brand confidence-weight.
+
+Score = residual_bee_attr + keyword + context + concern + ingredient + brand + goal + category + freshness
+Shrinkage: score * (support / (support + k))
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any
+
+from src.common.config_loader import load_yaml
+from src.common.enums import SCORING_EXCLUDED_FAMILIES
+
+
+@dataclass
+class ScoredProduct:
+    product_id: str
+    raw_score: float
+    shrinked_score: float
+    final_score: float
+    feature_contributions: dict[str, float]
+    support_count: int = 0
+
+
+class Scorer:
+    """Scores candidate products against user preferences."""
+
+    def __init__(self) -> None:
+        self._weights: dict[str, float] = {}
+        self._shrinkage_k: float = 10.0
+        self._brand_confidence: dict[str, float] = {}
+
+    def load_config(self, filename: str = "scoring_weights.yaml") -> None:
+        config = load_yaml(filename)
+        self._weights = config.get("features", {})
+        self._shrinkage_k = config.get("shrinkage_k", 10.0)
+        self._brand_confidence = config.get("brand_confidence", {})
+
+    def load_from_dict(self, weights: dict, shrinkage_k: float = 10.0) -> None:
+        self._weights = weights
+        self._shrinkage_k = shrinkage_k
+
+    def score(
+        self,
+        user_profile: dict[str, Any],
+        product_profile: dict[str, Any],
+        overlap_concepts: list[str] | None = None,
+        brand_source: str = "purchase",
+    ) -> ScoredProduct:
+        """Score a single product against user preferences.
+
+        Uses residual BEE_ATTR scoring to avoid double-counting with keywords.
+        """
+        pid = product_profile["product_id"]
+        contributions: dict[str, float] = {}
+
+        # Parse overlap concepts by type
+        overlaps_by_type: dict[str, int] = {}
+        for concept in (overlap_concepts or []):
+            ctype = concept.split(":")[0] if ":" in concept else "other"
+            overlaps_by_type[ctype] = overlaps_by_type.get(ctype, 0) + 1
+
+        # Feature scoring
+        keyword_count = overlaps_by_type.get("keyword", 0)
+        bee_attr_count = overlaps_by_type.get("bee_attr", 0)
+
+        # Residual BEE_ATTR: only count attrs not already covered by keywords
+        residual_attr = max(0, bee_attr_count - keyword_count)
+
+        features = {
+            "keyword_match": min(keyword_count / 3.0, 1.0),
+            "residual_bee_attr_match": min(residual_attr / 2.0, 1.0),
+            "context_match": min(overlaps_by_type.get("context", 0) / 2.0, 1.0),
+            "concern_fit": min(overlaps_by_type.get("concern", 0) / 2.0, 1.0),
+            "ingredient_match": min(overlaps_by_type.get("ingredient", 0) / 3.0, 1.0),
+            "brand_match_conf_weighted": _brand_score(overlaps_by_type.get("brand", 0), brand_source, self._brand_confidence),
+            "goal_fit": min(overlaps_by_type.get("goal", 0) / 2.0, 1.0),
+            "category_affinity": min(overlaps_by_type.get("category", 0), 1.0),
+            "freshness_boost": _freshness_score(product_profile),
+        }
+
+        raw_score = sum(
+            self._weights.get(feature, 0.0) * value
+            for feature, value in features.items()
+        )
+
+        contributions = {k: self._weights.get(k, 0.0) * v for k, v in features.items() if v > 0}
+
+        # Evidence shrinkage
+        support_count = product_profile.get("review_count_all", 0) or 0
+        shrinkage = support_count / (support_count + self._shrinkage_k) if support_count > 0 else 0.1
+        shrinked_score = raw_score * shrinkage
+
+        return ScoredProduct(
+            product_id=pid,
+            raw_score=round(raw_score, 4),
+            shrinked_score=round(shrinked_score, 4),
+            final_score=round(shrinked_score, 4),
+            feature_contributions=contributions,
+            support_count=support_count,
+        )
+
+
+def _brand_score(brand_overlap: int, brand_source: str, conf_map: dict) -> float:
+    if brand_overlap == 0:
+        return 0.0
+    conf = conf_map.get(brand_source, 0.5)
+    return min(conf, 1.0)
+
+
+def _freshness_score(product: dict) -> float:
+    count_30d = product.get("review_count_30d", 0) or 0
+    if count_30d > 10:
+        return 1.0
+    elif count_30d > 3:
+        return 0.6
+    elif count_30d > 0:
+        return 0.3
+    return 0.0

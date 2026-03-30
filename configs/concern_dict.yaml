@@ -1,0 +1,52 @@
+# Concern dictionary: surface forms → canonical concern concept
+건조:
+  concept_id: concern_dryness
+  label_ko: 건조함
+건조함:
+  concept_id: concern_dryness
+  label_ko: 건조함
+번들거림:
+  concept_id: concern_oiliness
+  label_ko: 번들거림
+유분:
+  concept_id: concern_oiliness
+  label_ko: 번들거림
+모공:
+  concept_id: concern_pores
+  label_ko: 모공
+여드름:
+  concept_id: concern_acne
+  label_ko: 여드름
+트러블:
+  concept_id: concern_acne
+  label_ko: 여드름
+주름:
+  concept_id: concern_wrinkles
+  label_ko: 주름
+잔주름:
+  concept_id: concern_wrinkles
+  label_ko: 주름
+색소침착:
+  concept_id: concern_pigmentation
+  label_ko: 색소침착
+다크서클:
+  concept_id: concern_dark_circles
+  label_ko: 다크서클
+민감:
+  concept_id: concern_sensitivity
+  label_ko: 민감함
+자극:
+  concept_id: concern_irritation
+  label_ko: 자극
+탈모:
+  concept_id: concern_hair_loss
+  label_ko: 탈모
+각질:
+  concept_id: concern_flaking
+  label_ko: 각질
+들뜸:
+  concept_id: concern_lifting
+  label_ko: 들뜸
+무너짐:
+  concept_id: concern_breakdown
+  label_ko: 무너짐

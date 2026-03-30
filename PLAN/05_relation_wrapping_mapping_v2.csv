@@ -1,0 +1,71 @@
+layer2_predicate,relation_group,layer2_action,layer3_projection,dst_type_hint,note
+used_by,Usage/Context,keep,optional_reviewer_signal,ReviewerProxyOrSegment,리뷰어 proxy 기반이라 serving 직접 사용은 제한적
+applied_to,Usage/Context,keep,applied_to_signal,UsageTarget,부위/표면/객체 정규화
+used_for,Usage/Context,keep,used_for_goal_or_concern_signal,GoalOrConcern,goal/concern 분기 필요
+used_on,Usage/Context,keep,used_in_context_signal,TemporalContext,DATE를 context로 정규화
+used_with,Usage/Context,keep,used_with_tool_or_product_signal,ToolOrProduct,Tool/Product 분기
+uses,Usage/Context,keep,optional_reviewer_usage_signal,ReviewerProxy,실유저와 혼동 금지
+applied_by,Usage/Context,keep,optional_reviewer_signal,ReviewerProxy,reviewer proxy 중심
+time_of_use,Usage/Context,keep,used_in_context_signal,TemporalContext,used_on과 함께 context layer로
+duration_of_use,Usage/Context,keep,duration_stat,Duration,노드보다 stat 성격
+frequency_of_use,Usage/Context,keep,frequency_stat,Frequency,노드보다 stat 성격
+not_used_by,Usage/Context,keep,negative_usage_signal,ReviewerProxyOrSegment,기본은 raw 유지
+experienced_by,Usage/Context,keep,optional_experience_signal,ReviewerProxy,raw 우선
+experiences,Usage/Context,keep,optional_experience_signal,EffectOrConcern,문맥 의존
+affects,Effect/Causation,keep,affects_auto,Auto,positive/negative 판별 필요
+affected_by,Effect/Causation,reverse_keep,affects_auto,Auto,방향 뒤집기
+benefits,Effect/Causation,keep,addresses_concern_or_benefits_segment_signal,ConcernOrSegment,object 타입에 따라 분기
+benefits_user,Effect/Causation,keep,benefits_segment_signal,UserSegment,일반 사용자 효익
+causes,Effect/Causation,keep,may_cause_concern_signal,Concern,부정 concern 유발
+caused_by,Effect/Causation,reverse_keep,may_cause_concern_signal,Concern,방향 뒤집기
+treats,Effect/Causation,keep,addresses_concern_signal,Concern,문제 완화/개선
+addressed_by_treatment,Effect/Causation,keep,optional_method_signal,TreatmentOrMethod,운영 추천 우선순위 낮음
+has_attribute,Attribute/Composition,keep,has_bee_attr_signal,BEEAttr,BEE_ATTR 유지
+attribute_of,Attribute/Composition,reverse_keep,has_bee_attr_signal,BEEAttr,inverse
+has_ingredient,Attribute/Composition,keep,catalog_validation_signal,Ingredient,정본은 상품 DB
+ingredient_of,Attribute/Composition,reverse_keep,catalog_validation_signal,Ingredient,inverse
+has_part,Attribute/Composition,keep,optional_structural_signal,Part,필요 시만
+part_of,Attribute/Composition,reverse_keep,optional_structural_signal,Whole,inverse
+has_instance,Attribute/Composition,keep,optional_type_hierarchy_signal,Instance,필요 시만
+instance_of,Attribute/Composition,reverse_keep,optional_type_hierarchy_signal,Type,필요 시만
+variant_of,Attribute/Composition,keep,catalog_structure_signal,ProductOrVariant,catalog 정본 우선
+belongs_to,Attribute/Composition,keep,catalog_membership_signal,CategoryOrCollection,catalog 정본 우선
+describes,Description/Perception,keep,alias_or_keyword_hint,AliasOrKeyword,dictionary build 힌트
+described_by,Description/Perception,reverse_keep,alias_or_keyword_hint,AliasOrKeyword,inverse
+perceives,Description/Perception,keep,optional_preference_hint,PreferenceHint,reviewer proxy raw 우선
+perceived_by,Description/Perception,reverse_keep,optional_preference_hint,PreferenceHint,inverse
+related_to,Description/Perception,keep,related_product_or_generic_signal,Auto,범위 넓음
+addresses,Description/Perception,keep,addresses_concern_signal,Concern,need/issue 해결
+comparison_with,Comparison/Recommendation,keep,compared_with_signal,Product,product-product 비교
+recommended_by,Comparison/Recommendation,keep,optional_authority_signal,ReviewerProxyOrAuthority,raw/provenance 우선
+recommended_to,Comparison/Recommendation,keep,recommended_to_segment_signal,UserSegment,segment 승격 필요
+targeted_at,Comparison/Recommendation,keep,targeted_at_segment_signal,UserSegment,age/skin type 등
+targeted_by,Comparison/Recommendation,reverse_keep,targeted_at_segment_signal,UserSegment,inverse
+addressed_to,Comparison/Recommendation,keep,optional_message_target_signal,UserSegmentOrAudience,캠페인/카피 용도
+purchases,Commerce/Ownership,keep,commerce_behavior_signal,Product,실회원 purchase graph에는 중요
+purchased_by,Commerce/Ownership,reverse_keep,commerce_behavior_signal,UserOrReviewer,실회원과 reviewer 구분
+sells,Commerce/Ownership,keep,seller_signal,Seller,채널/판매처
+sold_by,Commerce/Ownership,reverse_keep,seller_signal,Seller,inverse
+provided_to,Commerce/Ownership,keep,provision_signal,UserOrSegment,샘플/제공
+provided_by,Commerce/Ownership,reverse_keep,provision_signal,Provider,inverse
+gifted_by,Commerce/Ownership,keep,gift_signal,Giver,프로모션/시즌성
+gifted_to,Commerce/Ownership,reverse_keep,gift_signal,Recipient,inverse
+owns,Commerce/Ownership,keep,ownership_signal,Owner,실회원 purchase graph에서는 가능
+owned_by,Commerce/Ownership,reverse_keep,ownership_signal,Owner,inverse
+price_of,Commerce/Ownership,keep,catalog_validation_signal,PriceBandOrValue,정본은 상품 DB
+available_in,Commerce/Ownership,keep,availability_signal,ChannelOrFormat,pack/format/channel
+available_to,Commerce/Ownership,keep,availability_segment_signal,UserSegment,접근 가능 대상
+requires,Commerce/Ownership,keep,requirement_signal,Requirement,usage fit 설명
+required_by,Commerce/Ownership,reverse_keep,requirement_signal,Requirement,inverse
+produces,Production/Brand,keep,catalog_validation_signal,Product,정본은 상품 DB
+produced_by,Production/Brand,reverse_keep,catalog_validation_signal,BrandOrManufacturer,inverse
+brand_of,Production/Brand,keep,belongs_to_brand_signal,Brand,정본은 상품 DB
+information_from,Production/Brand,keep,provenance_only,Source,추천 직접 활용 낮음
+information_to,Production/Brand,keep,provenance_only,Target,추천 직접 활용 낮음
+same_entity,Identity/Family,preprocess_only,merge_alias_only,Entity,graph edge로 저장 안 함
+no_relationship,Identity/Family,drop,ignore,None,저장 안 함
+child_of,Identity/Family,keep,optional_household_signal,Person,우선순위 낮음
+parent_of,Identity/Family,keep,optional_household_signal,Person,우선순위 낮음
+family_member_of,Identity/Family,keep,optional_household_signal,Person,우선순위 낮음
+OFFICIAL_BRAND,Generated,generated,belongs_to_brand_signal,Brand,metadata 기반 자동 생성
+HAS_KEYWORD,Generated,generated,has_bee_keyword_signal,Keyword,BEE_ATTR -> KEYWORD helper

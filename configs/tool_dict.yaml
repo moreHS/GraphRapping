@@ -1,0 +1,22 @@
+# Tool dictionary: surface forms → canonical tool concept
+퍼프:
+  concept_id: tool_puff
+  label_ko: 퍼프
+브러시:
+  concept_id: tool_brush
+  label_ko: 브러시
+스펀지:
+  concept_id: tool_sponge
+  label_ko: 스펀지
+손:
+  concept_id: tool_hand
+  label_ko: 손
+면봉:
+  concept_id: tool_cotton_swab
+  label_ko: 면봉
+화장솜:
+  concept_id: tool_cotton_pad
+  label_ko: 화장솜
+뷰러:
+  concept_id: tool_eyelash_curler
+  label_ko: 뷰러

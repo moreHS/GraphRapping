@@ -1,0 +1,383 @@
+// GraphRapping Demo UI
+
+const API = '';
+let charts = {};
+let cyInstance = null;
+
+// =============================================================================
+// Navigation
+// =============================================================================
+function showSection(name) {
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  document.getElementById('sec-' + name).classList.add('active');
+  document.querySelectorAll('.nav a').forEach(a => a.classList.remove('active'));
+  event.target.classList.add('active');
+  if (name === 'dashboard') loadDashboard();
+  if (name === 'quarantine') loadQuarantine();
+  if (name === 'recommend') initRecommendPanel();
+  if (name === 'graph') initGraphPanel();
+}
+
+// =============================================================================
+// Pipeline
+// =============================================================================
+async function runPipeline() {
+  const limit = parseInt(document.getElementById('reviewLimit').value) || 100;
+  document.getElementById('headerStatus').textContent = '파이프라인 실행 중...';
+  try {
+    const res = await fetch(API + '/api/pipeline/run', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ max_reviews: limit })
+    });
+    const data = await res.json();
+    document.getElementById('headerStatus').textContent =
+      `✅ 리뷰 ${data.reviews}건 / 상품 ${data.products}개 / 유저 ${data.users}명 / 신호 ${data.signals}개`;
+    loadDashboard();
+  } catch(e) {
+    document.getElementById('headerStatus').textContent = '❌ 오류: ' + e.message;
+  }
+}
+
+// =============================================================================
+// Dashboard
+// =============================================================================
+async function loadDashboard() {
+  try {
+    const [summary, charts_data] = await Promise.all([
+      fetch(API + '/api/dashboard/summary').then(r => r.json()),
+      fetch(API + '/api/dashboard/charts').then(r => r.json()),
+    ]);
+    renderKPI(summary);
+    renderCharts(charts_data);
+  } catch(e) {
+    document.getElementById('kpiGrid').innerHTML = '<div class="empty">파이프라인을 먼저 실행하세요</div>';
+  }
+}
+
+function renderKPI(d) {
+  document.getElementById('kpiGrid').innerHTML = `
+    <div class="kpi-card"><div class="label">처리 리뷰</div><div class="value blue">${d.reviews_processed}</div></div>
+    <div class="kpi-card"><div class="label">생성 신호</div><div class="value green">${d.total_signals}</div></div>
+    <div class="kpi-card"><div class="label">격리 건수</div><div class="value ${d.total_quarantined > 0 ? 'yellow' : 'green'}">${d.total_quarantined}</div></div>
+    <div class="kpi-card"><div class="label">서빙 상품</div><div class="value">${d.serving_products}</div></div>
+    <div class="kpi-card"><div class="label">서빙 유저</div><div class="value">${d.serving_users}</div></div>
+  `;
+}
+
+function renderCharts(d) {
+  renderBarChart('chartSignal', d.signal_families, '신호 수', '#6366f1');
+  renderBarChart('chartRelation', d.relation_types.slice(0, 15), '건수', '#22c55e');
+  renderBarChart('chartBee', d.bee_attrs, '건수', '#f59e0b');
+}
+
+function renderBarChart(canvasId, data, label, color) {
+  const ctx = document.getElementById(canvasId);
+  if (charts[canvasId]) charts[canvasId].destroy();
+  charts[canvasId] = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: data.map(d => d.name),
+      datasets: [{ label, data: data.map(d => d.count), backgroundColor: color + '99', borderColor: color, borderWidth: 1 }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: { x: { ticks: { color: '#9ca3af', font: { size: 10 } } }, y: { ticks: { color: '#9ca3af' } } }
+    }
+  });
+}
+
+// =============================================================================
+// Data Explorer
+// =============================================================================
+async function loadReviews() {
+  const res = await fetch(API + '/api/reviews?size=50');
+  const data = await res.json();
+  const panel = document.getElementById('explorerContent');
+  if (!data.items.length) { panel.innerHTML = '<div class="empty">리뷰 없음</div>'; return; }
+  panel.innerHTML = `<table><thead><tr>
+    <th>Review ID</th><th>매칭</th><th>상품</th><th>Entity</th><th>Fact</th><th>Signal</th><th>격리</th>
+  </tr></thead><tbody>${data.items.map(r => `
+    <tr class="clickable" onclick="showReviewDetail('${r.review_id}')">
+      <td style="font-size:11px">${r.review_id.substring(0,30)}...</td>
+      <td><span class="chip ${r.match_status === 'QUARANTINE' ? 'neg' : 'pos'}">${r.match_status || '-'}</span></td>
+      <td>${r.matched_product_id || '-'}</td>
+      <td>${r.entity_count}</td><td>${r.fact_count}</td><td>${r.signal_count}</td>
+      <td>${r.quarantine_count}</td>
+    </tr>`).join('')}</tbody></table>`;
+}
+
+async function showReviewDetail(id) {
+  const res = await fetch(API + '/api/reviews/' + encodeURIComponent(id));
+  const d = await res.json();
+  const dp = document.getElementById('explorerDetail');
+  dp.style.display = 'block';
+  dp.innerHTML = `<h3>리뷰 상세: ${id.substring(0,40)}...</h3><pre>${JSON.stringify(d, null, 2)}</pre>`;
+}
+
+async function loadProducts() {
+  const res = await fetch(API + '/api/products');
+  const data = await res.json();
+  const panel = document.getElementById('explorerContent');
+  panel.innerHTML = `<table><thead><tr>
+    <th>Product ID</th><th>브랜드</th><th>카테고리</th><th>리뷰수(all)</th><th>Top BEE</th>
+  </tr></thead><tbody>${data.items.map(p => `
+    <tr class="clickable" onclick="showProductDetail('${p.product_id}')">
+      <td>${p.product_id}</td><td>${p.brand_name || '-'}</td><td>${p.category_name || '-'}</td>
+      <td>${p.review_count_all || 0}</td>
+      <td>${(p.top_bee_attr_ids||[]).slice(0,2).map(a => a.id ? a.id.split(':').pop() : '').join(', ')}</td>
+    </tr>`).join('')}</tbody></table>`;
+}
+
+async function showProductDetail(id) {
+  const res = await fetch(API + '/api/products/' + id);
+  const d = await res.json();
+  const dp = document.getElementById('explorerDetail');
+  dp.style.display = 'block';
+  dp.innerHTML = `<h3>상품 상세: ${id}</h3><pre>${JSON.stringify(d, null, 2)}</pre>`;
+}
+
+async function loadUsers() {
+  const res = await fetch(API + '/api/users');
+  const data = await res.json();
+  const panel = document.getElementById('explorerContent');
+  panel.innerHTML = `<table><thead><tr>
+    <th>User ID</th><th>연령대</th><th>성별</th><th>피부타입</th><th>고민</th><th>선호 브랜드</th>
+  </tr></thead><tbody>${data.items.map(u => `
+    <tr class="clickable" onclick="showUserDetail('${u.user_id}')">
+      <td>${u.user_id}</td><td>${u.age_band || '-'}</td><td>${u.gender || '-'}</td>
+      <td>${u.skin_type || '-'}</td>
+      <td>${(u.concern_ids||[]).slice(0,2).map(c => c.id ? c.id.split(':').pop() : '').join(', ')}</td>
+      <td>${(u.preferred_brand_ids||[]).slice(0,2).map(b => b.id ? b.id.split(':').pop() : '').join(', ')}</td>
+    </tr>`).join('')}</tbody></table>`;
+}
+
+async function showUserDetail(id) {
+  const res = await fetch(API + '/api/users/' + id);
+  const d = await res.json();
+  const dp = document.getElementById('explorerDetail');
+  dp.style.display = 'block';
+  dp.innerHTML = `<h3>유저 상세: ${id}</h3><pre>${JSON.stringify(d, null, 2)}</pre>`;
+}
+
+// =============================================================================
+// Recommendation Tester
+// =============================================================================
+const DEFAULT_WEIGHTS = {
+  keyword_match: 0.28, residual_bee_attr_match: 0.12, context_match: 0.15,
+  concern_fit: 0.15, ingredient_match: 0.10, brand_match_conf_weighted: 0.08,
+  goal_fit: 0.08, category_affinity: 0.05, freshness_boost: 0.05,
+};
+const WEIGHT_LABELS = {
+  keyword_match: '키워드 일치', residual_bee_attr_match: '잔여 BEE속성',
+  context_match: '맥락 일치', concern_fit: '고민 적합도', ingredient_match: '성분 일치',
+  brand_match_conf_weighted: '브랜드 신뢰', goal_fit: '목표 적합도',
+  category_affinity: '카테고리', freshness_boost: '최신성',
+};
+
+async function initRecommendPanel() {
+  try {
+    const users = await fetch(API + '/api/users').then(r => r.json());
+    const sel = document.getElementById('recUser');
+    sel.innerHTML = users.items.map(u => `<option value="${u.user_id}">${u.user_id} (${u.skin_type||''}/${u.gender||''})</option>`).join('');
+  } catch(e) {}
+  // Weight sliders
+  const container = document.getElementById('weightSliders');
+  container.innerHTML = Object.entries(DEFAULT_WEIGHTS).map(([k, v]) => `
+    <div class="slider-group">
+      <label><span>${WEIGHT_LABELS[k] || k}</span><span id="w_${k}_val">${v.toFixed(2)}</span></label>
+      <input type="range" min="0" max="50" value="${Math.round(v*100)}" id="w_${k}"
+        oninput="document.getElementById('w_${k}_val').textContent=(this.value/100).toFixed(2)">
+    </div>
+  `).join('');
+}
+
+async function runRecommend() {
+  const userId = document.getElementById('recUser').value;
+  if (!userId) return;
+  const weights = {};
+  for (const k of Object.keys(DEFAULT_WEIGHTS)) {
+    weights[k] = parseInt(document.getElementById('w_' + k).value) / 100;
+  }
+  const body = {
+    user_id: userId,
+    mode: document.getElementById('recMode').value,
+    top_k: 10,
+    weights,
+    shrinkage_k: parseFloat(document.getElementById('shrinkageK').value),
+    diversity_weight: parseInt(document.getElementById('diversityW').value) / 100,
+  };
+
+  const res = await fetch(API + '/api/recommend', {
+    method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body),
+  });
+  const data = await res.json();
+  renderRecommendResults(data);
+}
+
+function renderRecommendResults(data) {
+  document.getElementById('recMeta').innerHTML = `
+    <div class="kpi-grid">
+      <div class="kpi-card"><div class="label">후보군</div><div class="value blue">${data.candidate_count}</div></div>
+      <div class="kpi-card"><div class="label">최종 결과</div><div class="value green">${data.results.length}</div></div>
+      <div class="kpi-card"><div class="label">다음 질문</div><div class="value" style="font-size:13px">${data.next_question ? data.next_question.question : '-'}</div></div>
+    </div>`;
+
+  const container = document.getElementById('recResults');
+  if (!data.results.length) {
+    container.innerHTML = '<div class="empty">추천 결과 없음 (concept overlap 부족)</div>';
+    return;
+  }
+  container.innerHTML = data.results.map(r => `
+    <div class="rec-card">
+      <div class="rank">#${r.rank}</div>
+      <div>
+        <strong>${r.product_id}</strong>
+        <span class="score">점수: ${r.final_score.toFixed(4)} (raw: ${r.raw_score.toFixed(4)}, shrink: ${r.shrinked_score.toFixed(4)}, diversity: ${r.diversity_bonus >= 0 ? '+' : ''}${r.diversity_bonus.toFixed(4)})</span>
+        <div class="explanation">${r.explanation || '설명 없음'}</div>
+        ${r.explanation_paths.length ? '<h3 style="margin-top:8px">설명 경로</h3>' + r.explanation_paths.map(p => `
+          <div class="path-row">
+            <span class="chip ner">${p.user_edge}</span>
+            <span class="arrow">→</span>
+            <span class="chip bee">${p.id.split(':').pop()}</span>
+            <span class="arrow">→</span>
+            <span class="chip rel">${p.product_edge}</span>
+            <span style="margin-left:8px;color:var(--green)">(+${p.contribution.toFixed(3)})</span>
+          </div>
+        `).join('') : ''}
+        <div class="hooks" style="margin-top:8px">
+          <span><span class="label">🔍 탐색:</span> ${r.hooks.discovery}</span>
+          <span><span class="label">🤔 고려:</span> ${r.hooks.consideration}</span>
+          <span><span class="label">🎯 전환:</span> ${r.hooks.conversion}</span>
+        </div>
+        ${r.overlap_concepts.length ? `<div style="margin-top:8px">${r.overlap_concepts.map(c => `<span class="chip bee">${c}</span>`).join('')}</div>` : ''}
+      </div>
+    </div>
+  `).join('');
+}
+
+// =============================================================================
+// Graph Viewer
+// =============================================================================
+async function initGraphPanel() {
+  try {
+    const [products, users] = await Promise.all([
+      fetch(API + '/api/products').then(r => r.json()),
+      fetch(API + '/api/users').then(r => r.json()),
+    ]);
+    const sel = document.getElementById('graphTarget');
+    sel.innerHTML = '<option value="">대상 선택...</option>'
+      + products.items.map(p => `<option value="product:${p.product_id}">🏷️ ${p.product_id} (${p.brand_name || ''})</option>`).join('')
+      + users.items.map(u => `<option value="user:${u.user_id}">👤 ${u.user_id}</option>`).join('');
+  } catch(e) {}
+}
+
+async function loadGraph() {
+  const target = document.getElementById('graphTarget').value;
+  if (!target) return;
+  const [type, id] = target.split(':');
+  const url = type === 'product' ? `/api/graphs/product/${id}` : `/api/graphs/user/${id}`;
+  const data = await fetch(API + url).then(r => r.json());
+  renderGraph(data);
+}
+
+const TYPE_COLORS = {
+  product: '#6366f1', user: '#8b5cf6', bee_attr: '#f59e0b', keyword: '#eab308',
+  context: '#22c55e', concern_pos: '#10b981', concern_neg: '#ef4444',
+  tool: '#3b82f6', comparison: '#ec4899', coused: '#f97316',
+  brand: '#a78bfa', category: '#67e8f9', ingredient: '#34d399',
+  avoid_ingredient: '#f87171', concern: '#fbbf24', goal: '#4ade80',
+};
+
+function renderGraph(data) {
+  const container = document.getElementById('graph-container');
+  if (cyInstance) cyInstance.destroy();
+  const elements = [];
+  data.nodes.forEach(n => {
+    elements.push({ data: {
+      id: n.id,
+      label: n.label || n.id,
+      type: n.type,
+      main: n.main,
+      color: TYPE_COLORS[n.type] || '#6b7280',
+      size: n.main ? 40 : 25,
+    }});
+  });
+  data.edges.forEach(e => {
+    elements.push({ data: {
+      source: e.source,
+      target: e.target,
+      label: e.label,
+      weight: Math.max(1, Math.min((e.weight || 1) * 3, 6)),
+    }});
+  });
+  cyInstance = cytoscape({
+    container,
+    elements,
+    style: [
+      { selector: 'node', style: {
+        'label': 'data(label)',
+        'font-size': 10,
+        'color': '#e4e6eb',
+        'text-valign': 'bottom',
+        'text-margin-y': 4,
+        'background-color': 'data(color)',
+        'width': 'data(size)',
+        'height': 'data(size)',
+        'text-outline-color': '#0f1117',
+        'text-outline-width': 2,
+      }},
+      { selector: 'edge', style: {
+        'width': 'data(weight)',
+        'line-color': '#4b5563',
+        'target-arrow-color': '#4b5563',
+        'target-arrow-shape': 'triangle',
+        'curve-style': 'bezier',
+        'label': 'data(label)',
+        'font-size': 8,
+        'color': '#9ca3af',
+        'text-rotation': 'autorotate',
+        'text-outline-color': '#0f1117',
+        'text-outline-width': 1,
+      }},
+    ],
+    layout: { name: 'cose', padding: 40, nodeRepulsion: 8000, idealEdgeLength: 120 },
+  });
+}
+
+// =============================================================================
+// Quarantine
+// =============================================================================
+async function loadQuarantine() {
+  try {
+    const [summary, entries] = await Promise.all([
+      fetch(API + '/api/quarantine/summary').then(r => r.json()),
+      fetch(API + '/api/quarantine/entries?size=50').then(r => r.json()),
+    ]);
+    const kpi = document.getElementById('quarantineKpi');
+    const byTable = summary.by_table || {};
+    kpi.innerHTML = Object.entries(byTable).map(([k, v]) => `
+      <div class="kpi-card"><div class="label">${k.replace('quarantine_','')}</div><div class="value yellow">${v}</div></div>
+    `).join('') || '<div class="kpi-card"><div class="label">격리 없음</div><div class="value green">0</div></div>';
+
+    const list = document.getElementById('quarantineList');
+    if (!entries.items.length) {
+      list.innerHTML = '<div class="empty">격리 항목 없음</div>';
+    } else {
+      list.innerHTML = `<table><thead><tr><th>타입</th><th>사유</th><th>상태</th><th>상세</th></tr></thead>
+        <tbody>${entries.items.map(e => `<tr>
+          <td><span class="chip rel">${(e.table||'').replace('quarantine_','')}</span></td>
+          <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis">${e.reason || '-'}</td>
+          <td>${e.status || '-'}</td>
+          <td><button class="btn btn-sm" onclick='alert(JSON.stringify(${JSON.stringify(e)},null,2))'>JSON</button></td>
+        </tr>`).join('')}</tbody></table>`;
+    }
+  } catch(e) {
+    document.getElementById('quarantineKpi').innerHTML = '<div class="empty">데이터 로드 필요</div>';
+  }
+}
+
+// =============================================================================
+// Init
+// =============================================================================
+loadDashboard();
