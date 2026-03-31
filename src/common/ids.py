@@ -119,6 +119,18 @@ def make_signal_id(
     dst_id: str,
     polarity: str = "",
     registry_version: str = "",
+    *,
+    negated: str = "",
+    qualifier_fingerprint: str = "",
 ) -> str:
-    """Generate deterministic signal_id."""
-    return f"signal:{_md5(review_id, target_product_id, edge_type, dst_id, polarity, registry_version)}"
+    """Generate deterministic signal_id.
+
+    Backward compatible: when negated/qualifier_fingerprint are empty,
+    the hash is identical to the previous version (no extra separators).
+    """
+    parts = [review_id, target_product_id, edge_type, dst_id, polarity, registry_version]
+    if negated:
+        parts.append(f"neg:{negated}")
+    if qualifier_fingerprint:
+        parts.append(f"qfp:{qualifier_fingerprint}")
+    return f"signal:{_md5(*parts)}"

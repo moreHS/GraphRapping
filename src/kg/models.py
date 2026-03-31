@@ -31,6 +31,8 @@ class EntityMention:
     original_type: str | None = None     # Raw entity_group before normalization (밀착력 etc.)
     sentiment: str | None = None         # POS|NEG|NEU (BEE_ATTR only)
     mention_id: str = field(default_factory=lambda: uuid.uuid4().hex[:16])
+    mention_confidence: float = 1.0      # Source-based confidence (ner:1.0, bee:0.9, synthetic:0.4)
+    is_generated: bool = False           # True for auto-generated mentions
 
     def get_dedup_key(self) -> tuple:
         return (self.review_id, self.type, self.word, self.start, self.end)
@@ -45,8 +47,11 @@ class RelationMention:
     obj_mention_id: str
     relation_type: str           # has_attribute, addresses, used_on, etc.
     sentiment: str = "NEU"       # POS|NEG|NEU
-    source_type: str | None = None  # NER-NER|NER-BeE
+    source_type: str | None = None  # NER-NER|NER-BeE|BEE-synthetic
     rel_mention_id: str = field(default_factory=lambda: uuid.uuid4().hex[:16])
+    is_synthetic: bool = False         # True for auto-generated BEE-only relations
+    evidence_kind: str | None = None   # EvidenceKind value (RAW_REL, BEE_SYNTHETIC, etc.)
+    promotion_eligible: bool = True    # False → will not be promoted to canonical fact
 
 
 @dataclass
@@ -58,6 +63,7 @@ class KeywordMention:
     bee_attr_type: str           # Original BEE attribute (밀착력, 사용감 etc.)
     bee_mention_id: str          # Link to parent BEE_ATTR EntityMention
     mention_id: str = field(default_factory=lambda: uuid.uuid4().hex[:16])
+    keyword_source: str | None = None  # DICT|RULE|CANDIDATE — validation status
 
     def get_dedup_key(self) -> tuple:
         return (self.review_id, self.word, self.bee_attr_type)
@@ -99,12 +105,22 @@ class KGEdge:
     relation_type: str           # HAS_ATTRIBUTE, HAS_KEYWORD, USED_BY, etc.
     sentiment: str = "NEU"
     weight: int = 1
+    negated: bool | None = None        # True if relation is negated ("안 끈적이는")
+    intensity: float | None = None     # 0.0~1.5 intensity modifier
+    evidence_kind: str | None = None   # EvidenceKind value
+    confidence: float | None = None    # Source-type based confidence (REL:1.0, synthetic:0.4)
 
 
 @dataclass
 class KGResult:
-    """Output of KG pipeline for a single review."""
+    """Output of KG pipeline for a single review.
+
+    This is an evidence-scope graph, NOT a global KG.
+    Do not directly use as serving/corpus graph.
+    """
     entities: list[KGEntity] = field(default_factory=list)
     edges: list[KGEdge] = field(default_factory=list)
     # Lookup maps for adapter
     entity_map: dict[str, KGEntity] = field(default_factory=dict)  # entity_id → entity
+    scope: str = "evidence"  # Always "evidence" — this is per-review, not global
+    keyword_candidates: list[dict] = field(default_factory=list)  # Unvalidated keywords → quarantine

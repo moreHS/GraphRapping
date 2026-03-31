@@ -34,6 +34,7 @@ class KGPipeline:
         """Process a single review through the full KG pipeline.
 
         Returns KGResult with canonical entities and edges.
+        Keyword candidates are stored on result.keyword_candidates for quarantine.
         """
         pid = product_id or "UNKNOWN"
 
@@ -65,5 +66,8 @@ class KGPipeline:
             product_id=pid,
             brand_name=brand_name,
         )
+
+        # Attach keyword candidates for downstream quarantine
+        result.keyword_candidates = extractor.keyword_candidates
 
         return result

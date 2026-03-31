@@ -227,6 +227,7 @@ class WindowType(str, Enum):
 USER_PREFERENCE_EDGE_TYPES = frozenset({
     "HAS_SKIN_TYPE",
     "HAS_SKIN_TONE",
+    "HAS_AGE_BAND",
     "PREFERS_BRAND",
     "PREFERS_CATEGORY",
     "PREFERS_INGREDIENT",
@@ -242,6 +243,20 @@ USER_PREFERENCE_EDGE_TYPES = frozenset({
     "SEASONAL_PREFERS_BRAND",
     "SEASONAL_PREFERS_CATEGORY",
     "REPURCHASES_PRODUCT_OR_FAMILY",
+    "RECENTLY_PURCHASED",
+    "OWNS_PRODUCT",
+})
+
+# Fact family groupings for user facts
+USER_STATE_EDGE_TYPES = frozenset({"HAS_SKIN_TYPE", "HAS_SKIN_TONE", "HAS_AGE_BAND"})
+USER_CONCERN_EDGE_TYPES = frozenset({"HAS_CONCERN"})
+USER_GOAL_EDGE_TYPES = frozenset({"WANTS_GOAL", "WANTS_EFFECT"})
+USER_CONTEXT_EDGE_TYPES = frozenset({"PREFERS_CONTEXT"})
+USER_BEHAVIOR_EDGE_TYPES = frozenset({
+    "PREFERS_BRAND", "PREFERS_CATEGORY", "PREFERS_INGREDIENT", "AVOIDS_INGREDIENT",
+    "PREFERS_BEE_ATTR", "AVOIDS_BEE_ATTR", "PREFERS_KEYWORD", "AVOIDS_KEYWORD",
+    "SEASONAL_PREFERS_BRAND", "SEASONAL_PREFERS_CATEGORY",
+    "REPURCHASES_PRODUCT_OR_FAMILY", "RECENTLY_PURCHASED", "OWNS_PRODUCT",
 })
 
 
@@ -252,3 +267,56 @@ USER_PREFERENCE_EDGE_TYPES = frozenset({
 SCORING_EXCLUDED_FAMILIES = frozenset({
     SignalFamily.CATALOG_VALIDATION,
 })
+
+
+# ---------------------------------------------------------------------------
+# Evidence Kind (KG pipeline source classification)
+# ---------------------------------------------------------------------------
+
+class EvidenceKind(str, Enum):
+    RAW_REL = "RAW_REL"                # Raw explicit relation (NER-NER)
+    NER_BEE_ANCHOR = "NER_BEE_ANCHOR"  # NER-BeE anchored relation
+    BEE_SYNTHETIC = "BEE_SYNTHETIC"    # BEE-only auto-generated synthetic
+    BEE_DICT = "BEE_DICT"             # BEE with dictionary-validated keyword
+    BEE_CANDIDATE = "BEE_CANDIDATE"   # BEE with unvalidated candidate keyword
+    AUTO_KEYWORD = "AUTO_KEYWORD"      # Auto-generated keyword from phrase
+
+
+# ---------------------------------------------------------------------------
+# Promotion Decision (adapter-level gate)
+# ---------------------------------------------------------------------------
+
+class PromotionDecision(str, Enum):
+    PROMOTE = "PROMOTE"
+    KEEP_EVIDENCE_ONLY = "KEEP_EVIDENCE_ONLY"
+    DROP = "DROP"
+    QUARANTINE = "QUARANTINE"
+
+
+# ---------------------------------------------------------------------------
+# Keyword Source (dictionary validation status)
+# ---------------------------------------------------------------------------
+
+class KeywordSource(str, Enum):
+    DICT = "DICT"           # Matched in keyword_surface_map.yaml
+    RULE = "RULE"           # Rule-based extraction from BEE phrase
+    CANDIDATE = "CANDIDATE" # Unvalidated — quarantine only
+
+
+# ---------------------------------------------------------------------------
+# Fact Status (canonical fact promotion level)
+# ---------------------------------------------------------------------------
+
+class FactStatus(str, Enum):
+    EVIDENCE_ONLY = "EVIDENCE_ONLY"
+    CANONICAL_PROMOTED = "CANONICAL_PROMOTED"
+    REJECTED = "REJECTED"
+
+
+# ---------------------------------------------------------------------------
+# Signal Promotion Status (corpus-level gate)
+# ---------------------------------------------------------------------------
+
+class SignalPromotionStatus(str, Enum):
+    PROMOTED = "PROMOTED"
+    CANDIDATE = "CANDIDATE"

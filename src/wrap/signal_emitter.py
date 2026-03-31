@@ -11,7 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from src.common.ids import make_signal_id
+from src.common.ids import make_signal_id, make_qualifier_fingerprint
 from src.common.enums import SignalFamily, SCORING_EXCLUDED_FAMILIES
 from src.wrap.projection_registry import ProjectionRegistry, ProjectionResult
 from src.canonical.canonical_fact_builder import CanonicalFact
@@ -114,6 +114,17 @@ class SignalEmitter:
         else:
             weight = 1.0
 
+        # Use fact-level negation/intensity if caller didn't provide
+        actual_negated = negated if negated is not None else fact.negated
+        actual_intensity = intensity if intensity is not None else fact.intensity
+
+        # Qualifier fingerprint for dedup key
+        qfp = ""
+        if fact.qualifiers:
+            q_pairs = [(q.qualifier_key, q.qualifier_iri or q.qualifier_value_text or str(q.qualifier_value_num or ""))
+                       for q in fact.qualifiers]
+            qfp = make_qualifier_fingerprint(q_pairs)
+
         signal_id = make_signal_id(
             review_id=fact.review_id,
             target_product_id=target_product_id or "",
@@ -121,14 +132,19 @@ class SignalEmitter:
             dst_id=dst_id,
             polarity=fact.polarity or "",
             registry_version=result.registry_version,
+            negated=str(actual_negated).lower() if actual_negated is not None else "",
+            qualifier_fingerprint=qfp,
         )
 
         existing = self._signals.get(signal_id)
         if existing:
-            # Merge policy
-            if fact.fact_id not in existing.source_fact_ids:
-                existing.source_fact_ids.append(fact.fact_id)
-            existing.weight = max(existing.weight, weight)
+            # Merge policy: block merge if polarity/negated differ
+            if existing.polarity != fact.polarity or existing.negated != actual_negated:
+                pass  # Different signal_id should already handle this, but guard
+            else:
+                if fact.fact_id not in existing.source_fact_ids:
+                    existing.source_fact_ids.append(fact.fact_id)
+                existing.weight = max(existing.weight, weight)
         else:
             # Determine dst_ref_kind based on transform
             if transform == "reverse":
@@ -150,8 +166,8 @@ class SignalEmitter:
                 bee_attr_id=actual_bee_attr_id,
                 keyword_id=actual_keyword_id,
                 polarity=fact.polarity,
-                negated=negated,
-                intensity=intensity,
+                negated=actual_negated,
+                intensity=actual_intensity,
                 weight=weight,
                 registry_version=result.registry_version,
                 window_ts=window_ts,
@@ -179,6 +195,10 @@ class SignalEmitter:
         Auto-routes HAS_KEYWORD facts through product_linkage.
         """
         for fact in facts:
+            # Skip evidence-only facts — they are not promoted to signals
+            if getattr(fact, "fact_status", "CANONICAL_PROMOTED") == "EVIDENCE_ONLY":
+                continue
+
             # Auto-detect BEE metadata from fact context
             bee_attr_id = None
             keyword_id = None
@@ -193,6 +213,8 @@ class SignalEmitter:
                 target_product_id=target_product_id,
                 bee_attr_id=bee_attr_id,
                 keyword_id=keyword_id,
+                negated=fact.negated,
+                intensity=fact.intensity,
                 window_ts=window_ts,
             )
 

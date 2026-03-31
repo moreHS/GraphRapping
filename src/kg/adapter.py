@@ -5,6 +5,7 @@ Key adaptations:
 - KG entity_id (SHA256) → GraphRapping concept IRI
 - BEE_ATTR polarity on entity → polarity on fact
 - KG edge → CanonicalFact with provenance
+- Promotion gate: classify edges as PROMOTE/KEEP_EVIDENCE_ONLY/DROP/QUARANTINE
 """
 
 from __future__ import annotations
@@ -17,7 +18,7 @@ logger = logging.getLogger(__name__)
 from src.canonical.canonical_fact_builder import CanonicalFactBuilder, CanonicalEntity, FactProvenance
 from src.common.ids import make_concept_iri
 from src.common.text_normalize import normalize_text
-from src.common.enums import ObjectRefKind
+from src.common.enums import ObjectRefKind, PromotionDecision
 
 
 # KG entity_type → GraphRapping concept_type
@@ -65,6 +66,26 @@ def to_graphrapping_entity(kg_entity: KGEntity) -> CanonicalEntity:
     )
 
 
+def _classify_promotion(edge: KGEdge, kg_subj: KGEntity | None, kg_obj: KGEntity | None) -> str:
+    """Classify an edge for promotion gate.
+
+    Returns PromotionDecision value.
+    """
+    # Synthetic BEE relations → evidence only
+    if edge.evidence_kind == "BEE_SYNTHETIC":
+        return PromotionDecision.KEEP_EVIDENCE_ONLY
+
+    # Auto-generated keyword candidate edges → quarantine
+    if edge.evidence_kind == "AUTO_KEYWORD":
+        return PromotionDecision.QUARANTINE
+
+    # Low-confidence edges
+    if edge.confidence is not None and edge.confidence < 0.2:
+        return PromotionDecision.DROP
+
+    return PromotionDecision.PROMOTE
+
+
 def kg_result_to_facts(
     kg_result: KGResult,
     review_id: str,
@@ -72,10 +93,11 @@ def kg_result_to_facts(
     builder: CanonicalFactBuilder,
     reviewer_proxy_iri: str = "",
     review_idx: int = 0,
-) -> None:
+) -> dict:
     """Convert KG result to GraphRapping canonical facts.
 
     Registers entities and adds facts to the builder.
+    Returns: {"promoted": int, "evidence_only": int, "dropped": int, "quarantined": int}
     """
     # Build placeholder IRI override map
     placeholder_iri: dict[str, str] = {}
@@ -104,13 +126,16 @@ def kg_result_to_facts(
             kg_entity.entity_type, kg_entity.entity_type
         )
 
-    # 2. Process edges → facts
+    # 2. Process edges → facts with promotion gate
+    stats = {"promoted": 0, "evidence_only": 0, "dropped": 0, "quarantined": 0}
+
     for edge in kg_result.edges:
         subj_iri = id_to_iri.get(edge.subj_entity_id)
         obj_iri = id_to_iri.get(edge.obj_entity_id)
         if not subj_iri or not obj_iri:
             logger.debug("Drop edge: unmapped IRI (rel=%s subj=%s obj=%s)",
                          edge.relation_type, edge.subj_entity_id[:8], edge.obj_entity_id[:8])
+            stats["dropped"] += 1
             continue
 
         subj_type = id_to_type.get(edge.subj_entity_id, "")
@@ -122,6 +147,20 @@ def kg_result_to_facts(
 
         if edge.relation_type == "OFFICIAL_BRAND":
             continue  # handled by product_ingest
+
+        # Promotion gate: classify edge
+        decision = _classify_promotion(edge, kg_subj, kg_obj)
+        if decision == PromotionDecision.DROP:
+            stats["dropped"] += 1
+            logger.debug("DROP edge: %s (confidence=%s)", edge.relation_type, edge.confidence)
+            continue
+        if decision == PromotionDecision.QUARANTINE:
+            stats["quarantined"] += 1
+            logger.debug("QUARANTINE edge: %s (evidence_kind=%s)", edge.relation_type, edge.evidence_kind)
+            continue
+
+        # Determine fact_status based on promotion decision
+        fact_status = "CANONICAL_PROMOTED" if decision == PromotionDecision.PROMOTE else "EVIDENCE_ONLY"
 
         # Determine predicate, polarity, modality from actual KG data
         predicate = edge.relation_type.lower()
@@ -147,13 +186,14 @@ def kg_result_to_facts(
 
         builder.add_fact(
             review_id=review_id,
-            subject_iri=subj_iri,  # actual KG entity IRI (not hardcoded)
+            subject_iri=subj_iri,
             predicate=predicate,
-            object_iri=obj_iri,    # actual KG entity IRI
+            object_iri=obj_iri,
             object_ref_kind=ref_kind,
-            subject_type=subj_type,  # actual KG entity type
-            object_type=obj_type,    # actual KG entity type
+            subject_type=subj_type,
+            object_type=obj_type,
             polarity=polarity,
+            confidence=edge.confidence,
             source_modality=modality,
             provenance=FactProvenance(
                 raw_table="bee_raw" if is_bee else "rel_raw",
@@ -161,6 +201,15 @@ def kg_result_to_facts(
                 review_id=review_id,
                 source_modality=modality,
             ),
+            negated=edge.negated,
+            intensity=edge.intensity,
+            evidence_kind=edge.evidence_kind,
+            fact_status=fact_status,
         )
 
-        # bee_attr_id/keyword_id on signals handled by signal_emitter auto-detection
+        if decision == PromotionDecision.PROMOTE:
+            stats["promoted"] += 1
+        else:
+            stats["evidence_only"] += 1
+
+    return stats

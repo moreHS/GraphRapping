@@ -150,6 +150,15 @@ def process_review(
                                    reviewer_proxy_iri=ingested.reviewer_proxy_id)
             else:
                 logger.debug("KG skip: no target_product_iri for review %s", ingested.review_id)
+            # Route KG keyword candidates to quarantine
+            for candidate in getattr(kg_result, "keyword_candidates", []):
+                quarantine.quarantine_unknown_keyword(
+                    surface_text=candidate.get("surface_text", ""),
+                    bee_attr_raw=candidate.get("bee_attr_raw", ""),
+                    review_id=candidate.get("review_id", ingested.review_id),
+                    context_text=candidate.get("context_text", ""),
+                    reason=candidate.get("reason", "KG auto keyword candidate"),
+                )
         else:
             # Shadow — KG writes to separate builder (comparison only, not production)
             shadow_builder = CanonicalFactBuilder(predicate_contracts=predicate_contracts)
@@ -182,6 +191,10 @@ def process_review(
                 keyword_labels=bee_result.keyword_labels,
                 polarity=bee_result.polarity,
                 provenance=provenance,
+                negated=bee_result.negated if bee_result.negated else None,
+                intensity=bee_result.intensity if bee_result.intensity != 1.0 else None,
+                evidence_kind="BEE_DICT" if bee_result.keyword_source == "DICT" else "BEE_CANDIDATE",
+                base_confidence=bee_result.confidence,
             )
         # Quarantine unknown keywords
         for surface in bee_normalizer.get_unknown_surfaces(bee_row["phrase_text"]):

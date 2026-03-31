@@ -21,6 +21,7 @@ class CandidateProduct:
     overlap_score: float = 0.0
     hard_filtered: bool = False
     filter_reason: str | None = None
+    already_owned: bool = False
 
 
 def generate_candidates(
@@ -46,12 +47,15 @@ def generate_candidates(
     preferred_bee_attrs = _extract_ids(user_profile.get("preferred_bee_attr_ids", []))
     preferred_contexts = _extract_ids(user_profile.get("preferred_context_ids", []))
     goal_ids = _extract_ids(user_profile.get("goal_ids", []))
+    owned_product_ids = _extract_ids(user_profile.get("owned_product_ids", []))
 
     candidates: list[CandidateProduct] = []
 
     for product in product_profiles:
         pid = product["product_id"]
         candidate = CandidateProduct(product_id=pid)
+        if pid in owned_product_ids:
+            candidate.already_owned = True
 
         # --- Hard filters (zero-out) ---
 
@@ -107,10 +111,13 @@ def generate_candidates(
         for c in concern_ids & product_concerns:
             overlap.append(f"concern:{c}")
 
-        # Goal overlap (product benefits match user goals, concept IRI)
+        # Goal overlap: master (product benefits) + review (concern→goal match)
         product_benefits = set(product.get("main_benefit_concept_ids") or product.get("main_benefit_ids") or [])
         for g in goal_ids & product_benefits:
-            overlap.append(f"goal:{g}")
+            overlap.append(f"goal_master:{g}")
+        # Goal from review signals: product concerns that match user goals
+        for g in goal_ids & product_concerns:
+            overlap.append(f"goal_review:{g}")
 
         candidate.overlap_concepts = overlap
         candidate.overlap_score = len(overlap)

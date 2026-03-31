@@ -2,7 +2,9 @@
 KG Canonicalizer: mentions → canonical entities + edges.
 
 Ported from Relation project. Adapted for GraphRapping per-review processing.
-Key features: BEE_ATTR sentiment split, KEYWORD entity creation, HAS_KEYWORD edges.
+Key features: BEE_ATTR (single entity per attr, polarity on edge), KEYWORD entity creation, HAS_KEYWORD edges.
+
+NOTE: Output is evidence-scope graph (per-review), NOT global KG.
 """
 
 from __future__ import annotations
@@ -66,7 +68,7 @@ class Canonicalizer:
             self._mention_to_entity[rep_id] = entity.entity_id
             self._mention_to_entity[mention.mention_id] = entity.entity_id
 
-        # 2. Canonicalize relations
+        # 2. Canonicalize relations → edges with metadata
         for rel in relation_mentions:
             subj_eid = self._mention_to_entity.get(rel.subj_mention_id)
             obj_eid = self._mention_to_entity.get(rel.obj_mention_id)
@@ -82,10 +84,25 @@ class Canonicalizer:
                 if rel.relation_type == "has_attribute":
                     neo4j_type = "HAS_ATTRIBUTE"
 
-            self._create_edge(subj_eid, obj_eid, neo4j_type, rel.sentiment)
+            edge = self._create_edge(subj_eid, obj_eid, neo4j_type, rel.sentiment)
+            # Propagate relation metadata to edge
+            if rel.evidence_kind:
+                edge.evidence_kind = rel.evidence_kind
+            if rel.is_synthetic:
+                edge.confidence = 0.4  # Synthetic relations have lower confidence
+            elif rel.source_type == "NER-BeE":
+                edge.confidence = 0.8
+            else:
+                edge.confidence = 1.0
 
         # 3. Canonicalize keywords → KEYWORD entities + HAS_KEYWORD edges
+        #    Only DICT/RULE-validated keywords get entities. CANDIDATE → skip (quarantined upstream).
         for kw in keyword_mentions:
+            # Skip candidate keywords — they are quarantined, not promoted
+            if kw.keyword_source == "CANDIDATE":
+                logger.debug("Skip CANDIDATE keyword: %s (quarantined)", kw.word[:20])
+                continue
+
             bee_entity_id = self._mention_to_entity.get(kw.bee_mention_id)
             if not bee_entity_id:
                 logger.debug("Drop keyword: unmapped BEE mention %s", kw.bee_mention_id[:8])
@@ -128,13 +145,12 @@ class Canonicalizer:
             entity_id = _hash_id(entity_type, norm_value, scope_key or "")
             word = norm_value
         elif is_bee:
-            # BEE_ATTR: sentiment-split
+            # BEE_ATTR: single entity per attr (polarity moves to edge, not entity ID)
             bee_type = mention.original_type or mention.word
-            polarity = mention.sentiment or "NEU"
-            norm_value = f"{bee_type}_{polarity}"
+            norm_value = bee_type  # No polarity suffix — "밀착력", not "밀착력_POS"
             entity_type = "BEE_ATTR"
             scope_key = None
-            entity_id = _hash_id("BEE_ATTR", norm_value)
+            entity_id = _hash_id("BEE_ATTR", normalize_text(bee_type))
             word = bee_type
         else:
             # Regular entity

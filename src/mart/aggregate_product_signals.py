@@ -34,6 +34,21 @@ class AggProductSignalRow:
     window_start: str | None
     window_end: str | None
     evidence_sample: list[dict] | None
+    # Phase 4: Corpus promotion fields
+    distinct_review_count: int = 0
+    avg_confidence: float = 0.0
+    synthetic_ratio: float = 0.0
+    corpus_weight: float = 0.0
+    is_promoted: bool = False
+
+
+def is_corpus_promoted(row: AggProductSignalRow) -> bool:
+    """Check if a signal group meets corpus promotion thresholds."""
+    return (
+        row.distinct_review_count >= 3
+        and row.avg_confidence >= 0.6
+        and row.synthetic_ratio <= 0.5
+    )
 
 
 def aggregate_product_signals(
@@ -115,13 +130,23 @@ def aggregate_product_signals(
             total = pos + neg + neu
             score = (pos - neg) / total if total > 0 else 0.0
 
-            results.append(AggProductSignalRow(
+            # Corpus promotion metrics
+            distinct_review_count = len(review_ids)
+            confidences = [s.get("weight", 1.0) or 1.0 for s in window_sigs]
+            avg_confidence = sum(confidences) / len(confidences) if confidences else 0.0
+            synthetic_count = sum(1 for s in window_sigs if s.get("evidence_kind") == "BEE_SYNTHETIC")
+            synthetic_ratio = synthetic_count / total if total > 0 else 0.0
+            # Corpus weight: support × confidence × recency
+            recency_factor = 1.0 if window_type == WindowType.D30 else (0.8 if window_type == WindowType.D90 else 0.6)
+            corpus_weight = round(distinct_review_count * avg_confidence * recency_factor, 4)
+
+            row = AggProductSignalRow(
                 target_product_id=product_id,
                 canonical_edge_type=edge_type,
                 dst_node_type=dst_type,
                 dst_node_id=dst_id,
                 window_type=window_type.value,
-                review_cnt=len(review_ids),
+                review_cnt=distinct_review_count,
                 pos_cnt=pos,
                 neg_cnt=neg,
                 neu_cnt=neu,
@@ -133,7 +158,13 @@ def aggregate_product_signals(
                 window_start=window_start.date().isoformat() if window_type != WindowType.ALL else None,
                 window_end=now.date().isoformat(),
                 evidence_sample=evidence if evidence else None,
-            ))
+                distinct_review_count=distinct_review_count,
+                avg_confidence=round(avg_confidence, 4),
+                synthetic_ratio=round(synthetic_ratio, 4),
+                corpus_weight=corpus_weight,
+            )
+            row.is_promoted = is_corpus_promoted(row)
+            results.append(row)
 
     return results
 

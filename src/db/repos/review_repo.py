@@ -202,6 +202,88 @@ async def load_ingested_review_snapshot(
     }
 
 
+async def load_full_review_snapshot(
+    uow: UnitOfWork,
+    review_id: str,
+    review_version: int | None = None,
+) -> tuple[dict | None, bool]:
+    """Load a review as a RawReviewRecord-compatible dict for reprocessing.
+
+    Returns: (snapshot_dict, has_child_rows)
+      - snapshot_dict: dict with keys matching RawReviewRecord fields, or None if not found
+      - has_child_rows: True if at least one ner/bee/rel row exists
+
+    The snapshot_dict can be used to construct a RawReviewRecord for process_review().
+    """
+    raw = await load_ingested_review_snapshot(uow, review_id, review_version)
+    if raw is None:
+        return None, False
+
+    review_raw = raw["review_raw"]
+    ner_rows = raw["ner_rows"]
+    bee_rows = raw["bee_rows"]
+    rel_rows = raw["rel_rows"]
+
+    has_child_rows = bool(ner_rows or bee_rows or rel_rows)
+
+    # Transform DB rows → RawReviewRecord-compatible format
+    ner_for_record = [
+        {
+            "mention_text": r.get("mention_text", ""),
+            "entity_group": r.get("entity_group", ""),
+            "start_offset": r.get("start_offset"),
+            "end_offset": r.get("end_offset"),
+            "raw_sentiment": r.get("raw_sentiment"),
+        }
+        for r in ner_rows
+    ]
+    bee_for_record = [
+        {
+            "phrase_text": r.get("phrase_text", ""),
+            "bee_attr_raw": r.get("bee_attr_raw", ""),
+            "start_offset": r.get("start_offset"),
+            "end_offset": r.get("end_offset"),
+            "raw_sentiment": r.get("raw_sentiment"),
+        }
+        for r in bee_rows
+    ]
+    rel_for_record = [
+        {
+            "subj_text": r.get("subj_text", ""),
+            "subj_group": r.get("subj_group", ""),
+            "subj_start": r.get("subj_start"),
+            "subj_end": r.get("subj_end"),
+            "obj_text": r.get("obj_text", ""),
+            "obj_group": r.get("obj_group", ""),
+            "obj_start": r.get("obj_start"),
+            "obj_end": r.get("obj_end"),
+            "relation_raw": r.get("relation_raw", ""),
+            "relation_canonical": r.get("relation_canonical"),
+            "source_type": r.get("source_type"),
+            "raw_sentiment": r.get("raw_sentiment"),
+            "obj_keywords": r.get("obj_keywords"),
+        }
+        for r in rel_rows
+    ]
+
+    return {
+        "brnd_nm": review_raw.get("brand_name_raw", ""),
+        "clct_site_nm": review_raw.get("source", ""),
+        "prod_nm": review_raw.get("product_name_raw", ""),
+        "text": review_raw.get("review_text", ""),
+        "ner": ner_for_record,
+        "bee": bee_for_record,
+        "relation": rel_for_record,
+        "source_review_key": review_raw.get("source_review_key"),
+        "author_key": review_raw.get("author_key"),
+        "created_at": review_raw.get("source_created_at"),
+        "collected_at": review_raw.get("collected_at"),
+        "review_id": review_id,
+        "reviewer_proxy_id": raw.get("reviewer_proxy_id", ""),
+        "review_version": raw.get("review_version", 1),
+    }, has_child_rows
+
+
 async def _append_history(
     uow: UnitOfWork, review_id: str, version: int,
     version_op: str, review: dict, as_of_ts: datetime,

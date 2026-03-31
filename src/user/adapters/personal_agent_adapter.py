@@ -17,6 +17,7 @@ from src.common.enums import ConceptType
 def adapt_user_profile(
     user_id: str,
     profile: dict[str, Any],
+    purchase_features: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """Convert personal-agent 3-group profile to canonical user fact inputs.
 
@@ -24,6 +25,8 @@ def adapt_user_profile(
         user_id: Real user_id
         profile: Normalized 3-group profile from personal-agent data_store
             {basic: {}, purchase_analysis: {}, chat: {}}
+        purchase_features: Optional PurchaseFeatures-derived dict with
+            owned_product_ids, repurchased_brand_ids, etc.
 
     Returns:
         List of dicts ready for canonicalize_user_facts.py
@@ -85,6 +88,15 @@ def adapt_user_profile(
         scent = chat.get("scent", {})
         for pref in scent.get("preferences", []):
             facts.append(_make_pref("PREFERS_KEYWORD", ConceptType.KEYWORD, pref, user_id, "chat"))
+
+    # Purchase-derived features (from derive_purchase_features)
+    if purchase_features:
+        for pid in purchase_features.get("owned_product_ids", []):
+            facts.append(_make_pref("OWNS_PRODUCT", ConceptType.BRAND, pid, user_id, "purchase", confidence=0.9))
+        for brand_id in purchase_features.get("repurchased_brand_ids", []):
+            facts.append(_make_pref("REPURCHASES_PRODUCT_OR_FAMILY", ConceptType.BRAND, brand_id, user_id, "purchase", confidence=0.9))
+        for brand_id in purchase_features.get("recently_purchased_brand_ids", []):
+            facts.append(_make_pref("RECENTLY_PURCHASED", ConceptType.BRAND, brand_id, user_id, "purchase", confidence=0.7))
 
     return facts
 

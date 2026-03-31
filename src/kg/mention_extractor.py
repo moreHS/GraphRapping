@@ -29,6 +29,7 @@ class MentionExtractor:
         self.relation_mentions: list[RelationMention] = []
         self.same_entity_pairs: list[SameEntityPair] = []
         self.keyword_mentions: list[KeywordMention] = []
+        self.keyword_candidates: list[dict] = []  # Unvalidated keywords → quarantine
 
     def extract(
         self,
@@ -92,20 +93,26 @@ class MentionExtractor:
             )
         for mention in list(self.entity_mentions):
             if mention.type == "BEE_ATTR" and mention.mention_id not in bee_mention_ids_in_rel:
-                # Synthetic HAS_ATTRIBUTE
+                # Synthetic HAS_ATTRIBUTE — marked as evidence-only
                 self.relation_mentions.append(RelationMention(
                     review_id=review_id, product_id=product_id,
                     subj_mention_id=rt.mention_id, obj_mention_id=mention.mention_id,
                     relation_type="has_attribute", sentiment="NEU", source_type="BEE-synthetic",
+                    is_synthetic=True,
+                    evidence_kind="BEE_SYNTHETIC",
+                    promotion_eligible=False,
                 ))
-                # Auto keyword from phrase
+                # Route unmatched phrase to keyword candidate queue (no auto entity creation)
                 auto_kw = normalize_text(mention.word)[:30]
                 if auto_kw:
-                    self._process_keywords(
-                        review_id, product_id, mention,
-                        mention.original_type or "", [auto_kw],
-                    )
-                logger.debug("Synthetic HAS_ATTRIBUTE for BEE-only mention: %s", mention.word[:30])
+                    self.keyword_candidates.append({
+                        "review_id": review_id,
+                        "surface_text": auto_kw,
+                        "bee_attr_raw": mention.original_type or "",
+                        "context_text": mention.word,
+                        "reason": "BEE-only synthetic — auto keyword candidate",
+                    })
+                logger.debug("Synthetic HAS_ATTRIBUTE (evidence-only) for BEE-only mention: %s", mention.word[:30])
 
     def _create_or_get_mention(
         self,
@@ -138,6 +145,10 @@ class MentionExtractor:
         if dedup_key in self._mention_index:
             return self._mention_index[dedup_key]
 
+        # Source-based confidence
+        _confidence_by_source = {"ner": 1.0, "bee": 0.9, "meta": 1.0, "relation": 0.8, "synthetic": 0.4}
+        confidence = _confidence_by_source.get(source, 0.8)
+
         mention = EntityMention(
             review_id=review_id,
             product_id=product_id,
@@ -150,6 +161,8 @@ class MentionExtractor:
             placeholder_type=placeholder_type,
             original_type=original_type or entity_group,
             sentiment=norm_sentiment,
+            mention_confidence=confidence,
+            is_generated=source == "synthetic",
         )
 
         self._mention_index[dedup_key] = mention
@@ -222,17 +235,18 @@ class MentionExtractor:
                     keywords=obj_keywords,
                 )
             else:
-                # Auto fallback: generate keyword from phrase
+                # No keywords — route to candidate queue (no auto entity creation)
                 phrase = rel_row.get("obj_text", "")
                 if phrase and len(phrase) > 1:
                     auto_kw = normalize_text(phrase)[:30]
                     if auto_kw:
-                        self._process_keywords(
-                            review_id, product_id,
-                            bee_mention=obj_mention,
-                            bee_attr_type=rel_row.get("obj_group", ""),
-                            keywords=[auto_kw],
-                        )
+                        self.keyword_candidates.append({
+                            "review_id": review_id,
+                            "surface_text": auto_kw,
+                            "bee_attr_raw": rel_row.get("obj_group", ""),
+                            "context_text": phrase,
+                            "reason": "NER-BeE relation with no obj_keywords",
+                        })
         else:
             # NER-NER: use canonical relation type
             neo4j_type = self._config.get_neo4j_relation_type(relation_raw)

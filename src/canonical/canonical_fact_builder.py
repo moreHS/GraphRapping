@@ -70,6 +70,10 @@ class CanonicalFact:
     registry_version: str | None = None
     provenance: list[FactProvenance] = field(default_factory=list)
     qualifiers: list[FactQualifier] = field(default_factory=list)
+    negated: bool | None = None
+    intensity: float | None = None
+    evidence_kind: str | None = None
+    fact_status: str = "CANONICAL_PROMOTED"  # EVIDENCE_ONLY|CANONICAL_PROMOTED|REJECTED
 
 
 class CanonicalFactBuilder:
@@ -123,6 +127,11 @@ class CanonicalFactBuilder:
         source_modality: str = "",
         provenance: FactProvenance | None = None,
         qualifiers: list[FactQualifier] | None = None,
+        *,
+        negated: bool | None = None,
+        intensity: float | None = None,
+        evidence_kind: str | None = None,
+        fact_status: str = "CANONICAL_PROMOTED",
     ) -> str | None:
         """Add a canonical fact. Returns fact_id, or None if contract violation.
 
@@ -148,9 +157,22 @@ class CanonicalFactBuilder:
                 })
                 return None
 
+        # Auto-generate qualifiers for negation/intensity
+        all_qualifiers = list(qualifiers or [])
+        if negated:
+            all_qualifiers.append(FactQualifier(
+                qualifier_key="negated", qualifier_type="boolean",
+                qualifier_value_text="true",
+            ))
+        if intensity is not None and intensity != 1.0:
+            all_qualifiers.append(FactQualifier(
+                qualifier_key="intensity", qualifier_type="float",
+                qualifier_value_num=intensity,
+            ))
+
         object_ref = object_iri or object_value_text or ""
         qualifier_pairs = [(q.qualifier_key, q.qualifier_iri or q.qualifier_value_text or str(q.qualifier_value_num or ""))
-                          for q in (qualifiers or [])]
+                          for q in all_qualifiers]
         qfp = make_qualifier_fingerprint(qualifier_pairs) if qualifier_pairs else ""
 
         fact_id = make_fact_id(
@@ -187,7 +209,11 @@ class CanonicalFactBuilder:
                 confidence=confidence,
                 source_modalities=[source_modality] if source_modality else [],
                 provenance=[provenance] if provenance else [],
-                qualifiers=qualifiers or [],
+                qualifiers=all_qualifiers,
+                negated=negated,
+                intensity=intensity,
+                evidence_kind=evidence_kind,
+                fact_status=fact_status,
             )
             self._facts[fact_id] = fact
 
@@ -205,6 +231,11 @@ class CanonicalFactBuilder:
         keyword_labels: list[str],
         polarity: str | None = None,
         provenance: FactProvenance | None = None,
+        *,
+        negated: bool | None = None,
+        intensity: float | None = None,
+        evidence_kind: str | None = None,
+        base_confidence: float | None = None,
     ) -> list[str]:
         """Add BEE-derived facts: Product→BEEAttr + BEEAttr→Keyword(s).
 
@@ -231,8 +262,12 @@ class CanonicalFactBuilder:
             subject_type="Product",
             object_type="BEEAttr",
             polarity=polarity,
+            confidence=base_confidence,
             source_modality="BEE",
             provenance=provenance,
+            negated=negated,
+            intensity=intensity,
+            evidence_kind=evidence_kind,
         )
         fact_ids.append(fid)
 
@@ -254,8 +289,12 @@ class CanonicalFactBuilder:
                 subject_type="BEEAttr",
                 object_type="Keyword",
                 polarity=polarity,
+                confidence=base_confidence,
                 source_modality="BEE",
                 provenance=provenance,
+                negated=negated,
+                intensity=intensity,
+                evidence_kind=evidence_kind,
             )
             fact_ids.append(fid)
 

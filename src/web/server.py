@@ -275,8 +275,12 @@ async def recommend(req: RecommendRequest):
 # =============================================================================
 
 @app.get("/api/graphs/product/{product_id}")
-async def product_graph(product_id: str):
-    """Build hierarchical product graph: Product → BEE_ATTR → KEYWORD (from signals)."""
+async def product_graph(product_id: str, view: str = "corpus"):
+    """Build hierarchical product graph: Product → BEE_ATTR → KEYWORD (from signals).
+
+    Query params:
+        view: "corpus" (promoted signals only, default) | "evidence" (all signals)
+    """
     _check_loaded()
     product = next((p for p in demo_state.serving_products if p["product_id"] == product_id), None)
     if not product:

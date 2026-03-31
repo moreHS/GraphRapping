@@ -41,6 +41,10 @@ class ProjectionRule:
     output_weight_rule: str
     if_unresolved_action: str  # DROP|QUARANTINE|KEEP_CANONICAL_ONLY
     notes: str
+    # Phase 1 additions (optional columns, defaults preserve backward compatibility)
+    allowed_evidence_kind: str = ""      # Empty = any; comma-separated if multiple
+    min_confidence: float = 0.0          # Minimum fact confidence for this rule
+    promotion_mode: str = "IMMEDIATE"    # IMMEDIATE|CORPUS_THRESHOLD|NEVER
 
 
 @dataclass
@@ -76,6 +80,10 @@ class ProjectionRegistry:
                 object_type=row.get("object_type", "").strip(),
                 polarity=row.get("polarity", "").strip(),
             )
+            # Parse min_confidence safely
+            min_conf_str = row.get("min_confidence", "").strip()
+            min_conf = float(min_conf_str) if min_conf_str else 0.0
+
             rule = ProjectionRule(
                 registry_version=row.get("registry_version", "").strip(),
                 input_predicate=key.input_predicate,
@@ -91,6 +99,9 @@ class ProjectionRegistry:
                 output_weight_rule=row.get("output_weight_rule", "").strip(),
                 if_unresolved_action=row.get("if_unresolved_action", "QUARANTINE").strip(),
                 notes=row.get("notes", "").strip(),
+                allowed_evidence_kind=row.get("allowed_evidence_kind", "").strip(),
+                min_confidence=min_conf,
+                promotion_mode=row.get("promotion_mode", "IMMEDIATE").strip() or "IMMEDIATE",
             )
             self._rules[key] = rule
             if rule.registry_version:

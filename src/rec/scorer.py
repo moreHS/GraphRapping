@@ -69,6 +69,17 @@ class Scorer:
         # Residual BEE_ATTR: only count attrs not already covered by keywords
         residual_attr = max(0, bee_attr_count - keyword_count)
 
+        # Goal split: master (product truth) vs review (review-derived signals)
+        goal_master_count = overlaps_by_type.get("goal_master", 0) + overlaps_by_type.get("goal", 0)
+        goal_review_count = overlaps_by_type.get("goal_review", 0)
+
+        # skin_type_fit: user skin_type × product concern signals
+        skin_type_fit_val = _skin_type_fit(user_profile, product_profile)
+
+        # Purchase-derived features
+        purchase_loyalty = _purchase_loyalty_score(user_profile, product_profile)
+        novelty = _novelty_bonus(user_profile, product_profile)
+
         features = {
             "keyword_match": min(keyword_count / 3.0, 1.0),
             "residual_bee_attr_match": min(residual_attr / 2.0, 1.0),
@@ -76,9 +87,13 @@ class Scorer:
             "concern_fit": min(overlaps_by_type.get("concern", 0) / 2.0, 1.0),
             "ingredient_match": min(overlaps_by_type.get("ingredient", 0) / 3.0, 1.0),
             "brand_match_conf_weighted": _brand_score(overlaps_by_type.get("brand", 0), brand_source, self._brand_confidence),
-            "goal_fit": min(overlaps_by_type.get("goal", 0) / 2.0, 1.0),
+            "goal_fit_master": min(goal_master_count / 2.0, 1.0),
+            "goal_fit_review_signal": min(goal_review_count / 2.0, 1.0),
             "category_affinity": min(overlaps_by_type.get("category", 0), 1.0),
             "freshness_boost": _freshness_score(product_profile),
+            "skin_type_fit": skin_type_fit_val,
+            "purchase_loyalty_score": purchase_loyalty,
+            "novelty_bonus": novelty,
         }
 
         raw_score = sum(
@@ -119,3 +134,84 @@ def _freshness_score(product: dict) -> float:
     elif count_30d > 0:
         return 0.3
     return 0.0
+
+
+# Skin type → concern mapping for scoring
+_SKIN_TYPE_CONCERN_MAP = {
+    "건성": {"boost": ["dryness", "moisturizing", "보습"], "penalty": ["oily", "유분"]},
+    "지성": {"boost": ["oily", "유분", "피지"], "penalty": ["heavy", "끈적"]},
+    "복합성": {"boost": ["t_zone", "유분", "보습"], "penalty": []},
+    "민감성": {"boost": ["sensitivity", "자극", "진정"], "penalty": ["harsh", "자극적"]},
+    "dry": {"boost": ["dryness", "moisturizing"], "penalty": ["oily"]},
+    "oily": {"boost": ["oily", "sebum"], "penalty": ["heavy"]},
+    "combination": {"boost": ["t_zone", "oily", "moisturizing"], "penalty": []},
+    "sensitive": {"boost": ["sensitivity", "soothing"], "penalty": ["harsh"]},
+}
+
+
+def _skin_type_fit(user_profile: dict, product_profile: dict) -> float:
+    """Score skin type fit: user skin_type × product concern signals."""
+    skin_type = user_profile.get("skin_type")
+    if not skin_type:
+        return 0.0
+
+    mapping = _SKIN_TYPE_CONCERN_MAP.get(skin_type, {})
+    if not mapping:
+        return 0.0
+
+    boost_concepts = set(mapping.get("boost", []))
+    penalty_concepts = set(mapping.get("penalty", []))
+
+    # Check product's concern signals
+    pos_ids = {entry["id"] if isinstance(entry, dict) else entry
+               for entry in (product_profile.get("top_concern_pos_ids") or [])}
+    neg_ids = {entry["id"] if isinstance(entry, dict) else entry
+               for entry in (product_profile.get("top_concern_neg_ids") or [])}
+
+    score = 0.0
+    if boost_concepts & pos_ids:
+        score += 1.0
+    if penalty_concepts & neg_ids:
+        score -= 0.5
+
+    return max(min(score, 1.0), 0.0)
+
+
+def _purchase_loyalty_score(user_profile: dict, product_profile: dict) -> float:
+    """Score based on purchase history: repurchased brand → 1.0, recent → 0.5."""
+    brand_id = product_profile.get("brand_id", "")
+    if not brand_id:
+        return 0.0
+
+    repurchased = {entry["id"] if isinstance(entry, dict) else entry
+                   for entry in (user_profile.get("repurchase_brand_ids") or [])}
+    if brand_id in repurchased:
+        return 1.0
+
+    recent = {entry["id"] if isinstance(entry, dict) else entry
+              for entry in (user_profile.get("recent_purchase_brand_ids") or [])}
+    if brand_id in recent:
+        return 0.5
+
+    return 0.0
+
+
+def _novelty_bonus(user_profile: dict, product_profile: dict) -> float:
+    """Score novelty: unknown brand → 1.0, known → 0.5, owned → 0.0."""
+    product_id = product_profile.get("product_id", "")
+    brand_id = product_profile.get("brand_id", "")
+
+    owned = {entry["id"] if isinstance(entry, dict) else entry
+             for entry in (user_profile.get("owned_product_ids") or [])}
+    if product_id in owned:
+        return 0.0
+
+    all_brands = set()
+    for key in ("recent_purchase_brand_ids", "repurchase_brand_ids", "preferred_brand_ids"):
+        for entry in (user_profile.get(key) or []):
+            all_brands.add(entry["id"] if isinstance(entry, dict) else entry)
+
+    if brand_id and brand_id in all_brands:
+        return 0.5
+
+    return 1.0

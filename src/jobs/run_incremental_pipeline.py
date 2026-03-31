@@ -12,11 +12,16 @@ from typing import Any
 
 import asyncpg
 
+import logging
+
 from src.db.unit_of_work import UnitOfWork
 from src.db.persist import persist_review_bundle, persist_aggregates
 from src.db.persist_bundle import ReviewPersistBundle
+from src.db.repos.review_repo import load_full_review_snapshot
 from src.ingest.review_ingest import RawReviewRecord, ingest_review
 from src.jobs.run_daily_pipeline import process_review
+
+logger = logging.getLogger(__name__)
 from src.link.product_matcher import ProductIndex
 from src.normalize.bee_normalizer import BEENormalizer
 from src.normalize.relation_canonicalizer import RelationCanonicalizer
@@ -186,18 +191,32 @@ async def run_incremental(
                 all_dirty_products.update(dirty)
                 continue
 
-            # Build RawReviewRecord from DB row
+            # Load full raw snapshot (ner/bee/rel child rows) from DB
+            async with UnitOfWork(pool) as snapshot_uow:
+                snapshot, has_child_rows = await load_full_review_snapshot(
+                    snapshot_uow, review_row["review_id"],
+                )
+
+            if not snapshot or not has_child_rows:
+                logger.warning(
+                    "Skip reprocessing: empty child rows for review %s (has_child=%s)",
+                    review_row["review_id"], has_child_rows,
+                )
+                continue
+
             record = RawReviewRecord(
-                brnd_nm=review_row.get("brand_name_raw", ""),
-                prod_nm=review_row.get("product_name_raw", ""),
-                text=review_row.get("review_text", ""),
-                clct_site_nm=review_row.get("source_site", ""),
-                source_review_key=review_row.get("source_review_key"),
+                brnd_nm=snapshot.get("brnd_nm", ""),
+                prod_nm=snapshot.get("prod_nm", ""),
+                text=snapshot.get("text", ""),
+                clct_site_nm=snapshot.get("clct_site_nm", ""),
+                source_review_key=snapshot.get("source_review_key"),
                 created_at=str(review_row["event_time_utc"]) if review_row.get("event_time_utc") else None,
-                ner=[], bee=[], relation=[],  # raw extraction would be re-loaded
+                ner=snapshot.get("ner", []),
+                bee=snapshot.get("bee", []),
+                relation=snapshot.get("relation", []),
             )
 
-            # Process review
+            # Process review with full raw data
             result = process_review(
                 record=record,
                 source=review_row.get("source", ""),

@@ -27,6 +27,7 @@ class BEENormalizeResult:
     confidence: float = 1.0
     raw_phrase: str = ""
     surface_forms: list[str] = field(default_factory=list)
+    keyword_source: str | None = None  # DICT|RULE|CANDIDATE — validation status
 
 
 # Negation markers (Korean + English)
@@ -93,6 +94,12 @@ class BEENormalizer:
         # Extract keywords from phrase
         keyword_ids, keyword_labels, surface_forms = self._extract_keywords(phrase_text)
 
+        # Determine keyword source
+        if keyword_ids:
+            keyword_source = "DICT"
+        else:
+            keyword_source = "CANDIDATE"
+
         return BEENormalizeResult(
             bee_attr_id=bee_attr_id,
             bee_attr_label=bee_attr_label,
@@ -104,6 +111,7 @@ class BEENormalizer:
             confidence=1.0 if attr_entry else 0.7,
             raw_phrase=phrase_text,
             surface_forms=surface_forms,
+            keyword_source=keyword_source,
         )
 
     def _resolve_polarity(self, raw_sentiment: str | None) -> str | None:
@@ -118,8 +126,23 @@ class BEENormalizer:
         return raw_sentiment
 
     def _detect_negation(self, text: str) -> bool:
-        tokens = text.lower().split()
-        return any(t in _NEGATION_MARKERS for t in tokens)
+        """Detect negation with double-negation awareness.
+
+        Single negation → True (negated)
+        Double negation (e.g. "안 건조한 건 아닌데") → False (double negation cancels)
+        Uses both token matching and substring matching for Korean agglutinative forms.
+        """
+        text_lower = text.lower()
+        tokens = text_lower.split()
+        neg_count = sum(1 for t in tokens if t in _NEGATION_MARKERS)
+        # Also check substring matches for agglutinative Korean (e.g. "아닌데" contains "아닌")
+        for marker in _NEGATION_MARKERS:
+            if len(marker) >= 2:  # avoid single-char false positives
+                count_in_text = text_lower.count(marker)
+                token_count = sum(1 for t in tokens if t == marker)
+                # Add substring matches that weren't caught as tokens
+                neg_count += max(0, count_in_text - token_count)
+        return neg_count % 2 == 1
 
     def _detect_intensity(self, text: str) -> float:
         tokens = text.lower().split()

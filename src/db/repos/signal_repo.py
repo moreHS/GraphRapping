@@ -69,3 +69,20 @@ async def replace_signals_for_review(
     # Compute dirty product_ids (old + new)
     new_product_ids = {s.target_product_id for s in signals if s.target_product_id}
     return old_product_ids | new_product_ids
+
+
+async def get_dirty_product_ids_for_review(
+    uow: UnitOfWork,
+    review_id: str,
+) -> set[str]:
+    """Get all product_ids that would be dirty if this review is modified/deleted.
+
+    Includes: target_product_id + comparison targets + co-used products.
+    """
+    rows = await uow.fetch("""
+        SELECT DISTINCT target_product_id FROM wrapped_signal WHERE review_id = $1
+        UNION
+        SELECT DISTINCT dst_id FROM wrapped_signal
+        WHERE review_id = $1 AND edge_type IN ('COMPARED_WITH_SIGNAL', 'USED_WITH_PRODUCT_SIGNAL')
+    """, review_id)
+    return {r[0] for r in rows if r[0]}
