@@ -34,6 +34,72 @@ async def upsert_agg_product_signal(uow: UnitOfWork, row: dict[str, Any]) -> Non
     )
 
 
+async def batch_aggregate_product_signals_sql(
+    uow: UnitOfWork,
+    dirty_product_ids: set[str],
+    windows: list[str] | None = None,
+) -> int:
+    """Batch re-aggregate product signals via SQL group-by for dirty products.
+
+    This is the SQL-first path (P1-1). Falls back to Python aggregate for debug.
+    Returns number of upserted rows.
+    """
+    if not dirty_product_ids:
+        return 0
+
+    windows = windows or ["30d", "90d", "all"]
+    product_list = list(dirty_product_ids)
+    count = 0
+
+    for window_type in windows:
+        if window_type == "all":
+            window_clause = "TRUE"
+        elif window_type == "30d":
+            window_clause = "window_ts >= now() - interval '30 days'"
+        else:
+            window_clause = "window_ts >= now() - interval '90 days'"
+
+        rows = await uow.fetch(f"""
+            INSERT INTO agg_product_signal
+                (target_product_id, canonical_edge_type, dst_node_type, dst_node_id,
+                 window_type, review_cnt, pos_cnt, neg_cnt, neu_cnt, support_count, score,
+                 updated_at)
+            SELECT
+                target_product_id,
+                edge_type,
+                dst_type,
+                dst_id,
+                $2::text,
+                COUNT(DISTINCT review_id),
+                COUNT(*) FILTER (WHERE polarity = 'POS'),
+                COUNT(*) FILTER (WHERE polarity = 'NEG'),
+                COUNT(*) FILTER (WHERE polarity IS NULL OR polarity NOT IN ('POS','NEG')),
+                COUNT(*),
+                CASE WHEN COUNT(*) > 0
+                    THEN (COUNT(*) FILTER (WHERE polarity='POS') - COUNT(*) FILTER (WHERE polarity='NEG'))::real / COUNT(*)
+                    ELSE 0 END,
+                now()
+            FROM wrapped_signal
+            WHERE target_product_id = ANY($1)
+              AND signal_family != 'CATALOG_VALIDATION'
+              AND {window_clause}
+            GROUP BY target_product_id, edge_type, dst_type, dst_id
+            ON CONFLICT (target_product_id, canonical_edge_type, dst_node_id, window_type)
+            DO UPDATE SET
+                review_cnt = EXCLUDED.review_cnt,
+                pos_cnt = EXCLUDED.pos_cnt,
+                neg_cnt = EXCLUDED.neg_cnt,
+                neu_cnt = EXCLUDED.neu_cnt,
+                support_count = EXCLUDED.support_count,
+                score = EXCLUDED.score,
+                updated_at = EXCLUDED.updated_at
+            RETURNING 1
+        """, product_list, window_type)
+        count += len(rows)
+
+    return count
+
+
 async def upsert_agg_user_preference(uow: UnitOfWork, row: dict[str, Any]) -> None:
     await uow.execute("""
         INSERT INTO agg_user_preference (user_id, preference_edge_type,

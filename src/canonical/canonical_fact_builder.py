@@ -32,14 +32,17 @@ class CanonicalEntity:
 
 @dataclass
 class FactProvenance:
-    raw_table: str       # ner_raw|bee_raw|rel_raw
+    raw_table: str       # ner_raw|bee_raw|rel_raw|user_master|product_master|manual
     raw_row_id: str
     review_id: str
     snippet: str = ""
     start_offset: int | None = None
     end_offset: int | None = None
-    source_modality: str = ""  # NER|BEE|REL
+    source_modality: str = ""  # NER|BEE|REL (review-derived only)
     evidence_rank: int = 0
+    # Generic provenance fields (supports review/user/product/manual/system facts)
+    source_domain: str = "review"   # review|user|product|manual|system
+    source_kind: str = "raw"        # raw|summary|master|derived
 
 
 @dataclass
@@ -61,6 +64,7 @@ class CanonicalFact:
     object_value_text: str | None = None
     object_value_num: float | None = None
     object_ref_kind: str = ObjectRefKind.CONCEPT
+    subject_ref_kind: str = ""  # CONCEPT|ENTITY — for reverse transform dst_ref_kind
     subject_type: str = ""
     object_type: str = ""
     polarity: str | None = None
@@ -194,6 +198,14 @@ class CanonicalFactBuilder:
             if confidence and (not existing.confidence or confidence > existing.confidence):
                 existing.confidence = confidence
         else:
+            # Derive subject_ref_kind from subject_type
+            _CONCEPT_TYPES = {
+                "BEEAttr", "Keyword", "Brand", "Category", "Ingredient",
+                "TemporalContext", "Concern", "Goal", "Tool", "UserSegment",
+                "SkinType", "SkinTone", "Fragrance", "PriceBand", "Country", "AgeBand",
+            }
+            subj_ref_kind = ObjectRefKind.CONCEPT if subject_type in _CONCEPT_TYPES else ObjectRefKind.ENTITY
+
             fact = CanonicalFact(
                 fact_id=fact_id,
                 review_id=review_id,
@@ -203,6 +215,7 @@ class CanonicalFactBuilder:
                 object_value_text=object_value_text,
                 object_value_num=object_value_num,
                 object_ref_kind=object_ref_kind,
+                subject_ref_kind=subj_ref_kind,
                 subject_type=subject_type,
                 object_type=object_type,
                 polarity=polarity,
@@ -269,7 +282,8 @@ class CanonicalFactBuilder:
             intensity=intensity,
             evidence_kind=evidence_kind,
         )
-        fact_ids.append(fid)
+        if fid is not None:
+            fact_ids.append(fid)
 
         # BEEAttr HAS_KEYWORD Keyword (for each keyword)
         for kid, klabel in zip(keyword_ids, keyword_labels):
@@ -296,7 +310,8 @@ class CanonicalFactBuilder:
                 intensity=intensity,
                 evidence_kind=evidence_kind,
             )
-            fact_ids.append(fid)
+            if fid is not None:
+                fact_ids.append(fid)
 
         return fact_ids
 

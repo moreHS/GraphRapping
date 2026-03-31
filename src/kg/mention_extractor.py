@@ -273,6 +273,7 @@ class MentionExtractor:
         bee_mention: EntityMention,
         bee_attr_type: str,
         keywords: list[str],
+        keyword_source: str = "DICT",
     ) -> None:
         """Extract keyword mentions from BEE phrase keywords."""
         for kw in keywords:
@@ -288,6 +289,7 @@ class MentionExtractor:
                 word=kw.strip(),
                 bee_attr_type=bee_attr_type,
                 bee_mention_id=bee_mention.mention_id,
+                keyword_source=keyword_source,
             )
             self._keyword_index[dedup_key] = kw_mention
             self.keyword_mentions.append(kw_mention)

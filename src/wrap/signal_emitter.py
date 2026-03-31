@@ -19,11 +19,16 @@ from src.canonical.canonical_fact_builder import CanonicalFact
 
 @dataclass
 class WrappedSignal:
+    """Layer 2.5 wrapped signal.
+
+    Provenance source of truth: signal_evidence table (not source_fact_ids).
+    source_fact_ids is a cache/debug field — always use signal_evidence for explanation chains.
+    """
     signal_id: str
     review_id: str
     user_id: str | None
     target_product_id: str | None
-    source_fact_ids: list[str]
+    source_fact_ids: list[str]  # CACHE ONLY — provenance SoT is signal_evidence
     signal_family: str
     edge_type: str
     dst_type: str
@@ -148,7 +153,8 @@ class SignalEmitter:
         else:
             # Determine dst_ref_kind based on transform
             if transform == "reverse":
-                dst_ref_kind = "ENTITY"
+                # Reverse: dst is now the subject — use subject_ref_kind
+                dst_ref_kind = getattr(fact, "subject_ref_kind", "") or "ENTITY"
             else:
                 dst_ref_kind = fact.object_ref_kind
 

@@ -28,7 +28,7 @@ def build_serving_product_profile(
     pid = product_master["product_id"]
     links = concept_links or []
 
-    # Extract concept IRIs by link_type
+    # Extract concept_ids by link_type (concept_id is the canonical join key)
     brand_concepts = [l["concept_id"] for l in links if l.get("link_type") == "HAS_BRAND"]
     category_concepts = [l["concept_id"] for l in links if l.get("link_type") == "IN_CATEGORY"]
     ingredient_concepts = [l["concept_id"] for l in links if l.get("link_type") == "HAS_INGREDIENT"]
@@ -68,7 +68,7 @@ def build_serving_product_profile(
         "country_of_origin": product_master.get("country_of_origin"),
         "price": product_master.get("price"),
         "ingredient_ids": product_master.get("ingredients", []),
-        # Concept IRI fields (for shared concept join)
+        # Concept ID fields (canonical join keys — concept_id, not raw IRI)
         "brand_concept_ids": brand_concepts,
         "category_concept_ids": category_concepts,
         "ingredient_concept_ids": ingredient_concepts,

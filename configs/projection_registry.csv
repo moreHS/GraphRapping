@@ -16,7 +16,7 @@ v1,affects,Product,Concern,POS,N,,CONCERN_POS,ADDRESSES_CONCERN_SIGNAL,Concern,i
 v1,affects,Product,Concern,NEG,N,,CONCERN_NEG,MAY_CAUSE_CONCERN_SIGNAL,Concern,identity,default_weight,QUARANTINE,부정 affect
 v1,affected_by,Concern,Product,,N,,CONCERN_POS,ADDRESSES_CONCERN_SIGNAL,Concern,reverse,default_weight,QUARANTINE,방향 뒤집기
 v1,comparison_with,Product,Product,,N,,COMPARISON,COMPARED_WITH_SIGNAL,Product,identity,default_weight,,product-product 비교
-v1,recommended_to,Product,UserSegment,,Y,segment,SEGMENT,RECOMMENDED_TO_SEGMENT_SIGNAL,UserSegment,identity,default_weight,QUARANTINE,segment 승격 필요
+v1,recommended_to,Product,UserSegment,,N,,SEGMENT,RECOMMENDED_TO_SEGMENT_SIGNAL,UserSegment,identity,default_weight,QUARANTINE,object가 이미 UserSegment면 qualifier 불필요 (§0-3)
 v1,targeted_at,Product,UserSegment,,N,,SEGMENT,TARGETED_AT_SEGMENT_SIGNAL,UserSegment,identity,default_weight,QUARANTINE,age/skin type 등
 v1,targeted_by,UserSegment,Product,,N,,SEGMENT,TARGETED_AT_SEGMENT_SIGNAL,UserSegment,reverse,default_weight,QUARANTINE,inverse
 v1,has_ingredient,Product,Ingredient,,N,,CATALOG_VALIDATION,CATALOG_VALIDATION_SIGNAL,Ingredient,identity,default_weight,,정본은 상품 DB

@@ -83,6 +83,8 @@ def _classify_promotion(edge: KGEdge, kg_subj: KGEntity | None, kg_obj: KGEntity
     if edge.confidence is not None and edge.confidence < 0.2:
         return PromotionDecision.DROP
 
+    # evidence_kind=None is acceptable — means standard relation without special marking
+    # Standard NER-NER and NER-BeE relations have None evidence_kind and should promote
     return PromotionDecision.PROMOTE
 
 

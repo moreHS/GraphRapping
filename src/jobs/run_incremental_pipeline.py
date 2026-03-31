@@ -178,6 +178,8 @@ async def run_incremental(
         all_dirty_products: set[str] = set()
         total_signals = 0
         total_quarantined = 0
+        skipped_reviews: set[str] = set()
+        last_processed_review: dict | None = None
 
         for review_row in changed:
             quarantine = QuarantineHandler()
@@ -198,10 +200,11 @@ async def run_incremental(
                 )
 
             if not snapshot or not has_child_rows:
-                logger.warning(
-                    "Skip reprocessing: empty child rows for review %s (has_child=%s)",
+                logger.error(
+                    "Skip reprocessing: empty child rows for review %s (has_child=%s) — will NOT advance watermark past this",
                     review_row["review_id"], has_child_rows,
                 )
+                skipped_reviews.add(review_row["review_id"])
                 continue
 
             record = RawReviewRecord(
@@ -229,11 +232,13 @@ async def run_incremental(
                 predicate_contracts=predicate_contracts,
             )
 
-            total_signals += result.get("signal_count", 0)
+            total_signals += len(result.wrapped_signals)
             total_quarantined += quarantine.pending_count
+            last_processed_review = review_row  # Track for watermark
 
-            if result.get("matched_product_id"):
-                all_dirty_products.add(result["matched_product_id"])
+            if result.matched_product_id:
+                all_dirty_products.add(result.matched_product_id)
+            all_dirty_products.update(result.dirty_product_ids)
 
             # Check for previous match (relink case)
             async with pool.acquire() as conn:
@@ -266,10 +271,13 @@ async def run_incremental(
                         await mart_repo.upsert_agg_product_signal(uow, _agg_to_dict(a))
                     await mart_repo.upsert_serving_product_profile(uow, profile)
 
-        # Update watermark (last processed review)
-        last_review = changed[-1]
-        final_wm_ts = last_review.get("updated_at", run_start)
-        final_wm_rid = last_review.get("review_id", "")
+        # Update watermark to last SUCCESSFULLY processed review (not skipped ones)
+        wm_source = last_processed_review or changed[-1]
+        final_wm_ts = wm_source.get("updated_at", run_start)
+        final_wm_rid = wm_source.get("review_id", "")
+        if skipped_reviews:
+            logger.warning("Skipped %d reviews with empty child rows: %s",
+                           len(skipped_reviews), skipped_reviews)
 
         await complete_pipeline_run(
             pool, run_id, final_wm_ts, final_wm_rid,

@@ -167,6 +167,15 @@ def process_review(
                                    reviewer_proxy_iri=ingested.reviewer_proxy_id)
             logger.info("Shadow KG: entities=%d facts=%d signals_pending (review %s)",
                         len(shadow_builder.entities), len(shadow_builder.facts), ingested.review_id)
+            # Shadow mode also quarantines keyword candidates (for comparison completeness)
+            for candidate in getattr(kg_result, "keyword_candidates", []):
+                quarantine.quarantine_unknown_keyword(
+                    surface_text=candidate.get("surface_text", ""),
+                    bee_attr_raw=candidate.get("bee_attr_raw", ""),
+                    review_id=candidate.get("review_id", ingested.review_id),
+                    context_text=candidate.get("context_text", ""),
+                    reason=candidate.get("reason", "KG shadow mode keyword candidate"),
+                )
 
     # 4-c-legacy. Process BEE rows (legacy path — off or shadow mode)
     if kg_mode in ("off", "shadow"):

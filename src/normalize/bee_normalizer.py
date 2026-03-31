@@ -130,18 +130,28 @@ class BEENormalizer:
 
         Single negation → True (negated)
         Double negation (e.g. "안 건조한 건 아닌데") → False (double negation cancels)
-        Uses both token matching and substring matching for Korean agglutinative forms.
+
+        Strategy: token exact match + prefix match for Korean agglutinative forms.
+        Only checks word-initial position to avoid false positives ("안녕", "편안한").
         """
-        text_lower = text.lower()
-        tokens = text_lower.split()
-        neg_count = sum(1 for t in tokens if t in _NEGATION_MARKERS)
-        # Also check substring matches for agglutinative Korean (e.g. "아닌데" contains "아닌")
-        for marker in _NEGATION_MARKERS:
-            if len(marker) >= 2:  # avoid single-char false positives
-                count_in_text = text_lower.count(marker)
-                token_count = sum(1 for t in tokens if t == marker)
-                # Add substring matches that weren't caught as tokens
-                neg_count += max(0, count_in_text - token_count)
+        tokens = text.lower().split()
+        neg_count = 0
+
+        # Multi-char Korean negation markers: check if any token STARTS with them
+        # This catches "아닌데", "않은", "없는" etc. while avoiding "안녕", "편안한"
+        _PREFIX_MARKERS = {"아닌", "아니", "않", "못", "없"}
+        # Single-char "안" only as exact token (not prefix, to avoid "안녕")
+        _EXACT_MARKERS = {"안", "덜", "not", "no", "don't", "doesn't", "never", "without"}
+
+        for t in tokens:
+            if t in _EXACT_MARKERS:
+                neg_count += 1
+            else:
+                for prefix in _PREFIX_MARKERS:
+                    if t.startswith(prefix):
+                        neg_count += 1
+                        break
+
         return neg_count % 2 == 1
 
     def _detect_intensity(self, text: str) -> float:

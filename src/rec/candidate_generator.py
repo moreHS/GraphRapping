@@ -80,9 +80,11 @@ def generate_candidates(
                     continue
 
         # --- Concept overlap scoring ---
+        # NOTE: catalog_validation signals are excluded — they must not influence
+        # candidate generation, scoring, or standard explanation (QA/debug only)
         overlap = []
 
-        # Brand match (concept IRI)
+        # Brand match (concept_id join key)
         product_brands = set(product.get("brand_concept_ids") or [])
         for b in preferred_brands & product_brands:
             overlap.append(f"brand:{b}")
@@ -123,9 +125,10 @@ def generate_candidates(
         candidate.overlap_score = len(overlap)
         candidates.append(candidate)
 
-    # Sort by overlap score, filter out hard-filtered, take top-N
+    # Sort by overlap score, filter out hard-filtered, deprioritize owned
     valid = [c for c in candidates if not c.hard_filtered]
-    valid.sort(key=lambda c: c.overlap_score, reverse=True)
+    # Already-owned products sort to the bottom (still returned but deprioritized)
+    valid.sort(key=lambda c: (not c.already_owned, c.overlap_score), reverse=True)
 
     return valid[:max_candidates]
 
