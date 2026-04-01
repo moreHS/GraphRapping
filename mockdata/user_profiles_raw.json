@@ -1,0 +1,405 @@
+{
+  "user_dry_30f": {
+    "user_profile": {
+      "sex_cd": "F",
+      "age": 33
+    },
+    "skin_profile": {
+      "skin_type": "건성",
+      "skin_concern": "건조함,잔주름,칙칙함",
+      "skin_tone": "웜톤"
+    },
+    "purchase_profile": {
+      "has_active_product": true,
+      "active_product_summary": {
+        "has_active_product_skincare": true,
+        "has_active_product_makeup": true,
+        "has_active_product_bodycare": false,
+        "has_active_product_hair": false,
+        "has_active_product_perfume": false
+      },
+      "active_product_category": ["에센스", "크림", "쿠션"],
+      "use_expected_product_summary": {
+        "skincare": {
+          "에센스": [
+            {
+              "rprs_prd_cd": "P001",
+              "prd_cd": "P001-01",
+              "rprs_prd_nm": "워터뱅크 블루 히알루로닉 세럼",
+              "purchase_date": "2025-11-15",
+              "main_eff": "보습"
+            }
+          ],
+          "크림": [
+            {
+              "rprs_prd_cd": "P002",
+              "prd_cd": "P002-01",
+              "rprs_prd_nm": "자음생크림",
+              "purchase_date": "2025-10-20",
+              "main_eff": "주름개선"
+            }
+          ]
+        },
+        "makeup": {
+          "쿠션": [
+            {
+              "rprs_prd_cd": "P005",
+              "prd_cd": "P005-01",
+              "rprs_prd_nm": "블랙쿠션",
+              "purchase_date": "2025-12-01",
+              "main_eff": "커버력"
+            }
+          ]
+        }
+      }
+    },
+    "brand_affinity": {
+      "overall_preferred_brand": ["라네즈", "설화수"],
+      "preferred_skincare_brand": {"라네즈": 5, "설화수": 4, "한율": 2},
+      "preferred_makeup_brand": {"헤라": 4},
+      "preferred_bodycare_brand": {},
+      "preferred_hair_brand": {},
+      "preferred_perfume_brand": {}
+    },
+    "repurchase_category_affinity": {
+      "overall_preferred_repurchase_category": ["에센스", "크림"],
+      "preferred_repurchase_category_intense": {"에센스": 5, "크림": 4},
+      "preferred_repurchase_product_summary": {
+        "에센스": [
+          {
+            "rprs_prd_cd": "P001",
+            "prd_cd": "P001-01",
+            "rprs_prd_nm": "워터뱅크 블루 히알루로닉 세럼",
+            "purchase_cycle_days": 90,
+            "preferred_repurchase_intense": 5,
+            "recent_purchase_date": "2025-11-15",
+            "main_eff": "보습"
+          }
+        ]
+      }
+    },
+    "seasonal_affinity": {
+      "season_main_category": {
+        "spring": ["에센스"],
+        "summer": ["세럼", "에센스"],
+        "fall": ["크림", "에센스"],
+        "winter": ["크림"]
+      },
+      "seasonal_product_summary": {}
+    },
+    "profile_from_chathistory": {
+      "incs_no": 100001,
+      "aibc_cht_sess_id": "sess_dry30f_001",
+      "executed_date": "2025-05-02",
+      "start_date": "2025-05-02",
+      "end_date": "2025-05-02",
+      "n_turns": 8,
+      "result": {
+        "has_face_profile": true,
+        "has_hair_profile": false,
+        "has_body_profile": false,
+        "has_makeup_profile": true,
+        "has_sensitive_concern": false,
+        "has_makeup_color_preference": true,
+        "has_sensory_signal": true,
+        "has_usage_behavior": true,
+        "face": {
+          "skin_concerns": ["건조함", "잔주름"],
+          "skincare_goals": ["보습강화", "톤업"],
+          "preferred_texture": ["크리미", "촉촉한"]
+        },
+        "hair": {},
+        "scalp": {},
+        "body": {},
+        "makeup": {
+          "preferred_finish": ["세미매트"]
+        },
+        "scent": {
+          "preferences": ["플로럴", "프루티"]
+        },
+        "ingredients": {
+          "preferred": ["히알루론산", "세라마이드", "스쿠알란"],
+          "avoid": [],
+          "allergy": []
+        },
+        "color_preference": {
+          "lip": ["코랄", "로즈"]
+        }
+      },
+      "confidence": {
+        "face": 0.9,
+        "hair": 0.0,
+        "body": 0.0,
+        "makeup": 0.7,
+        "scent": 0.8,
+        "ingredients": 0.9
+      }
+    }
+  },
+  "user_oily_20m": {
+    "user_profile": {
+      "sex_cd": "M",
+      "age": 26
+    },
+    "skin_profile": {
+      "skin_type": "지성",
+      "skin_concern": "과다피지,모공,여드름",
+      "skin_tone": "뉴트럴"
+    },
+    "purchase_profile": {
+      "has_active_product": true,
+      "active_product_summary": {
+        "has_active_product_skincare": true,
+        "has_active_product_makeup": false,
+        "has_active_product_bodycare": false,
+        "has_active_product_hair": false,
+        "has_active_product_perfume": false
+      },
+      "active_product_category": ["클렌저", "세럼"],
+      "use_expected_product_summary": {
+        "skincare": {
+          "클렌저": [
+            {
+              "rprs_prd_cd": "P009",
+              "prd_cd": "P009-01",
+              "rprs_prd_nm": "비자 시카밤 클렌징 폼",
+              "purchase_date": "2026-01-10",
+              "main_eff": "모공케어"
+            }
+          ],
+          "세럼": [
+            {
+              "rprs_prd_cd": "P003",
+              "prd_cd": "P003-01",
+              "rprs_prd_nm": "그린티 씨드 세럼",
+              "purchase_date": "2025-12-20",
+              "main_eff": "수분공급"
+            }
+          ]
+        }
+      }
+    },
+    "brand_affinity": {
+      "overall_preferred_brand": ["이니스프리"],
+      "preferred_skincare_brand": {"이니스프리": 5},
+      "preferred_makeup_brand": {},
+      "preferred_bodycare_brand": {},
+      "preferred_hair_brand": {},
+      "preferred_perfume_brand": {}
+    },
+    "repurchase_category_affinity": {
+      "overall_preferred_repurchase_category": ["클렌저"],
+      "preferred_repurchase_category_intense": {"클렌저": 4},
+      "preferred_repurchase_product_summary": {
+        "클렌저": [
+          {
+            "rprs_prd_cd": "P009",
+            "prd_cd": "P009-01",
+            "rprs_prd_nm": "비자 시카밤 클렌징 폼",
+            "purchase_cycle_days": 60,
+            "preferred_repurchase_intense": 4,
+            "recent_purchase_date": "2026-01-10",
+            "main_eff": "모공케어"
+          }
+        ]
+      }
+    },
+    "seasonal_affinity": {
+      "season_main_category": {
+        "spring": ["세럼"],
+        "summer": ["클렌저", "세럼"],
+        "fall": ["세럼"],
+        "winter": ["세럼"]
+      },
+      "seasonal_product_summary": {}
+    },
+    "profile_from_chathistory": {
+      "incs_no": 100002,
+      "aibc_cht_sess_id": "sess_oily20m_001",
+      "executed_date": "2025-04-15",
+      "start_date": "2025-04-15",
+      "end_date": "2025-04-15",
+      "n_turns": 5,
+      "result": {
+        "has_face_profile": true,
+        "has_hair_profile": false,
+        "has_body_profile": false,
+        "has_makeup_profile": false,
+        "has_sensitive_concern": false,
+        "has_makeup_color_preference": false,
+        "has_sensory_signal": true,
+        "has_usage_behavior": true,
+        "face": {
+          "skin_concerns": ["과다피지", "모공확대"],
+          "skincare_goals": ["피지조절", "모공축소"],
+          "preferred_texture": ["젤", "가벼운로션"]
+        },
+        "hair": {},
+        "scalp": {},
+        "body": {},
+        "makeup": {},
+        "scent": {
+          "preferences": ["시트러스", "우디"]
+        },
+        "ingredients": {
+          "preferred": ["나이아신아마이드", "살리실산", "티트리"],
+          "avoid": ["미네랄오일"],
+          "allergy": []
+        },
+        "color_preference": {}
+      },
+      "confidence": {
+        "face": 0.85,
+        "hair": 0.0,
+        "body": 0.0,
+        "makeup": 0.0,
+        "scent": 0.7,
+        "ingredients": 0.85
+      }
+    }
+  },
+  "user_sensitive_40f": {
+    "user_profile": {
+      "sex_cd": "F",
+      "age": 42
+    },
+    "skin_profile": {
+      "skin_type": "민감성",
+      "skin_concern": "붉은기,자극,건조",
+      "skin_tone": "쿨톤"
+    },
+    "purchase_profile": {
+      "has_active_product": true,
+      "active_product_summary": {
+        "has_active_product_skincare": true,
+        "has_active_product_makeup": true,
+        "has_active_product_bodycare": false,
+        "has_active_product_hair": false,
+        "has_active_product_perfume": false
+      },
+      "active_product_category": ["크림", "에센스", "쿠션", "립스틱"],
+      "use_expected_product_summary": {
+        "skincare": {
+          "에센스": [
+            {
+              "rprs_prd_cd": "P006",
+              "prd_cd": "P006-01",
+              "rprs_prd_nm": "레티놀 엑스퍼트 0.1%",
+              "purchase_date": "2025-09-10",
+              "main_eff": "주름개선"
+            },
+            {
+              "rprs_prd_cd": "P008",
+              "prd_cd": "P008-01",
+              "rprs_prd_nm": "윤조에센스",
+              "purchase_date": "2026-01-05",
+              "main_eff": "윤기"
+            }
+          ]
+        },
+        "makeup": {
+          "쿠션": [
+            {
+              "rprs_prd_cd": "P005",
+              "prd_cd": "P005-01",
+              "rprs_prd_nm": "블랙쿠션",
+              "purchase_date": "2025-11-20",
+              "main_eff": "커버력"
+            }
+          ],
+          "립스틱": [
+            {
+              "rprs_prd_cd": "P010",
+              "prd_cd": "P010-01",
+              "rprs_prd_nm": "센슈얼 파우더 매트 립스틱",
+              "purchase_date": "2025-10-15",
+              "main_eff": "발색"
+            }
+          ]
+        }
+      }
+    },
+    "brand_affinity": {
+      "overall_preferred_brand": ["아이오페", "설화수", "헤라"],
+      "preferred_skincare_brand": {"아이오페": 5, "설화수": 4},
+      "preferred_makeup_brand": {"헤라": 5},
+      "preferred_bodycare_brand": {},
+      "preferred_hair_brand": {},
+      "preferred_perfume_brand": {}
+    },
+    "repurchase_category_affinity": {
+      "overall_preferred_repurchase_category": ["에센스", "크림"],
+      "preferred_repurchase_category_intense": {"에센스": 5, "크림": 3},
+      "preferred_repurchase_product_summary": {
+        "에센스": [
+          {
+            "rprs_prd_cd": "P008",
+            "prd_cd": "P008-01",
+            "rprs_prd_nm": "윤조에센스",
+            "purchase_cycle_days": 120,
+            "preferred_repurchase_intense": 5,
+            "recent_purchase_date": "2026-01-05",
+            "main_eff": "윤기"
+          }
+        ]
+      }
+    },
+    "seasonal_affinity": {
+      "season_main_category": {
+        "spring": ["에센스"],
+        "summer": ["에센스"],
+        "fall": ["크림", "에센스"],
+        "winter": ["크림", "에센스"]
+      },
+      "seasonal_product_summary": {}
+    },
+    "profile_from_chathistory": {
+      "incs_no": 100003,
+      "aibc_cht_sess_id": "sess_sens40f_001",
+      "executed_date": "2025-05-10",
+      "start_date": "2025-05-10",
+      "end_date": "2025-05-10",
+      "n_turns": 12,
+      "result": {
+        "has_face_profile": true,
+        "has_hair_profile": false,
+        "has_body_profile": false,
+        "has_makeup_profile": true,
+        "has_sensitive_concern": true,
+        "has_makeup_color_preference": true,
+        "has_sensory_signal": true,
+        "has_usage_behavior": true,
+        "face": {
+          "skin_concerns": ["붉은기", "자극민감", "건조함"],
+          "skincare_goals": ["진정", "장벽강화"],
+          "preferred_texture": ["크리미", "밀크"]
+        },
+        "hair": {},
+        "scalp": {},
+        "body": {},
+        "makeup": {
+          "preferred_finish": ["세미매트"]
+        },
+        "scent": {
+          "preferences": ["무향"]
+        },
+        "ingredients": {
+          "preferred": ["판테놀", "마데카소사이드", "세라마이드"],
+          "avoid": ["향료", "에탄올", "레티놀"],
+          "allergy": ["프로폴리스"]
+        },
+        "color_preference": {
+          "lip": ["MLBB", "로즈"]
+        }
+      },
+      "confidence": {
+        "face": 0.95,
+        "hair": 0.0,
+        "body": 0.0,
+        "makeup": 0.8,
+        "scent": 0.9,
+        "ingredients": 0.95
+      }
+    }
+  }
+}

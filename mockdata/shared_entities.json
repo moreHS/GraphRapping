@@ -1,0 +1,30 @@
+{
+  "_description": "교차 참조 앵커 — 모든 mock 파일이 이 ID/이름을 공유",
+  "brands": [
+    {"brand_id": "laneige", "brand_name": "라네즈"},
+    {"brand_id": "sulwhasoo", "brand_name": "설화수"},
+    {"brand_id": "innisfree", "brand_name": "이니스프리"},
+    {"brand_id": "hanyul", "brand_name": "한율"},
+    {"brand_id": "hera", "brand_name": "헤라"},
+    {"brand_id": "iope", "brand_name": "아이오페"}
+  ],
+  "products": [
+    {"product_id": "P001", "product_name": "워터뱅크 블루 히알루로닉 세럼", "brand": "라네즈", "category": "에센스", "main_ingredients": ["히알루론산", "세라마이드"], "main_effect": "보습", "price": 39000},
+    {"product_id": "P002", "product_name": "자음생크림", "brand": "설화수", "category": "크림", "main_ingredients": ["인삼추출물", "세라마이드"], "main_effect": "주름개선", "price": 98000},
+    {"product_id": "P003", "product_name": "그린티 씨드 세럼", "brand": "이니스프리", "category": "세럼", "main_ingredients": ["녹차추출물", "나이아신아마이드"], "main_effect": "수분공급", "price": 27000},
+    {"product_id": "P004", "product_name": "어린쑥 수분진정 바디로션", "brand": "한율", "category": "바디로션", "main_ingredients": ["쑥추출물"], "main_effect": "진정", "price": 22000},
+    {"product_id": "P005", "product_name": "블랙쿠션", "brand": "헤라", "category": "쿠션", "main_ingredients": [], "main_effect": "커버력", "price": 52000},
+    {"product_id": "P006", "product_name": "레티놀 엑스퍼트 0.1%", "brand": "아이오페", "category": "에센스", "main_ingredients": ["레티놀"], "main_effect": "주름개선", "price": 48000},
+    {"product_id": "P007", "product_name": "립 슬리핑 마스크", "brand": "라네즈", "category": "립케어", "main_ingredients": [], "main_effect": "보습", "price": 18000},
+    {"product_id": "P008", "product_name": "윤조에센스", "brand": "설화수", "category": "에센스", "main_ingredients": ["인삼추출물"], "main_effect": "윤기", "price": 93000},
+    {"product_id": "P009", "product_name": "비자 시카밤 클렌징 폼", "brand": "이니스프리", "category": "클렌저", "main_ingredients": ["비자추출물", "나이아신아마이드"], "main_effect": "모공케어", "price": 12000},
+    {"product_id": "P010", "product_name": "센슈얼 파우더 매트 립스틱", "brand": "헤라", "category": "립스틱", "main_ingredients": [], "main_effect": "발색", "price": 37000}
+  ],
+  "categories": ["에센스", "크림", "세럼", "바디로션", "쿠션", "립케어", "립스틱", "클렌저"],
+  "ingredients": ["히알루론산", "세라마이드", "녹차추출물", "쑥추출물", "레티놀", "나이아신아마이드"],
+  "users": [
+    {"user_id": "user_dry_30f", "label": "건성 30대 여성"},
+    {"user_id": "user_oily_20m", "label": "지성 20대 남성"},
+    {"user_id": "user_sensitive_40f", "label": "민감성 40대 여성"}
+  ]
+}

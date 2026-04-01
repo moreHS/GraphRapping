@@ -1,0 +1,104 @@
+{
+  "user_dry_30f": {
+    "basic": {
+      "gender": "F",
+      "age": "30대",
+      "skin_type": "건성",
+      "skin_tone": "웜톤",
+      "skin_concerns": ["건조함", "잔주름", "칙칙함"]
+    },
+    "purchase_analysis": {
+      "preferred_skincare_brand": ["라네즈", "설화수", "한율"],
+      "preferred_makeup_brand": ["헤라"],
+      "active_product_category": ["에센스", "크림", "쿠션"],
+      "preferred_repurchase_category": ["에센스", "크림"]
+    },
+    "chat": {
+      "face": {
+        "skin_concerns": ["건조함", "잔주름"],
+        "skincare_goals": ["보습강화", "톤업"],
+        "preferred_texture": ["크리미", "촉촉한"]
+      },
+      "hair": {
+        "hair_concerns": [],
+        "haircare_goals": []
+      },
+      "scent": {
+        "preferences": ["플로럴", "프루티"]
+      },
+      "ingredients": {
+        "preferred": ["히알루론산", "세라마이드", "스쿠알란"],
+        "avoid": [],
+        "allergy": []
+      }
+    }
+  },
+  "user_oily_20m": {
+    "basic": {
+      "gender": "M",
+      "age": "20대",
+      "skin_type": "지성",
+      "skin_tone": "뉴트럴",
+      "skin_concerns": ["과다피지", "모공", "여드름"]
+    },
+    "purchase_analysis": {
+      "preferred_skincare_brand": ["이니스프리"],
+      "preferred_makeup_brand": [],
+      "active_product_category": ["클렌저", "세럼"],
+      "preferred_repurchase_category": ["클렌저"]
+    },
+    "chat": {
+      "face": {
+        "skin_concerns": ["과다피지", "모공확대"],
+        "skincare_goals": ["피지조절", "모공축소"],
+        "preferred_texture": ["젤", "가벼운로션"]
+      },
+      "hair": {
+        "hair_concerns": [],
+        "haircare_goals": []
+      },
+      "scent": {
+        "preferences": ["시트러스", "우디"]
+      },
+      "ingredients": {
+        "preferred": ["나이아신아마이드", "살리실산", "티트리"],
+        "avoid": ["미네랄오일"],
+        "allergy": []
+      }
+    }
+  },
+  "user_sensitive_40f": {
+    "basic": {
+      "gender": "F",
+      "age": "40대",
+      "skin_type": "민감성",
+      "skin_tone": "쿨톤",
+      "skin_concerns": ["붉은기", "자극", "건조"]
+    },
+    "purchase_analysis": {
+      "preferred_skincare_brand": ["아이오페", "설화수"],
+      "preferred_makeup_brand": ["헤라"],
+      "active_product_category": ["크림", "에센스", "쿠션", "립스틱"],
+      "preferred_repurchase_category": ["에센스", "크림"]
+    },
+    "chat": {
+      "face": {
+        "skin_concerns": ["붉은기", "자극민감", "건조함"],
+        "skincare_goals": ["진정", "장벽강화"],
+        "preferred_texture": ["크리미", "밀크"]
+      },
+      "hair": {
+        "hair_concerns": [],
+        "haircare_goals": []
+      },
+      "scent": {
+        "preferences": ["무향"]
+      },
+      "ingredients": {
+        "preferred": ["판테놀", "마데카소사이드", "세라마이드"],
+        "avoid": ["향료", "에탄올", "레티놀"],
+        "allergy": ["프로폴리스"]
+      }
+    }
+  }
+}
