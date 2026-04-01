@@ -2,22 +2,48 @@
 User-side aggregate: canonical_user_fact → agg_user_preference.
 
 Refreshes user preference summary from canonical facts + purchase history.
+Weighting: base_confidence × frequency_factor × recency_factor × source_type_weight.
 """
 
 from __future__ import annotations
 
+import math
+from datetime import datetime, timezone
 from typing import Any
+
+
+# Source type weights: purchase signals are stronger than chat/basic
+_SOURCE_TYPE_WEIGHTS: dict[str, float] = {
+    "purchase": 1.2,
+    "chat": 1.0,
+    "basic": 0.8,
+    "inferred": 0.6,
+}
+
+# Recency decay: lambda for exponential decay (per day)
+_RECENCY_LAMBDA = 0.01
 
 
 def refresh_user_preferences(
     user_id: str,
     canonical_user_facts: list[dict[str, Any]],
     purchase_brand_confidence: dict[str, float] | None = None,
+    now: datetime | None = None,
 ) -> list[dict[str, Any]]:
     """Build agg_user_preference rows from canonical user facts.
 
-    Merges confidence from multiple sources (purchase > chat).
+    Weighting formula:
+        weight = max_confidence × freq_factor × recency_factor × source_type_weight
+
+    Args:
+        user_id: Target user
+        canonical_user_facts: Canonical user facts with confidence/source_modalities
+        purchase_brand_confidence: Brand → confidence from purchase history
+        now: Reference time for recency (default: utcnow)
     """
+    if now is None:
+        now = datetime.now(timezone.utc)
+
     # Group by (predicate, dst_id)
     grouped: dict[tuple[str, str], dict] = {}
 
@@ -32,33 +58,79 @@ def refresh_user_preferences(
                 "preference_edge_type": predicate,
                 "dst_node_type": fact.get("object_type", ""),
                 "dst_node_id": dst_id,
-                "weight": fact.get("confidence", 1.0) or 1.0,
+                "max_confidence": fact.get("confidence", 1.0) or 1.0,
                 "sources": set(),
+                "count": 0,
+                "last_seen_at": None,
+                "source_weights": {},
             }
 
         existing = grouped[key]
         new_conf = fact.get("confidence", 1.0) or 1.0
-        if new_conf > existing["weight"]:
-            existing["weight"] = new_conf
+        if new_conf > existing["max_confidence"]:
+            existing["max_confidence"] = new_conf
+
+        existing["count"] += 1
+
+        # Track last_seen_at
+        fact_ts = fact.get("last_seen_at")
+        if fact_ts:
+            if isinstance(fact_ts, str):
+                try:
+                    fact_ts = datetime.fromisoformat(fact_ts)
+                except (ValueError, TypeError):
+                    fact_ts = None
+            if fact_ts and (existing["last_seen_at"] is None or fact_ts > existing["last_seen_at"]):
+                existing["last_seen_at"] = fact_ts
 
         for mod in fact.get("source_modalities", []):
             existing["sources"].add(mod)
+            existing["source_weights"][mod] = _SOURCE_TYPE_WEIGHTS.get(mod, 0.8)
 
-    # Boost brand preferences if purchase data exists
+    # Boost brand/category preferences if purchase data exists
     if purchase_brand_confidence:
         for key, row in grouped.items():
             predicate, dst_id = key
-            if predicate == "PREFERS_BRAND":
+            if predicate in ("PREFERS_BRAND", "PREFERS_CATEGORY"):
                 brand_conf = purchase_brand_confidence.get(dst_id)
                 if brand_conf:
-                    row["weight"] = max(row["weight"], brand_conf)
+                    row["max_confidence"] = max(row["max_confidence"], brand_conf)
                     row["sources"].add("purchase")
+                    row["source_weights"]["purchase"] = _SOURCE_TYPE_WEIGHTS["purchase"]
 
-    # Convert to output rows
+    # Convert to output rows with composite weighting
     results = []
     for row in grouped.values():
+        # Frequency factor: sub-linear boost for repeated signals
+        freq_factor = min(row["count"] / 3.0, 1.5)
+
+        # Recency factor: exponential decay from last_seen_at
+        if row["last_seen_at"]:
+            last_seen = row["last_seen_at"]
+            if not last_seen.tzinfo:
+                last_seen = last_seen.replace(tzinfo=timezone.utc)
+            days_elapsed = (now - last_seen).total_seconds() / 86400.0
+            recency_factor = math.exp(-_RECENCY_LAMBDA * max(days_elapsed, 0))
+        else:
+            recency_factor = 1.0
+
+        # Source type weight: max across contributing sources
+        source_type_weight = max(row["source_weights"].values()) if row["source_weights"] else 0.8
+
+        # Composite weight
+        weight = round(row["max_confidence"] * freq_factor * recency_factor * source_type_weight, 4)
+
         sources = row.pop("sources")
-        row["source_mix"] = {"sources": sorted(sources)}
+        source_weights = row.pop("source_weights")
+        row.pop("max_confidence")
+        row.pop("count")
+        last_seen = row.pop("last_seen_at")
+
+        row["weight"] = weight
+        row["source_mix"] = {src: round(w, 2) for src, w in source_weights.items()} if source_weights else {"sources": sorted(sources)}
+        row["recency_weight"] = round(recency_factor, 4)
+        row["frequency_weight"] = round(freq_factor, 4)
+
         results.append(row)
 
     return results

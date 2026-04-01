@@ -1,11 +1,9 @@
 """
-KG → GraphRapping Adapter: converts KGResult to CanonicalFacts.
+KG Adapter: evidence graph → canonical fact layer bridge.
 
-Key adaptations:
-- KG entity_id (SHA256) → GraphRapping concept IRI
-- BEE_ATTR polarity on entity → polarity on fact
-- KG edge → CanonicalFact with provenance
-- Promotion gate: classify edges as PROMOTE/KEEP_EVIDENCE_ONLY/DROP/QUARANTINE
+Classifies edges for promotion (PROMOTE/KEEP_EVIDENCE_ONLY/DROP/QUARANTINE)
+and passes metadata (negated/intensity/evidence_kind/confidence) to the
+canonical fact builder. Does NOT produce serving signals directly.
 """
 
 from __future__ import annotations

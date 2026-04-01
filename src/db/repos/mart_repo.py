@@ -15,14 +15,20 @@ async def upsert_agg_product_signal(uow: UnitOfWork, row: dict[str, Any]) -> Non
         INSERT INTO agg_product_signal (target_product_id, canonical_edge_type,
             dst_node_type, dst_node_id, window_type, review_cnt, pos_cnt, neg_cnt,
             neu_cnt, support_count, score, recent_score, recent_support_count,
-            last_seen_at, window_start, window_end, evidence_sample, updated_at)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+            last_seen_at, window_start, window_end, evidence_sample, updated_at,
+            distinct_review_count, avg_confidence, synthetic_ratio, corpus_weight, is_promoted)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)
         ON CONFLICT (target_product_id, canonical_edge_type, dst_node_id, window_type) DO UPDATE SET
             review_cnt=EXCLUDED.review_cnt, pos_cnt=EXCLUDED.pos_cnt,
             neg_cnt=EXCLUDED.neg_cnt, neu_cnt=EXCLUDED.neu_cnt,
             support_count=EXCLUDED.support_count, score=EXCLUDED.score,
             last_seen_at=EXCLUDED.last_seen_at, evidence_sample=EXCLUDED.evidence_sample,
-            updated_at=EXCLUDED.updated_at
+            updated_at=EXCLUDED.updated_at,
+            distinct_review_count=EXCLUDED.distinct_review_count,
+            avg_confidence=EXCLUDED.avg_confidence,
+            synthetic_ratio=EXCLUDED.synthetic_ratio,
+            corpus_weight=EXCLUDED.corpus_weight,
+            is_promoted=EXCLUDED.is_promoted
     """,
         row["target_product_id"], row["canonical_edge_type"],
         row["dst_node_type"], row["dst_node_id"], row["window_type"],
@@ -31,6 +37,9 @@ async def upsert_agg_product_signal(uow: UnitOfWork, row: dict[str, Any]) -> Non
         row.get("recent_score"), row.get("recent_support_count"),
         row.get("last_seen_at"), row.get("window_start"), row.get("window_end"),
         row.get("evidence_sample"), uow.as_of_ts,
+        row.get("distinct_review_count", 0), row.get("avg_confidence", 0.0),
+        row.get("synthetic_ratio", 0.0), row.get("corpus_weight", 0.0),
+        row.get("is_promoted", False),
     )
 
 
@@ -97,6 +106,11 @@ async def batch_aggregate_product_signals_sql(
         """, product_list, window_type)
         count += len(rows)
 
+    # NOTE: is_promoted is NOT computed by the SQL path above.
+    # After batch_aggregate_product_signals_sql completes, a post-hoc Python
+    # step must call is_corpus_promoted() from aggregate_product_signals.py
+    # to set distinct_review_count, avg_confidence, synthetic_ratio,
+    # corpus_weight, and is_promoted on each aggregated row.
     return count
 
 
@@ -201,3 +215,40 @@ async def upsert_serving_user_profile(uow: UnitOfWork, row: dict[str, Any]) -> N
         json.dumps(row.get("preferred_context_ids", [])),
         uow.as_of_ts,
     )
+
+
+async def sql_prefilter_candidates(
+    uow: UnitOfWork,
+    avoided_ingredient_ids: list[str],
+    preferred_concept_ids: list[str],
+    max_candidates: int = 200,
+) -> list[str]:
+    """SQL-first candidate prefilter: exclude avoided ingredients, require concept overlap.
+
+    Returns product_ids that pass hard filters and have at least one concept overlap.
+    Downstream Python overlap scoring runs only on this reduced set.
+    """
+    if not preferred_concept_ids:
+        # No preferences → return all non-conflicting products
+        rows = await uow.fetch("""
+            SELECT product_id FROM serving_product_profile
+            LIMIT $1
+        """, max_candidates)
+        return [r["product_id"] for r in rows]
+
+    rows = await uow.fetch("""
+        SELECT DISTINCT spp.product_id
+        FROM serving_product_profile spp
+        WHERE NOT EXISTS (
+            SELECT 1 FROM unnest(spp.ingredient_ids) AS ing
+            WHERE ing = ANY($1::text[])
+        )
+        AND (
+            EXISTS (SELECT 1 FROM jsonb_array_elements_text(spp.brand_concept_ids::jsonb) b WHERE b = ANY($2::text[]))
+            OR EXISTS (SELECT 1 FROM jsonb_array_elements_text(spp.category_concept_ids::jsonb) b WHERE b = ANY($2::text[]))
+            OR EXISTS (SELECT 1 FROM jsonb_array_elements_text(spp.ingredient_concept_ids::jsonb) b WHERE b = ANY($2::text[]))
+            OR EXISTS (SELECT 1 FROM jsonb_array_elements_text(spp.main_benefit_concept_ids::jsonb) b WHERE b = ANY($2::text[]))
+        )
+        LIMIT $3
+    """, avoided_ingredient_ids or [], preferred_concept_ids, max_candidates)
+    return [r["product_id"] for r in rows]

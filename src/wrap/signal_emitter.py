@@ -28,7 +28,7 @@ class WrappedSignal:
     review_id: str
     user_id: str | None
     target_product_id: str | None
-    source_fact_ids: list[str]  # CACHE ONLY — provenance SoT is signal_evidence
+    source_fact_ids: list[str]  # DEPRECATED: write-only cache. Read provenance from signal_evidence table.
     signal_family: str
     edge_type: str
     dst_type: str

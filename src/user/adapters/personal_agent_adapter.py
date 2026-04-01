@@ -91,12 +91,13 @@ def adapt_user_profile(
 
     # Purchase-derived features (from derive_purchase_features)
     if purchase_features:
+        pf_last_seen = purchase_features.get("last_seen_at")
         for pid in purchase_features.get("owned_product_ids", []):
-            facts.append(_make_pref("OWNS_PRODUCT", ConceptType.BRAND, pid, user_id, "purchase", confidence=0.9))
+            facts.append(_make_pref("OWNS_PRODUCT", ConceptType.BRAND, pid, user_id, "purchase", confidence=0.9, last_seen_at=pf_last_seen))
         for brand_id in purchase_features.get("repurchased_brand_ids", []):
-            facts.append(_make_pref("REPURCHASES_PRODUCT_OR_FAMILY", ConceptType.BRAND, brand_id, user_id, "purchase", confidence=0.9))
+            facts.append(_make_pref("REPURCHASES_PRODUCT_OR_FAMILY", ConceptType.BRAND, brand_id, user_id, "purchase", confidence=0.9, last_seen_at=pf_last_seen))
         for brand_id in purchase_features.get("recently_purchased_brand_ids", []):
-            facts.append(_make_pref("RECENTLY_PURCHASED", ConceptType.BRAND, brand_id, user_id, "purchase", confidence=0.7))
+            facts.append(_make_pref("RECENTLY_PURCHASED", ConceptType.BRAND, brand_id, user_id, "purchase", confidence=0.7, last_seen_at=pf_last_seen))
 
     return facts
 
@@ -108,8 +109,9 @@ def _make_pref(
     user_id: str,
     source: str,
     confidence: float = 0.8,
+    last_seen_at: str | None = None,
 ) -> dict[str, Any]:
-    return {
+    result = {
         "user_id": user_id,
         "predicate": predicate,
         "concept_type": concept_type.value,
@@ -118,3 +120,5 @@ def _make_pref(
         "confidence": confidence,
         "source": source,
     }
+    result["last_seen_at"] = last_seen_at
+    return result

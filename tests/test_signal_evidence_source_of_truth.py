@@ -81,3 +81,30 @@ class TestSignalEvidenceSourceOfTruth:
 
         # Facts merge at canonical layer, so 1 fact → 1 signal
         assert len(result.signals) >= 1
+
+
+def test_evidence_sample_uses_signal_id_not_source_fact_ids():
+    """evidence_sample in aggregate must reference signal_id, not source_fact_ids."""
+    from src.mart.aggregate_product_signals import aggregate_product_signals
+    signals = [
+        {
+            "target_product_id": "p1",
+            "edge_type": "HAS_BEE_ATTR_SIGNAL",
+            "dst_type": "BEEAttr",
+            "dst_id": "moisture",
+            "polarity": "POS",
+            "review_id": f"r{i}",
+            "signal_id": f"sig_{i}",
+            "window_ts": "2025-01-01T00:00:00+00:00",
+            "weight": 0.9,
+            "signal_family": "BEE_ATTR",
+            "source_fact_ids": [f"fact_{i}"],
+        }
+        for i in range(5)
+    ]
+    rows = aggregate_product_signals(signals)
+    for row in rows:
+        if row.evidence_sample:
+            for ev in row.evidence_sample:
+                assert "signal_id" in ev, "evidence_sample must use signal_id"
+                assert "fact_id" not in ev, "evidence_sample must not use fact_id (deprecated)"

@@ -31,4 +31,11 @@ def load_csv(filename: str) -> list[dict[str, str]]:
     path = CONFIGS_DIR / filename
     with open(path, "r", encoding="utf-8") as f:
         reader = csv.DictReader(f)
-        return list(reader)
+        rows = list(reader)
+    # Strict: reject rows with more columns than header
+    for i, row in enumerate(rows):
+        if None in row:
+            raise ValueError(
+                f"CSV '{filename}' row {i + 2} has more columns than header"
+            )
+    return rows

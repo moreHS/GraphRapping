@@ -59,7 +59,7 @@ def generate_candidates(
 
         # --- Hard filters (zero-out) ---
 
-        # 1. Ingredient conflict (via concept IRI)
+        # 1. Ingredient conflict (via concept_id)
         product_ingredients = set(product.get("ingredient_concept_ids") or product.get("ingredient_ids") or [])
         if avoided_ingredients & product_ingredients:
             candidate.hard_filtered = True
@@ -67,7 +67,7 @@ def generate_candidates(
             candidates.append(candidate)
             continue
 
-        # 2. Category mismatch (mode-dependent, via concept IRI)
+        # 2. Category mismatch (mode-dependent, via concept_id)
         product_categories = set(product.get("category_concept_ids") or [])
         if not product_categories:
             product_categories = {product.get("category_id", "")} - {""}
@@ -89,7 +89,7 @@ def generate_candidates(
         for b in preferred_brands & product_brands:
             overlap.append(f"brand:{b}")
 
-        # Category match (concept IRI)
+        # Category match (concept_id)
         for c in preferred_categories & product_categories:
             overlap.append(f"category:{c}")
 
@@ -131,6 +131,26 @@ def generate_candidates(
     valid.sort(key=lambda c: (not c.already_owned, c.overlap_score), reverse=True)
 
     return valid[:max_candidates]
+
+
+def generate_candidates_prefiltered(
+    user_profile: dict[str, Any],
+    prefiltered_product_ids: list[str],
+    product_profiles_by_id: dict[str, dict[str, Any]],
+    mode: RecommendationMode = RecommendationMode.STRICT,
+    max_candidates: int = 50,
+) -> list[CandidateProduct]:
+    """Generate candidates from a pre-filtered set of product IDs.
+
+    Use with sql_prefilter_candidates() for SQL-first candidate generation.
+    Falls back to in-memory overlap scoring on the reduced product set.
+    """
+    product_profiles = [
+        product_profiles_by_id[pid]
+        for pid in prefiltered_product_ids
+        if pid in product_profiles_by_id
+    ]
+    return generate_candidates(user_profile, product_profiles, mode, max_candidates)
 
 
 def _extract_ids(items: list) -> set[str]:

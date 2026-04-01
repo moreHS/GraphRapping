@@ -80,3 +80,7 @@ create table if not exists fact_qualifier (
 
 create unique index if not exists uq_fact_qualifier
     on fact_qualifier (fact_id, qualifier_key, coalesce(qualifier_iri, ''), coalesce(qualifier_value_text, ''));
+
+-- Generic provenance columns (vNext)
+ALTER TABLE fact_provenance ADD COLUMN IF NOT EXISTS source_domain text NOT NULL DEFAULT 'review';
+ALTER TABLE fact_provenance ADD COLUMN IF NOT EXISTS source_kind text NOT NULL DEFAULT 'raw';

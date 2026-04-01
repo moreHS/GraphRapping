@@ -1,7 +1,7 @@
 """
 Build serving profiles: table-based mart.
 
-serving_product_profile: master truth + concept IRIs + review signal aggregates + freshness
+serving_product_profile: master truth + concept_ids + review signal aggregates + freshness
 serving_user_profile: demographics + preference edges
 """
 
@@ -16,6 +16,7 @@ def build_serving_product_profile(
     agg_signals: list[dict[str, Any]],
     window_type: str = "all",
     concept_links: list[dict] | None = None,
+    promoted_only: bool = True,
 ) -> dict[str, Any]:
     """Build a single serving_product_profile row.
 
@@ -24,6 +25,8 @@ def build_serving_product_profile(
         agg_signals: Rows from agg_product_signal for this product
         window_type: Which window for top signals
         concept_links: entity_concept_link rows for this product
+        promoted_only: If True (default), only include signals where
+            is_promoted is True.  Set to False for debug/exploration.
     """
     pid = product_master["product_id"]
     links = concept_links or []
@@ -36,6 +39,12 @@ def build_serving_product_profile(
 
     # Filter signals for requested window
     window_signals = [s for s in agg_signals if s.get("window_type") == window_type]
+    if promoted_only:
+        window_signals = [s for s in window_signals if s.get("is_promoted", False)]
+
+    # Defense-in-depth: exclude catalog_validation even if aggregator leaks
+    window_signals = [s for s in window_signals
+                      if s.get("canonical_edge_type") != "CATALOG_VALIDATION_SIGNAL"]
 
     # Group by edge_type and pick top-N by score
     by_edge: dict[str, list[dict]] = defaultdict(list)
@@ -48,8 +57,10 @@ def build_serving_product_profile(
         return [{"id": i["dst_node_id"], "score": i["score"], "review_cnt": i["review_cnt"]} for i in items[:n]]
 
     # Freshness: get windowed counts
-    signals_30d = [s for s in agg_signals if s.get("window_type") == "30d"]
-    signals_90d = [s for s in agg_signals if s.get("window_type") == "90d"]
+    signals_30d = [s for s in agg_signals if s.get("window_type") == "30d"
+                   and (not promoted_only or s.get("is_promoted", False))]
+    signals_90d = [s for s in agg_signals if s.get("window_type") == "90d"
+                   and (not promoted_only or s.get("is_promoted", False))]
     review_count_30d = sum(s.get("review_cnt", 0) for s in signals_30d)
     review_count_90d = sum(s.get("review_cnt", 0) for s in signals_90d)
     review_count_all = sum(s.get("review_cnt", 0) for s in window_signals)

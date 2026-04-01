@@ -123,7 +123,7 @@ def aggregate_product_signals(
                 if len(evidence) < 5:
                     evidence.append({
                         "review_id": s.get("review_id"),
-                        "fact_id": s.get("source_fact_ids", [None])[0] if isinstance(s.get("source_fact_ids"), list) else s.get("source_fact_id"),
+                        "signal_id": s.get("signal_id"),
                         "polarity": s.get("polarity"),
                     })
 

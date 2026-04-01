@@ -26,7 +26,8 @@ async def get_fact_provenance(pool: asyncpg.Pool, fact_id: str) -> list[dict]:
     async with pool.acquire() as conn:
         rows = await conn.fetch("""
             SELECT fact_id, raw_table, raw_row_id, review_id,
-                   snippet, start_offset, end_offset, source_modality, evidence_rank
+                   snippet, start_offset, end_offset, source_modality, evidence_rank,
+                   source_domain, source_kind
             FROM fact_provenance
             WHERE fact_id = $1
             ORDER BY evidence_rank

@@ -42,6 +42,26 @@ _NER_TO_CANONICAL_TYPE = {
     "COL": "Color", "AGE": "AgeBand", "VOL": "Volume", "EVN": "Event",
 }
 
+def _run_shadow_comparison(
+    shadow_builder_facts: list,
+    production_builder_facts: list,
+    review_id: str,
+) -> dict[str, Any]:
+    """Compare shadow KG pipeline output with production for a single review.
+
+    Returns comparison metrics dict.
+    """
+    shadow_ids = {f.fact_id for f in shadow_builder_facts if hasattr(f, 'fact_id')}
+    prod_ids = {f.fact_id for f in production_builder_facts if hasattr(f, 'fact_id')}
+    return {
+        "review_id": review_id,
+        "shadow_fact_count": len(shadow_ids),
+        "production_fact_count": len(prod_ids),
+        "new_in_shadow": len(shadow_ids - prod_ids),
+        "missing_in_shadow": len(prod_ids - shadow_ids),
+    }
+
+
 def _canonical_type(ner_code: str) -> str:
     """Map NER entity group code to canonical type. Pure NER mapping only."""
     return _NER_TO_CANONICAL_TYPE.get(ner_code, ner_code)
@@ -165,8 +185,16 @@ def process_review(
             if target_product_iri:
                 kg_result_to_facts(kg_result, ingested.review_id, target_product_iri, shadow_builder,
                                    reviewer_proxy_iri=ingested.reviewer_proxy_id)
-            logger.info("Shadow KG: entities=%d facts=%d signals_pending (review %s)",
-                        len(shadow_builder.entities), len(shadow_builder.facts), ingested.review_id)
+            comparison = _run_shadow_comparison(
+                shadow_builder_facts=shadow_builder.facts,
+                production_builder_facts=builder.facts,
+                review_id=ingested.review_id,
+            )
+            logger.info("Shadow KG: entities=%d facts=%d signals_pending (review %s) | "
+                        "shadow_facts=%d prod_facts=%d new_in_shadow=%d missing_in_shadow=%d",
+                        len(shadow_builder.entities), len(shadow_builder.facts), ingested.review_id,
+                        comparison["shadow_fact_count"], comparison["production_fact_count"],
+                        comparison["new_in_shadow"], comparison["missing_in_shadow"])
             # Shadow mode also quarantines keyword candidates (for comparison completeness)
             for candidate in getattr(kg_result, "keyword_candidates", []):
                 quarantine.quarantine_unknown_keyword(

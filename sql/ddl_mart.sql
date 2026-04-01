@@ -109,3 +109,10 @@ create table if not exists serving_user_profile (
     is_active boolean not null default true,
     updated_at timestamptz not null default now()
 );
+
+-- Corpus promotion columns (vNext)
+ALTER TABLE agg_product_signal ADD COLUMN IF NOT EXISTS distinct_review_count int NOT NULL DEFAULT 0;
+ALTER TABLE agg_product_signal ADD COLUMN IF NOT EXISTS avg_confidence real NOT NULL DEFAULT 0.0;
+ALTER TABLE agg_product_signal ADD COLUMN IF NOT EXISTS synthetic_ratio real NOT NULL DEFAULT 0.0;
+ALTER TABLE agg_product_signal ADD COLUMN IF NOT EXISTS corpus_weight real NOT NULL DEFAULT 0.0;
+ALTER TABLE agg_product_signal ADD COLUMN IF NOT EXISTS is_promoted boolean NOT NULL DEFAULT false;

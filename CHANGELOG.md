@@ -24,6 +24,28 @@
 - corpus_weight, distinct_review_count, avg_confidence fields on aggregation
 - Graph API ?view=corpus|evidence parameter
 
+## vNext — Serving Enforcement + Structure Hardening
+
+### P0: Core Consistency
+- Corpus promotion enforced in serving: `promoted_only=True` default in `build_serving_product_profile()`
+- projection_registry.csv malformed rows fixed + strict column count validation in `load_csv()`
+- signal_evidence provenance unified: `evidence_sample` uses `signal_id` (not `source_fact_ids`)
+
+### P1: Structural Improvements
+- concept_id terminology unified (removed "concept IRI" from serving/runtime comments)
+- catalog_validation defense-in-depth: guards in build_serving_views + explainer
+- Explainer goal split: `goal_master`/`goal_review` recognized (was broken referencing deleted `goal_fit`)
+- Generic provenance: DDL `source_domain`/`source_kind` on `fact_provenance`, user facts include provenance
+- User aggregation weighting: recency × frequency × source_type composite (was max-confidence only)
+- Evidence/serving graph boundary documented in ARCHITECTURE.md
+- SQL-first candidate prefilter: `sql_prefilter_candidates()` + `generate_candidates_prefiltered()`
+- Shadow comparison logic extracted to `_run_shadow_comparison()` function
+
+### P2: Documentation
+- README.md created
+- ARCHITECTURE.md: evidence vs serving graph section, kg_mode contract, promoted-only invariant
+- mart_repo: corpus promotion columns in upsert (distinct_review_count, avg_confidence, etc.)
+
 ## Follow-up Fixes
 - recommended_to UserSegment qualifier_required=N
 - reverse transform dst_ref_kind uses subject_ref_kind (not hardcoded ENTITY)

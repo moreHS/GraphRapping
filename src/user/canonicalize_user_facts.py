@@ -24,6 +24,13 @@ from src.common.enums import (
     USER_BEHAVIOR_EDGE_TYPES,
 )
 
+_SOURCE_KIND_MAP: dict[str, str] = {
+    "purchase": "derived",
+    "chat": "summary",
+    "basic": "master",
+    "user_profile": "master",
+}
+
 
 def _build_facts_for_family(
     user_iri: str,
@@ -45,6 +52,7 @@ def _build_facts_for_family(
             object_ref=concept_id,
         )
 
+        source = af.get("source", "user_profile")
         facts.append({
             "fact_id": fact_id,
             "review_id": None,
@@ -57,7 +65,12 @@ def _build_facts_for_family(
             "object_type": af.get("concept_type", ""),
             "polarity": None,
             "confidence": af.get("confidence"),
-            "source_modalities": [af.get("source", "user_profile")],
+            "source_modalities": [source],
+            "last_seen_at": af.get("last_seen_at"),
+            "provenance": {
+                "source_domain": "user",
+                "source_kind": _SOURCE_KIND_MAP.get(source, "derived"),
+            },
         })
 
     return facts

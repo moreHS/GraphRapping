@@ -66,8 +66,8 @@ v1,requires,Product,Product,,N,,,,,,,KEEP_CANONICAL_ONLY,usage fit
 v1,required_by,Product,Product,,N,,,,,,,KEEP_CANONICAL_ONLY,inverse
 v1,information_from,Product,Product,,N,,,,,,,DROP,추천 직접 활용 낮음
 v1,information_to,Product,Product,,N,,,,,,,DROP,inverse
-v1,same_entity,,,,,,,,,,,,,merge rule - not stored
-v1,no_relationship,,,,,,,,,,,,,drop
+v1,same_entity,,,,,,,,,,,,merge rule - not stored
+v1,no_relationship,,,,,,,,,,,,drop
 v1,child_of,Person,Person,,N,,,,,,,KEEP_CANONICAL_ONLY,optional household
 v1,parent_of,Person,Person,,N,,,,,,,KEEP_CANONICAL_ONLY,optional household
 v1,family_member_of,Person,Person,,N,,,,,,,KEEP_CANONICAL_ONLY,optional household

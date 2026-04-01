@@ -44,7 +44,8 @@ _EDGE_MAP = {
     "context": ("PREFERS_CONTEXT", "USED_IN_CONTEXT_SIGNAL"),
     "brand": ("PREFERS_BRAND", "HAS_BRAND"),
     "category": ("PREFERS_CATEGORY", "IN_CATEGORY"),
-    "goal": ("WANTS_GOAL", "HAS_MAIN_BENEFIT"),
+    "goal_master": ("WANTS_GOAL", "HAS_MAIN_BENEFIT"),
+    "goal_review": ("WANTS_GOAL", "ADDRESSES_CONCERN_SIGNAL"),
     "ingredient": ("PREFERS_INGREDIENT", "HAS_INGREDIENT"),
 }
 
@@ -72,6 +73,8 @@ def explain(
         if ":" not in concept_str:
             continue
         ctype, cid = concept_str.split(":", 1)
+        if ctype == "catalog_validation":
+            continue
         edges = _EDGE_MAP.get(ctype)
         if not edges:
             continue
@@ -110,7 +113,8 @@ def _concept_to_feature(concept_type: str) -> str:
         "context": "context_match",
         "brand": "brand_match_conf_weighted",
         "category": "category_affinity",
-        "goal": "goal_fit",
+        "goal_master": "goal_fit_master",
+        "goal_review": "goal_fit_review_signal",
         "ingredient": "ingredient_match",
     }
     return mapping.get(concept_type, "")
@@ -132,7 +136,7 @@ def _generate_summary_ko(paths: list[ExplanationPath]) -> str:
             parts.append(f"선호 브랜드 '{p.concept_id}' 일치")
         elif p.concept_type == "bee_attr":
             parts.append(f"'{p.concept_id}' 속성 선호와 일치")
-        elif p.concept_type == "goal":
+        elif p.concept_type in ("goal_master", "goal_review"):
             parts.append(f"'{p.concept_id}' 케어 목표와 부합")
         else:
             parts.append(f"'{p.concept_id}' 일치")

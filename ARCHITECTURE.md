@@ -27,6 +27,32 @@ MentionExtractor → SameEntityMerger → Canonicalizer → Adapter → Canonica
 Output is **evidence-scope** (per-review), NOT global KG.
 Promotion gate in Adapter classifies edges as PROMOTE / KEEP_EVIDENCE_ONLY / DROP / QUARANTINE.
 
+## Evidence Graph vs Serving Graph
+
+```
+Evidence Graph (per-review scope)
+  Layers 0-2: product_master, raw evidence, canonical facts
+  Source: src/kg/ pipeline (MentionExtractor → Canonicalizer → Adapter)
+  Scope: Single review, immutable once created
+  Purpose: Audit trail, debug, analyst exploration
+
+Serving Graph (corpus-promoted scope)
+  Layers 2.5-3: wrapped signals, aggregated product/user profiles
+  Source: src/wrap/ + src/mart/ pipeline
+  Scope: Cross-review aggregation, windowed, promoted-only
+  Purpose: Recommendation, personalization, product exploration
+```
+
+**Key principle**: Evidence graph is never directly consumed by recommendation.
+Only signals that pass all 3 promotion gates (adapter → signal_emitter → aggregator)
+reach the serving graph. `promoted_only=True` is the default in `build_serving_product_profile()`.
+
+### kg_mode Contract
+
+- `off`: Legacy NER/BEE/REL processing only (no KG pipeline)
+- `shadow`: Both legacy and KG pipelines run; KG writes to separate builder for comparison
+- `on`: KG pipeline is sole fact source; legacy processing skipped
+
 ## Promotion Architecture (3 layers)
 
 1. **Adapter** (per-edge): synthetic/auto → evidence-only, standard → promote
@@ -43,6 +69,8 @@ Promotion gate in Adapter classifies edges as PROMOTE / KEEP_EVIDENCE_ONLY / DRO
 - Signal provenance source of truth: `signal_evidence` table
 - `source_fact_ids` on `wrapped_signal` is cache only
 - `catalog_validation_signal` excluded from candidate/scoring/standard explanation
+- Serving product profile uses promoted signals only (promoted_only=True default)
+- Evidence graph is per-review scope; serving graph is corpus-aggregated
 
 ## Data Contracts
 
