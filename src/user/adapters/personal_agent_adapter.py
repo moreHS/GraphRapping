@@ -9,9 +9,28 @@ from __future__ import annotations
 
 from typing import Any
 
-from src.common.ids import make_concept_iri
+from src.common.ids import make_concept_iri, make_product_iri
 from src.common.text_normalize import normalize_text
 from src.common.enums import ConceptType
+
+
+# ---------------------------------------------------------------------------
+# Texture normalization
+# ---------------------------------------------------------------------------
+
+_TEXTURE_BEE_ATTR = "Texture"
+
+# Surface form → normalized keyword mapping
+_TEXTURE_KEYWORD_MAP: dict[str, str] = {
+    "크리미": "CreamyLike",
+    "촉촉한": "MoistLike",
+    "젤": "GelLike",
+    "가벼운로션": "LightLotionLike",
+    "가벼운 로션": "LightLotionLike",
+    "워터리": "WateryLike",
+    "리치크림": "RichCreamLike",
+    "밀크": "MilkLike",
+}
 
 
 def adapt_user_profile(
@@ -53,9 +72,9 @@ def adapt_user_profile(
     for cat in purchase.get("active_product_category", []):
         facts.append(_make_pref("PREFERS_CATEGORY", ConceptType.CATEGORY, cat, user_id, "purchase"))
 
-    # Repurchase categories
+    # Repurchase categories (Fix C: split from REPURCHASES_PRODUCT_OR_FAMILY)
     for cat in purchase.get("preferred_repurchase_category", []):
-        facts.append(_make_pref("REPURCHASES_PRODUCT_OR_FAMILY", ConceptType.CATEGORY, cat, user_id, "purchase"))
+        facts.append(_make_pref("REPURCHASES_CATEGORY", ConceptType.CATEGORY, cat, user_id, "purchase"))
 
     # Chat-based preferences
     if chat:
@@ -74,8 +93,15 @@ def adapt_user_profile(
             facts.append(_make_pref("HAS_CONCERN", ConceptType.CONCERN, concern, user_id, "chat"))
         for goal in face.get("skincare_goals", []):
             facts.append(_make_pref("WANTS_GOAL", ConceptType.GOAL, goal, user_id, "chat"))
-        for texture in face.get("preferred_texture", []):
-            facts.append(_make_pref("PREFERS_BEE_ATTR", ConceptType.BEE_ATTR, texture, user_id, "chat"))
+
+        # Fix B: texture → axis-level BEE_ATTR + specific KEYWORD
+        textures = face.get("preferred_texture", [])
+        if textures:
+            # Axis-level: emit once regardless of how many textures
+            facts.append(_make_pref("PREFERS_BEE_ATTR", ConceptType.BEE_ATTR, _TEXTURE_BEE_ATTR, user_id, "chat"))
+            for texture in textures:
+                keyword = _TEXTURE_KEYWORD_MAP.get(texture.replace(" ", ""), texture)
+                facts.append(_make_pref("PREFERS_KEYWORD", ConceptType.KEYWORD, keyword, user_id, "chat"))
 
         # Hair profile
         hair = chat.get("hair", {})
@@ -92,10 +118,12 @@ def adapt_user_profile(
     # Purchase-derived features (from derive_purchase_features)
     if purchase_features:
         pf_last_seen = purchase_features.get("last_seen_at")
+        # Fix A: OWNS_PRODUCT → entity reference, not concept
         for pid in purchase_features.get("owned_product_ids", []):
-            facts.append(_make_pref("OWNS_PRODUCT", ConceptType.BRAND, pid, user_id, "purchase", confidence=0.9, last_seen_at=pf_last_seen))
+            facts.append(_make_product_ref("OWNS_PRODUCT", pid, user_id, "purchase", confidence=0.9, last_seen_at=pf_last_seen))
+        # Fix C: REPURCHASES_BRAND instead of REPURCHASES_PRODUCT_OR_FAMILY
         for brand_id in purchase_features.get("repurchased_brand_ids", []):
-            facts.append(_make_pref("REPURCHASES_PRODUCT_OR_FAMILY", ConceptType.BRAND, brand_id, user_id, "purchase", confidence=0.9, last_seen_at=pf_last_seen))
+            facts.append(_make_pref("REPURCHASES_BRAND", ConceptType.BRAND, brand_id, user_id, "purchase", confidence=0.9, last_seen_at=pf_last_seen))
         for brand_id in purchase_features.get("recently_purchased_brand_ids", []):
             facts.append(_make_pref("RECENTLY_PURCHASED", ConceptType.BRAND, brand_id, user_id, "purchase", confidence=0.7, last_seen_at=pf_last_seen))
 
@@ -117,6 +145,29 @@ def _make_pref(
         "concept_type": concept_type.value,
         "concept_value": value,
         "concept_id": make_concept_iri(concept_type.value, normalize_text(value)),
+        "confidence": confidence,
+        "source": source,
+    }
+    result["last_seen_at"] = last_seen_at
+    return result
+
+
+def _make_product_ref(
+    predicate: str,
+    product_id: str,
+    user_id: str,
+    source: str,
+    confidence: float = 0.8,
+    last_seen_at: str | None = None,
+) -> dict[str, Any]:
+    """Create a fact dict referencing a product entity (not a concept)."""
+    result = {
+        "user_id": user_id,
+        "predicate": predicate,
+        "object_ref_kind": "ENTITY",
+        "concept_type": "Product",
+        "concept_value": product_id,
+        "concept_id": make_product_iri(product_id),
         "confidence": confidence,
         "source": source,
     }

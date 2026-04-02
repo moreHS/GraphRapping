@@ -111,6 +111,6 @@ def _convert_record(record: dict[str, Any], row_index: int) -> RawReviewRecord:
         created_at=record.get("drup_dt"),       # drup_dt → created_at
         collected_at=record.get("drup_dt"),      # same as backup
         source_row_num=str(row_index),
-        source_review_key=None,                  # no stable key in source
-        author_key=None,                         # no author info
+        source_review_key=record.get("source_review_key"),  # stable external review ID
+        author_key=record.get("author_key"),                # stable reviewer identity
     )

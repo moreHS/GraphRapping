@@ -147,6 +147,7 @@ class SignalEmitter:
             if existing.polarity != fact.polarity or existing.negated != actual_negated:
                 pass  # Different signal_id should already handle this, but guard
             else:
+                # Cache-only: provenance SoT is signal_evidence, not source_fact_ids
                 if fact.fact_id not in existing.source_fact_ids:
                     existing.source_fact_ids.append(fact.fact_id)
                 existing.weight = max(existing.weight, weight)

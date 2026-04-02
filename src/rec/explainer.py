@@ -120,6 +120,22 @@ def _concept_to_feature(concept_type: str) -> str:
     return mapping.get(concept_type, "")
 
 
+_TEXTURE_KEYWORDS = {
+    "GelLike", "CreamyLike", "MoistLike", "LightLotionLike",
+    "WateryLike", "RichCreamLike", "MilkLike",
+}
+
+_TEXTURE_KEYWORD_KO = {
+    "GelLike": "젤",
+    "CreamyLike": "크리미",
+    "MoistLike": "촉촉한",
+    "LightLotionLike": "가벼운 로션",
+    "WateryLike": "워터리",
+    "RichCreamLike": "리치 크림",
+    "MilkLike": "밀크",
+}
+
+
 def _generate_summary_ko(paths: list[ExplanationPath]) -> str:
     if not paths:
         return ""
@@ -127,7 +143,11 @@ def _generate_summary_ko(paths: list[ExplanationPath]) -> str:
     parts = []
     for p in paths[:3]:
         if p.concept_type == "keyword":
-            parts.append(f"'{p.concept_id}' 키워드 선호와 일치")
+            if p.concept_id in _TEXTURE_KEYWORDS:
+                ko = _TEXTURE_KEYWORD_KO.get(p.concept_id, p.concept_id)
+                parts.append(f"제형 선호 '{ko}' 계열과 일치")
+            else:
+                parts.append(f"'{p.concept_id}' 키워드 선호와 일치")
         elif p.concept_type == "concern":
             parts.append(f"'{p.concept_id}' 고민 대응 신호 보유")
         elif p.concept_type == "context":
@@ -135,7 +155,10 @@ def _generate_summary_ko(paths: list[ExplanationPath]) -> str:
         elif p.concept_type == "brand":
             parts.append(f"선호 브랜드 '{p.concept_id}' 일치")
         elif p.concept_type == "bee_attr":
-            parts.append(f"'{p.concept_id}' 속성 선호와 일치")
+            if "Texture" in p.concept_id or "texture" in p.concept_id.lower():
+                parts.append("제형 축 선호와 일치")
+            else:
+                parts.append(f"'{p.concept_id}' 속성 선호와 일치")
         elif p.concept_type in ("goal_master", "goal_review"):
             parts.append(f"'{p.concept_id}' 케어 목표와 부합")
         else:

@@ -1,0 +1,855 @@
+[
+  {
+    "id": "RV202603150001234",
+    "text": "워터뱅크 크림 겨울에 정말 좋아요. 흡수도 빠르고 다음날까지 촉촉해요. 건성인데 이거 바르고 각질 확 줄었어요.",
+    "date": "2026-03-15",
+    "product_id": "1051234567",
+    "prd_nm": "라네즈 워터뱅크 블루 히알루로닉 크림",
+    "channel": "031",
+    "brnd_nm": "라네즈",
+    "age_sctn_cd": "30",
+    "sex_cd": "F",
+    "sktp_nm": "건성",
+    "sktr_nm": "건조",
+    "p_chain_inputs": [
+      {
+        "text": "워터뱅크 크림 겨울에 정말 좋아요.",
+        "start": 0,
+        "end": 19,
+        "entity_group_tags": [],
+        "sentence_sentiment": "긍정"
+      },
+      {
+        "text": "흡수도 빠르고 다음날까지 촉촉해요.",
+        "start": 20,
+        "end": 37,
+        "entity_group_tags": ["흡수력", "보습력"],
+        "sentence_sentiment": "긍정"
+      },
+      {
+        "text": "건성인데 이거 바르고 각질 확 줄었어요.",
+        "start": 38,
+        "end": 57,
+        "entity_group_tags": ["효과"],
+        "sentence_sentiment": "긍정"
+      }
+    ],
+    "tokens": ["워터뱅크", "크림", "겨울", "에", "정말", "좋아요", ".", "흡수", "도", "빠르고", "다음날", "까지", "촉촉해요", ".", "건성", "인데", "이거", "바르고", "각질", "확", "줄었어요", "."],
+    "ner_spans": [],
+    "bee_spans": [
+      {"text": "흡수도 빠르고", "label": "흡수력", "start": 20, "end": 27, "sentiment": "긍정"},
+      {"text": "다음날까지 촉촉해요", "label": "보습력", "start": 28, "end": 37, "sentiment": "긍정"},
+      {"text": "각질 확 줄었어요", "label": "효과", "start": 49, "end": 57, "sentiment": "긍정"}
+    ],
+    "relation": []
+  },
+  {
+    "id": "RV202603160002345",
+    "text": "윤조에센스 쓴 지 3개월째인데 피부결이 눈에 띄게 좋아졌어요. 은은한 한방 향도 좋고 아침저녁으로 꼭 쓰고 있어요.",
+    "date": "2026-03-16",
+    "product_id": "1051234890",
+    "prd_nm": "설화수 윤조에센스 6세대",
+    "channel": "031",
+    "brnd_nm": "설화수",
+    "age_sctn_cd": "40",
+    "sex_cd": "F",
+    "sktp_nm": "복합성",
+    "sktr_nm": "주름",
+    "p_chain_inputs": [
+      {
+        "text": "윤조에센스 쓴 지 3개월째인데 피부결이 눈에 띄게 좋아졌어요.",
+        "start": 0,
+        "end": 32,
+        "entity_group_tags": ["효과"],
+        "sentence_sentiment": "긍정"
+      },
+      {
+        "text": "은은한 한방 향도 좋고 아침저녁으로 꼭 쓰고 있어요.",
+        "start": 33,
+        "end": 57,
+        "entity_group_tags": ["향"],
+        "sentence_sentiment": "긍정"
+      }
+    ],
+    "tokens": ["윤조에센스", "쓴", "지", "3개월째", "인데", "피부결", "이", "눈에 띄게", "좋아졌어요", ".", "은은한", "한방", "향", "도", "좋고", "아침저녁", "으로", "꼭", "쓰고", "있어요", "."],
+    "ner_spans": [],
+    "bee_spans": [
+      {"text": "피부결이 눈에 띄게 좋아졌어요", "label": "효과", "start": 16, "end": 31, "sentiment": "긍정"},
+      {"text": "한방 향도 좋고", "label": "향", "start": 37, "end": 44, "sentiment": "긍정"}
+    ],
+    "relation": []
+  },
+  {
+    "id": "RV202603170003456",
+    "text": "밀착력이랑 커버력은 정말 좋은데 오후되면 코 주변이 무너져요. 21N1호 색상은 딱 맞아요.",
+    "date": "2026-03-17",
+    "product_id": "1051235123",
+    "prd_nm": "헤라 블랙쿠션 SPF34 21N1",
+    "channel": "031",
+    "brnd_nm": "헤라",
+    "age_sctn_cd": "30",
+    "sex_cd": "F",
+    "sktp_nm": "복합성",
+    "sktr_nm": "모공",
+    "p_chain_inputs": [
+      {
+        "text": "밀착력이랑 커버력은 정말 좋은데 오후되면 코 주변이 무너져요.",
+        "start": 0,
+        "end": 32,
+        "entity_group_tags": ["밀착력", "커버력", "무너짐"],
+        "sentence_sentiment": "복합"
+      },
+      {
+        "text": "21N1호 색상은 딱 맞아요.",
+        "start": 33,
+        "end": 47,
+        "entity_group_tags": ["색상"],
+        "sentence_sentiment": "긍정"
+      }
+    ],
+    "tokens": ["밀착력", "이랑", "커버력", "은", "정말", "좋은데", "오후", "되면", "코", "주변", "이", "무너져요", ".", "21N1호", "색상", "은", "딱", "맞아요", "."],
+    "ner_spans": [
+      {"text": "21N1호", "label": "BASE_COLOR", "start": 33, "end": 38}
+    ],
+    "bee_spans": [
+      {"text": "밀착력이랑", "label": "밀착력", "start": 0, "end": 5, "sentiment": "긍정"},
+      {"text": "커버력은 정말 좋은데", "label": "커버력", "start": 6, "end": 15, "sentiment": "긍정"},
+      {"text": "코 주변이 무너져요", "label": "무너짐", "start": 23, "end": 32, "sentiment": "부정"},
+      {"text": "색상은 딱 맞아요", "label": "색상", "start": 39, "end": 47, "sentiment": "긍정"}
+    ],
+    "relation": []
+  },
+  {
+    "id": "RV202603180004567",
+    "text": "세럼인데 텍스쳐가 진짜 가벼워요. 지성 피부한테 딱이에요. 흡수 빠르고 끈적임 하나도 없어요.",
+    "date": "2026-03-18",
+    "product_id": "1051235456",
+    "prd_nm": "마몽드 레드 에너지 리커버리 세럼",
+    "channel": "031",
+    "brnd_nm": "마몽드",
+    "age_sctn_cd": "20",
+    "sex_cd": "F",
+    "sktp_nm": "지성",
+    "sktr_nm": "트러블",
+    "p_chain_inputs": [
+      {
+        "text": "세럼인데 텍스쳐가 진짜 가벼워요.",
+        "start": 0,
+        "end": 17,
+        "entity_group_tags": ["사용감"],
+        "sentence_sentiment": "긍정"
+      },
+      {
+        "text": "지성 피부한테 딱이에요.",
+        "start": 18,
+        "end": 30,
+        "entity_group_tags": [],
+        "sentence_sentiment": "긍정"
+      },
+      {
+        "text": "흡수 빠르고 끈적임 하나도 없어요.",
+        "start": 31,
+        "end": 48,
+        "entity_group_tags": ["흡수력", "사용감"],
+        "sentence_sentiment": "긍정"
+      }
+    ],
+    "tokens": ["세럼", "인데", "텍스쳐", "가", "진짜", "가벼워요", ".", "지성", "피부", "한테", "딱이에요", ".", "흡수", "빠르고", "끈적임", "하나도", "없어요", "."],
+    "ner_spans": [
+      {"text": "세럼", "label": "CATEGORY", "start": 0, "end": 2}
+    ],
+    "bee_spans": [
+      {"text": "텍스쳐가 진짜 가벼워요", "label": "사용감", "start": 5, "end": 16, "sentiment": "긍정"},
+      {"text": "흡수 빠르고", "label": "흡수력", "start": 31, "end": 37, "sentiment": "긍정"},
+      {"text": "끈적임 하나도 없어요", "label": "사용감", "start": 38, "end": 48, "sentiment": "긍정"}
+    ],
+    "relation": []
+  },
+  {
+    "id": "RV202603190005678",
+    "text": "워터리한 제형이라 가볍고 좋아요. 남자인데 크림 발라도 번들거리지 않아서 계속 쓸 듯. 보습도 충분해요.",
+    "date": "2026-03-19",
+    "product_id": "1051235789",
+    "prd_nm": "프리메라 알파인 베리 워터리 크림",
+    "channel": "031",
+    "brnd_nm": "프리메라",
+    "age_sctn_cd": "20",
+    "sex_cd": "M",
+    "sktp_nm": "지성",
+    "sktr_nm": "모공",
+    "p_chain_inputs": [
+      {
+        "text": "워터리한 제형이라 가볍고 좋아요.",
+        "start": 0,
+        "end": 17,
+        "entity_group_tags": ["제형"],
+        "sentence_sentiment": "긍정"
+      },
+      {
+        "text": "남자인데 크림 발라도 번들거리지 않아서 계속 쓸 듯.",
+        "start": 18,
+        "end": 43,
+        "entity_group_tags": ["사용감"],
+        "sentence_sentiment": "긍정"
+      },
+      {
+        "text": "보습도 충분해요.",
+        "start": 44,
+        "end": 52,
+        "entity_group_tags": ["보습력"],
+        "sentence_sentiment": "긍정"
+      }
+    ],
+    "tokens": ["워터리", "한", "제형", "이라", "가볍고", "좋아요", ".", "남자", "인데", "크림", "발라도", "번들거리지", "않아서", "계속", "쓸", "듯", ".", "보습", "도", "충분해요", "."],
+    "ner_spans": [],
+    "bee_spans": [
+      {"text": "제형이라 가볍고 좋아요", "label": "제형", "start": 5, "end": 16, "sentiment": "긍정"},
+      {"text": "번들거리지 않아서", "label": "사용감", "start": 27, "end": 36, "sentiment": "긍정"},
+      {"text": "보습도 충분해요", "label": "보습력", "start": 44, "end": 51, "sentiment": "긍정"}
+    ],
+    "relation": []
+  },
+  {
+    "id": "RV202603200006789",
+    "text": "레티놀이라 걱정했는데 시카 성분 덕분인지 자극이 적어요. 흔적이 조금씩 옅어지는 느낌. 근데 처음 쓸 때 약간 따가웠어요.",
+    "date": "2026-03-20",
+    "product_id": "IF20260001",
+    "prd_nm": "레티놀 시카 흔적 앰플",
+    "channel": "036",
+    "brnd_nm": "이니스프리",
+    "age_sctn_cd": "30",
+    "sex_cd": "F",
+    "sktp_nm": "민감성",
+    "sktr_nm": "트러블",
+    "p_chain_inputs": [
+      {
+        "text": "레티놀이라 걱정했는데 시카 성분 덕분인지 자극이 적어요.",
+        "start": 0,
+        "end": 28,
+        "entity_group_tags": ["성분"],
+        "sentence_sentiment": "긍정"
+      },
+      {
+        "text": "흔적이 조금씩 옅어지는 느낌.",
+        "start": 29,
+        "end": 43,
+        "entity_group_tags": ["효과"],
+        "sentence_sentiment": "긍정"
+      },
+      {
+        "text": "근데 처음 쓸 때 약간 따가웠어요.",
+        "start": 44,
+        "end": 61,
+        "entity_group_tags": ["부작용/손상"],
+        "sentence_sentiment": "부정"
+      }
+    ],
+    "tokens": ["레티놀", "이라", "걱정했는데", "시카", "성분", "덕분", "인지", "자극", "이", "적어요", ".", "흔적", "이", "조금씩", "옅어지는", "느낌", ".", "근데", "처음", "쓸", "때", "약간", "따가웠어요", "."],
+    "ner_spans": [],
+    "bee_spans": [
+      {"text": "자극이 적어요", "label": "성분", "start": 21, "end": 28, "sentiment": "긍정"},
+      {"text": "흔적이 조금씩 옅어지는 느낌", "label": "효과", "start": 29, "end": 42, "sentiment": "긍정"},
+      {"text": "약간 따가웠어요", "label": "부작용/손상", "start": 54, "end": 61, "sentiment": "부정"}
+    ],
+    "relation": []
+  },
+  {
+    "id": "RV202603210007890",
+    "text": "가격 대비 보습력 미쳤어요. 그린티 향도 은은하고 좋아요. 건성한테 추천합니다. 이 가격에 이 정도면 대만족이에요.",
+    "date": "2026-03-21",
+    "product_id": "IF20260002",
+    "prd_nm": "그린티 씨드 히알루론산 세럼",
+    "channel": "036",
+    "brnd_nm": "이니스프리",
+    "age_sctn_cd": "20",
+    "sex_cd": "F",
+    "sktp_nm": "건성",
+    "sktr_nm": "건조",
+    "p_chain_inputs": [
+      {
+        "text": "가격 대비 보습력 미쳤어요.",
+        "start": 0,
+        "end": 14,
+        "entity_group_tags": ["보습력", "인지가격"],
+        "sentence_sentiment": "긍정"
+      },
+      {
+        "text": "그린티 향도 은은하고 좋아요.",
+        "start": 15,
+        "end": 29,
+        "entity_group_tags": ["향"],
+        "sentence_sentiment": "긍정"
+      },
+      {
+        "text": "건성한테 추천합니다.",
+        "start": 30,
+        "end": 40,
+        "entity_group_tags": [],
+        "sentence_sentiment": "긍정"
+      },
+      {
+        "text": "이 가격에 이 정도면 대만족이에요.",
+        "start": 41,
+        "end": 57,
+        "entity_group_tags": ["인지가격"],
+        "sentence_sentiment": "긍정"
+      }
+    ],
+    "tokens": ["가격", "대비", "보습력", "미쳤어요", ".", "그린티", "향", "도", "은은하고", "좋아요", ".", "건성", "한테", "추천합니다", ".", "이", "가격", "에", "이", "정도면", "대만족이에요", "."],
+    "ner_spans": [],
+    "bee_spans": [
+      {"text": "보습력 미쳤어요", "label": "보습력", "start": 5, "end": 13, "sentiment": "긍정"},
+      {"text": "그린티 향도 은은하고 좋아요", "label": "향", "start": 15, "end": 28, "sentiment": "긍정"},
+      {"text": "이 가격에 이 정도면 대만족이에요", "label": "인지가격", "start": 41, "end": 56, "sentiment": "긍정"}
+    ],
+    "relation": []
+  },
+  {
+    "id": "RV202603220008901",
+    "text": "트러블 나면 바로 이거 발라요. 진정 효과 확실하고 밤 제형이라 밀착 잘 돼요. 향도 없어서 좋아요.",
+    "date": "2026-03-22",
+    "product_id": "IF20260004",
+    "prd_nm": "비자 시카밤 EX",
+    "channel": "036",
+    "brnd_nm": "이니스프리",
+    "age_sctn_cd": "20",
+    "sex_cd": "M",
+    "sktp_nm": "민감성",
+    "sktr_nm": "트러블",
+    "p_chain_inputs": [
+      {
+        "text": "트러블 나면 바로 이거 발라요.",
+        "start": 0,
+        "end": 15,
+        "entity_group_tags": [],
+        "sentence_sentiment": "중립"
+      },
+      {
+        "text": "진정 효과 확실하고 밤 제형이라 밀착 잘 돼요.",
+        "start": 16,
+        "end": 39,
+        "entity_group_tags": ["효과", "제형", "밀착력"],
+        "sentence_sentiment": "긍정"
+      },
+      {
+        "text": "향도 없어서 좋아요.",
+        "start": 40,
+        "end": 50,
+        "entity_group_tags": ["향"],
+        "sentence_sentiment": "긍정"
+      }
+    ],
+    "tokens": ["트러블", "나면", "바로", "이거", "발라요", ".", "진정", "효과", "확실하고", "밤", "제형", "이라", "밀착", "잘", "돼요", ".", "향", "도", "없어서", "좋아요", "."],
+    "ner_spans": [],
+    "bee_spans": [
+      {"text": "진정 효과 확실하고", "label": "효과", "start": 16, "end": 25, "sentiment": "긍정"},
+      {"text": "밤 제형이라", "label": "제형", "start": 26, "end": 31, "sentiment": "긍정"},
+      {"text": "밀착 잘 돼요", "label": "밀착력", "start": 32, "end": 38, "sentiment": "긍정"},
+      {"text": "향도 없어서 좋아요", "label": "향", "start": 40, "end": 49, "sentiment": "긍정"}
+    ],
+    "relation": []
+  },
+  {
+    "id": "RV202603230009012",
+    "text": "거품이 풍성하게 잘 나와요. 세정력은 좋으면서 당김이 없어서 복합성한테 딱이에요. 향도 적당해요.",
+    "date": "2026-03-23",
+    "product_id": "AT20260001",
+    "prd_nm": "아이디얼 아미노 퍼펙트 클렌징 폼",
+    "channel": "048",
+    "brnd_nm": "아리따움",
+    "age_sctn_cd": "30",
+    "sex_cd": "F",
+    "sktp_nm": "복합성",
+    "sktr_nm": "모공",
+    "p_chain_inputs": [
+      {
+        "text": "거품이 풍성하게 잘 나와요.",
+        "start": 0,
+        "end": 14,
+        "entity_group_tags": ["사용감"],
+        "sentence_sentiment": "긍정"
+      },
+      {
+        "text": "세정력은 좋으면서 당김이 없어서 복합성한테 딱이에요.",
+        "start": 15,
+        "end": 39,
+        "entity_group_tags": ["세정력", "사용감"],
+        "sentence_sentiment": "긍정"
+      },
+      {
+        "text": "향도 적당해요.",
+        "start": 40,
+        "end": 48,
+        "entity_group_tags": ["향"],
+        "sentence_sentiment": "긍정"
+      }
+    ],
+    "tokens": ["거품", "이", "풍성하게", "잘", "나와요", ".", "세정력", "은", "좋으면서", "당김", "이", "없어서", "복합성", "한테", "딱이에요", ".", "향", "도", "적당해요", "."],
+    "ner_spans": [],
+    "bee_spans": [
+      {"text": "거품이 풍성하게 잘 나와요", "label": "사용감", "start": 0, "end": 13, "sentiment": "긍정"},
+      {"text": "세정력은 좋으면서", "label": "세정력", "start": 15, "end": 23, "sentiment": "긍정"},
+      {"text": "당김이 없어서", "label": "사용감", "start": 24, "end": 31, "sentiment": "긍정"},
+      {"text": "향도 적당해요", "label": "향", "start": 40, "end": 47, "sentiment": "긍정"}
+    ],
+    "relation": []
+  },
+  {
+    "id": "RV202603240010123",
+    "text": "발색은 진짜 예쁜데 가루 날림이 좀 있어요. 퍼플 컬러가 특히 예뻐요. 가격 대비 구성은 괜찮아요.",
+    "date": "2026-03-24",
+    "product_id": "AT20260003",
+    "prd_nm": "모노아이즈 팔레트",
+    "channel": "048",
+    "brnd_nm": "아리따움",
+    "age_sctn_cd": "20",
+    "sex_cd": "F",
+    "sktp_nm": "지성",
+    "sktr_nm": "None",
+    "p_chain_inputs": [
+      {
+        "text": "발색은 진짜 예쁜데 가루 날림이 좀 있어요.",
+        "start": 0,
+        "end": 22,
+        "entity_group_tags": ["발색력", "가루날림"],
+        "sentence_sentiment": "복합"
+      },
+      {
+        "text": "퍼플 컬러가 특히 예뻐요.",
+        "start": 23,
+        "end": 35,
+        "entity_group_tags": ["색상"],
+        "sentence_sentiment": "긍정"
+      },
+      {
+        "text": "가격 대비 구성은 괜찮아요.",
+        "start": 36,
+        "end": 50,
+        "entity_group_tags": ["인지가격", "구성"],
+        "sentence_sentiment": "긍정"
+      }
+    ],
+    "tokens": ["발색", "은", "진짜", "예쁜데", "가루", "날림", "이", "좀", "있어요", ".", "퍼플", "컬러", "가", "특히", "예뻐요", ".", "가격", "대비", "구성", "은", "괜찮아요", "."],
+    "ner_spans": [
+      {"text": "퍼플", "label": "BASE_COLOR", "start": 23, "end": 25}
+    ],
+    "bee_spans": [
+      {"text": "발색은 진짜 예쁜데", "label": "발색력", "start": 0, "end": 9, "sentiment": "긍정"},
+      {"text": "가루 날림이 좀 있어요", "label": "가루날림", "start": 10, "end": 21, "sentiment": "부정"},
+      {"text": "퍼플 컬러가 특히 예뻐요", "label": "색상", "start": 23, "end": 34, "sentiment": "긍정"},
+      {"text": "구성은 괜찮아요", "label": "구성", "start": 42, "end": 49, "sentiment": "긍정"}
+    ],
+    "relation": []
+  },
+  {
+    "id": "EXT_NV_20260320_00001",
+    "text": "자기 전에 바르면 아침에 입술이 촉촉해져 있어요. 베리 향도 달콤하고 좋아요. 재구매 3번째입니다.",
+    "date": "2026-03-20",
+    "product_id": "SPD0000012345",
+    "prd_nm": "라네즈 립 슬리핑 마스크 베리",
+    "channel": "navershopping",
+    "brnd_nm": "라네즈",
+    "rspn_sal_lcns_nm": "아모레퍼시픽 공식스토어",
+    "p_chain_inputs": [
+      {
+        "text": "자기 전에 바르면 아침에 입술이 촉촉해져 있어요.",
+        "start": 0,
+        "end": 24,
+        "entity_group_tags": ["보습력"],
+        "sentence_sentiment": "긍정"
+      },
+      {
+        "text": "베리 향도 달콤하고 좋아요.",
+        "start": 25,
+        "end": 39,
+        "entity_group_tags": ["향"],
+        "sentence_sentiment": "긍정"
+      },
+      {
+        "text": "재구매 3번째입니다.",
+        "start": 40,
+        "end": 50,
+        "entity_group_tags": ["충성도"],
+        "sentence_sentiment": "긍정"
+      }
+    ],
+    "tokens": ["자기", "전", "에", "바르면", "아침", "에", "입술", "이", "촉촉해져", "있어요", ".", "베리", "향", "도", "달콤하고", "좋아요", ".", "재구매", "3번째", "입니다", "."],
+    "ner_spans": [],
+    "bee_spans": [
+      {"text": "입술이 촉촉해져 있어요", "label": "보습력", "start": 13, "end": 24, "sentiment": "긍정"},
+      {"text": "베리 향도 달콤하고 좋아요", "label": "향", "start": 25, "end": 38, "sentiment": "긍정"},
+      {"text": "재구매 3번째입니다", "label": "충성도", "start": 40, "end": 49, "sentiment": "긍정"}
+    ],
+    "relation": []
+  },
+  {
+    "id": "EXT_SG_20260318_00002",
+    "text": "크림 질감이 리치한데 흡수는 의외로 잘 돼요. 효과도 좋은데 가격이 좀 부담스러워요. 세일 때 사는 게 낫습니다.",
+    "date": "2026-03-18",
+    "product_id": "SPD0000012346",
+    "prd_nm": "설화수 자음생크림",
+    "channel": "ssg",
+    "brnd_nm": "설화수",
+    "rspn_sal_lcns_nm": "아모레퍼시픽(주)",
+    "p_chain_inputs": [
+      {
+        "text": "크림 질감이 리치한데 흡수는 의외로 잘 돼요.",
+        "start": 0,
+        "end": 23,
+        "entity_group_tags": ["제형", "흡수력"],
+        "sentence_sentiment": "긍정"
+      },
+      {
+        "text": "효과도 좋은데 가격이 좀 부담스러워요.",
+        "start": 24,
+        "end": 43,
+        "entity_group_tags": ["효과", "인지가격"],
+        "sentence_sentiment": "복합"
+      },
+      {
+        "text": "세일 때 사는 게 낫습니다.",
+        "start": 44,
+        "end": 57,
+        "entity_group_tags": ["판촉"],
+        "sentence_sentiment": "중립"
+      }
+    ],
+    "tokens": ["크림", "질감", "이", "리치한데", "흡수", "는", "의외로", "잘", "돼요", ".", "효과", "도", "좋은데", "가격", "이", "좀", "부담스러워요", ".", "세일", "때", "사는", "게", "낫습니다", "."],
+    "ner_spans": [
+      {"text": "크림", "label": "CATEGORY", "start": 0, "end": 2}
+    ],
+    "bee_spans": [
+      {"text": "질감이 리치한데", "label": "제형", "start": 3, "end": 10, "sentiment": "긍정"},
+      {"text": "흡수는 의외로 잘 돼요", "label": "흡수력", "start": 11, "end": 22, "sentiment": "긍정"},
+      {"text": "효과도 좋은데", "label": "효과", "start": 24, "end": 31, "sentiment": "긍정"},
+      {"text": "가격이 좀 부담스러워요", "label": "인지가격", "start": 32, "end": 43, "sentiment": "부정"}
+    ],
+    "relation": []
+  },
+  {
+    "id": "EXT_OY_20260319_00003",
+    "text": "올리브영에서 1+1으로 샀는데 대만족이에요. 수분감 좋고 다음 단계 흡수도 잘 되게 해줘요.",
+    "date": "2026-03-19",
+    "product_id": "SPD0000012347",
+    "prd_nm": "이니스프리 그린티 씨드 세럼",
+    "channel": "oliveyoung",
+    "brnd_nm": "이니스프리",
+    "rspn_sal_lcns_nm": "(주)이니스프리",
+    "p_chain_inputs": [
+      {
+        "text": "올리브영에서 1+1으로 샀는데 대만족이에요.",
+        "start": 0,
+        "end": 22,
+        "entity_group_tags": ["판촉"],
+        "sentence_sentiment": "긍정"
+      },
+      {
+        "text": "수분감 좋고 다음 단계 흡수도 잘 되게 해줘요.",
+        "start": 23,
+        "end": 46,
+        "entity_group_tags": ["보습력", "흡수력"],
+        "sentence_sentiment": "긍정"
+      }
+    ],
+    "tokens": ["올리브영", "에서", "1+1", "으로", "샀는데", "대만족이에요", ".", "수분감", "좋고", "다음", "단계", "흡수", "도", "잘", "되게", "해줘요", "."],
+    "ner_spans": [
+      {"text": "이니스프리", "label": "BRAND", "start": 0, "end": 0}
+    ],
+    "bee_spans": [
+      {"text": "1+1으로 샀는데 대만족이에요", "label": "판촉", "start": 7, "end": 21, "sentiment": "긍정"},
+      {"text": "수분감 좋고", "label": "보습력", "start": 23, "end": 28, "sentiment": "긍정"},
+      {"text": "다음 단계 흡수도 잘 되게 해줘요", "label": "흡수력", "start": 29, "end": 45, "sentiment": "긍정"}
+    ],
+    "relation": []
+  },
+  {
+    "id": "EXT_KK_20260321_00004",
+    "text": "선물 받았는데 발색 진짜 좋아요. 매트한데 입술이 안 말라요. 하루종일 색 유지되는 것도 신기해요.",
+    "date": "2026-03-21",
+    "product_id": "SPD0000012348",
+    "prd_nm": "헤라 센슈얼 파우더 매트 리퀴드",
+    "channel": "kakao",
+    "brnd_nm": "헤라",
+    "rspn_sal_lcns_nm": "아모레퍼시픽(주)",
+    "p_chain_inputs": [
+      {
+        "text": "선물 받았는데 발색 진짜 좋아요.",
+        "start": 0,
+        "end": 16,
+        "entity_group_tags": ["발색력"],
+        "sentence_sentiment": "긍정"
+      },
+      {
+        "text": "매트한데 입술이 안 말라요.",
+        "start": 17,
+        "end": 31,
+        "entity_group_tags": ["사용감"],
+        "sentence_sentiment": "긍정"
+      },
+      {
+        "text": "하루종일 색 유지되는 것도 신기해요.",
+        "start": 32,
+        "end": 50,
+        "entity_group_tags": ["지속력"],
+        "sentence_sentiment": "긍정"
+      }
+    ],
+    "tokens": ["선물", "받았는데", "발색", "진짜", "좋아요", ".", "매트한데", "입술", "이", "안", "말라요", ".", "하루종일", "색", "유지되는", "것", "도", "신기해요", "."],
+    "ner_spans": [],
+    "bee_spans": [
+      {"text": "발색 진짜 좋아요", "label": "발색력", "start": 7, "end": 15, "sentiment": "긍정"},
+      {"text": "매트한데 입술이 안 말라요", "label": "사용감", "start": 17, "end": 30, "sentiment": "긍정"},
+      {"text": "하루종일 색 유지되는 것도 신기해요", "label": "지속력", "start": 32, "end": 49, "sentiment": "긍정"}
+    ],
+    "relation": []
+  },
+  {
+    "id": "EXT_NV_20260322_00005",
+    "text": "로즈블렌딩 색상 너무 예쁘고 발색도 좋아요. 근데 밥 먹으면 안쪽부터 지워져요. 틴트치고는 지속력이 아쉬워요.",
+    "date": "2026-03-22",
+    "product_id": "SPD0000012349",
+    "prd_nm": "에뛰드 픽싱 틴트 #04 로즈블렌딩",
+    "channel": "navershopping",
+    "brnd_nm": "에뛰드",
+    "rspn_sal_lcns_nm": "(주)에뛰드",
+    "p_chain_inputs": [
+      {
+        "text": "로즈블렌딩 색상 너무 예쁘고 발색도 좋아요.",
+        "start": 0,
+        "end": 22,
+        "entity_group_tags": ["색상", "발색력"],
+        "sentence_sentiment": "긍정"
+      },
+      {
+        "text": "근데 밥 먹으면 안쪽부터 지워져요.",
+        "start": 23,
+        "end": 39,
+        "entity_group_tags": ["지속력"],
+        "sentence_sentiment": "부정"
+      },
+      {
+        "text": "틴트치고는 지속력이 아쉬워요.",
+        "start": 40,
+        "end": 54,
+        "entity_group_tags": ["지속력"],
+        "sentence_sentiment": "부정"
+      }
+    ],
+    "tokens": ["로즈블렌딩", "색상", "너무", "예쁘고", "발색", "도", "좋아요", ".", "근데", "밥", "먹으면", "안쪽", "부터", "지워져요", ".", "틴트", "치고는", "지속력", "이", "아쉬워요", "."],
+    "ner_spans": [],
+    "bee_spans": [
+      {"text": "색상 너무 예쁘고", "label": "색상", "start": 6, "end": 14, "sentiment": "긍정"},
+      {"text": "발색도 좋아요", "label": "발색력", "start": 15, "end": 22, "sentiment": "긍정"},
+      {"text": "안쪽부터 지워져요", "label": "지속력", "start": 31, "end": 39, "sentiment": "부정"},
+      {"text": "지속력이 아쉬워요", "label": "지속력", "start": 45, "end": 53, "sentiment": "부정"}
+    ],
+    "relation": []
+  },
+  {
+    "id": "EXT_NV_20260323_00006",
+    "text": "용기 디자인 예쁘고 스파출라로 덜어 쓰니까 위생적이에요. 양도 많아서 오래 쓸 수 있어요.",
+    "date": "2026-03-23",
+    "product_id": "SPD0000012345",
+    "prd_nm": "라네즈 립 슬리핑 마스크 베리",
+    "channel": "navershopping",
+    "brnd_nm": "라네즈",
+    "rspn_sal_lcns_nm": "아모레퍼시픽 공식스토어",
+    "p_chain_inputs": [
+      {
+        "text": "용기 디자인 예쁘고 스파출라로 덜어 쓰니까 위생적이에요.",
+        "start": 0,
+        "end": 27,
+        "entity_group_tags": ["패키지/용기_디자인", "편리성"],
+        "sentence_sentiment": "긍정"
+      },
+      {
+        "text": "양도 많아서 오래 쓸 수 있어요.",
+        "start": 28,
+        "end": 43,
+        "entity_group_tags": ["용량"],
+        "sentence_sentiment": "긍정"
+      }
+    ],
+    "tokens": ["용기", "디자인", "예쁘고", "스파출라", "로", "덜어", "쓰니까", "위생적이에요", ".", "양", "도", "많아서", "오래", "쓸", "수", "있어요", "."],
+    "ner_spans": [],
+    "bee_spans": [
+      {"text": "용기 디자인 예쁘고", "label": "패키지/용기_디자인", "start": 0, "end": 9, "sentiment": "긍정"},
+      {"text": "스파출라로 덜어 쓰니까 위생적이에요", "label": "편리성", "start": 10, "end": 26, "sentiment": "긍정"},
+      {"text": "양도 많아서 오래 쓸 수 있어요", "label": "용량", "start": 28, "end": 42, "sentiment": "긍정"}
+    ],
+    "relation": []
+  },
+  {
+    "id": "GLB_AZ_20260315_00001",
+    "text": "My skin texture improved noticeably after 2 weeks. The herbal scent is pleasant and not overpowering. Worth the investment.",
+    "date": "2026-03-15",
+    "product_id": "Sulwhasoo First Care Activating Serum",
+    "prd_nm": "Sulwhasoo First Care Activating Serum",
+    "channel": "amazon",
+    "brnd_nm": "Sulwhasoo",
+    "rspn_sal_lcns_nm": "Amorepacific US, Inc.",
+    "p_chain_inputs": [
+      {
+        "text": "My skin texture improved noticeably after 2 weeks.",
+        "start": 0,
+        "end": 50,
+        "entity_group_tags": ["효과"],
+        "sentence_sentiment": "긍정"
+      },
+      {
+        "text": "The herbal scent is pleasant and not overpowering.",
+        "start": 51,
+        "end": 101,
+        "entity_group_tags": ["향"],
+        "sentence_sentiment": "긍정"
+      },
+      {
+        "text": "Worth the investment.",
+        "start": 102,
+        "end": 122,
+        "entity_group_tags": ["인지가격"],
+        "sentence_sentiment": "긍정"
+      }
+    ],
+    "tokens": ["My", "skin", "texture", "improved", "noticeably", "after", "2", "weeks", ".", "The", "herbal", "scent", "is", "pleasant", "and", "not", "overpowering", ".", "Worth", "the", "investment", "."],
+    "ner_spans": [
+      {"text": "Sulwhasoo", "label": "BRAND", "start": 0, "end": 0}
+    ],
+    "bee_spans": [
+      {"text": "skin texture improved noticeably", "label": "효과", "start": 3, "end": 34, "sentiment": "긍정"},
+      {"text": "herbal scent is pleasant and not overpowering", "label": "향", "start": 55, "end": 100, "sentiment": "긍정"},
+      {"text": "Worth the investment", "label": "인지가격", "start": 102, "end": 121, "sentiment": "긍정"}
+    ],
+    "relation": []
+  },
+  {
+    "id": "GLB_SP_20260316_00002",
+    "text": "Holy grail lip product! Woke up with the softest lips ever. The berry scent is amazing. Already on my third jar.",
+    "date": "2026-03-16",
+    "product_id": "LANEIGE Lip Sleeping Mask Berry",
+    "prd_nm": "LANEIGE Lip Sleeping Mask Berry",
+    "channel": "sephora",
+    "brnd_nm": "LANEIGE",
+    "rspn_sal_lcns_nm": "Amorepacific US, Inc.",
+    "p_chain_inputs": [
+      {
+        "text": "Holy grail lip product!",
+        "start": 0,
+        "end": 23,
+        "entity_group_tags": [],
+        "sentence_sentiment": "긍정"
+      },
+      {
+        "text": "Woke up with the softest lips ever.",
+        "start": 24,
+        "end": 58,
+        "entity_group_tags": ["보습력"],
+        "sentence_sentiment": "긍정"
+      },
+      {
+        "text": "The berry scent is amazing.",
+        "start": 59,
+        "end": 85,
+        "entity_group_tags": ["향"],
+        "sentence_sentiment": "긍정"
+      },
+      {
+        "text": "Already on my third jar.",
+        "start": 86,
+        "end": 110,
+        "entity_group_tags": ["충성도"],
+        "sentence_sentiment": "긍정"
+      }
+    ],
+    "tokens": ["Holy", "grail", "lip", "product", "!", "Woke", "up", "with", "the", "softest", "lips", "ever", ".", "The", "berry", "scent", "is", "amazing", ".", "Already", "on", "my", "third", "jar", "."],
+    "ner_spans": [
+      {"text": "LANEIGE", "label": "BRAND", "start": 0, "end": 0}
+    ],
+    "bee_spans": [
+      {"text": "softest lips ever", "label": "보습력", "start": 38, "end": 55, "sentiment": "긍정"},
+      {"text": "berry scent is amazing", "label": "향", "start": 63, "end": 84, "sentiment": "긍정"},
+      {"text": "Already on my third jar", "label": "충성도", "start": 86, "end": 109, "sentiment": "긍정"}
+    ],
+    "relation": []
+  },
+  {
+    "id": "GLB_AZ_20260317_00003",
+    "text": "Absorbs quickly and keeps my skin hydrated all day. However, the green tea scent is a bit strong for my preference.",
+    "date": "2026-03-17",
+    "product_id": "innisfree Green Tea Seed Serum",
+    "prd_nm": "innisfree Green Tea Seed Serum",
+    "channel": "amazon",
+    "brnd_nm": "innisfree",
+    "rspn_sal_lcns_nm": "Amorepacific US, Inc.",
+    "p_chain_inputs": [
+      {
+        "text": "Absorbs quickly and keeps my skin hydrated all day.",
+        "start": 0,
+        "end": 51,
+        "entity_group_tags": ["흡수력", "보습력"],
+        "sentence_sentiment": "긍정"
+      },
+      {
+        "text": "However, the green tea scent is a bit strong for my preference.",
+        "start": 52,
+        "end": 114,
+        "entity_group_tags": ["향"],
+        "sentence_sentiment": "부정"
+      }
+    ],
+    "tokens": ["Absorbs", "quickly", "and", "keeps", "my", "skin", "hydrated", "all", "day", ".", "However", ",", "the", "green", "tea", "scent", "is", "a", "bit", "strong", "for", "my", "preference", "."],
+    "ner_spans": [
+      {"text": "innisfree", "label": "BRAND", "start": 0, "end": 0}
+    ],
+    "bee_spans": [
+      {"text": "Absorbs quickly", "label": "흡수력", "start": 0, "end": 15, "sentiment": "긍정"},
+      {"text": "keeps my skin hydrated all day", "label": "보습력", "start": 20, "end": 49, "sentiment": "긍정"},
+      {"text": "green tea scent is a bit strong", "label": "향", "start": 65, "end": 95, "sentiment": "부정"}
+    ],
+    "relation": []
+  },
+  {
+    "id": "GLB_SP_20260318_00004",
+    "text": "Perfect coverage without looking cakey. The 21N1 shade matches my skin perfectly. Stays put all day long.",
+    "date": "2026-03-18",
+    "product_id": "HERA Black Cushion SPF34 21N1",
+    "prd_nm": "HERA Black Cushion SPF34 21N1",
+    "channel": "sephora",
+    "brnd_nm": "HERA",
+    "rspn_sal_lcns_nm": "Amorepacific US, Inc.",
+    "p_chain_inputs": [
+      {
+        "text": "Perfect coverage without looking cakey.",
+        "start": 0,
+        "end": 38,
+        "entity_group_tags": ["커버력", "사용감"],
+        "sentence_sentiment": "긍정"
+      },
+      {
+        "text": "The 21N1 shade matches my skin perfectly.",
+        "start": 39,
+        "end": 79,
+        "entity_group_tags": ["색상"],
+        "sentence_sentiment": "긍정"
+      },
+      {
+        "text": "Stays put all day long.",
+        "start": 80,
+        "end": 102,
+        "entity_group_tags": ["지속력"],
+        "sentence_sentiment": "긍정"
+      }
+    ],
+    "tokens": ["Perfect", "coverage", "without", "looking", "cakey", ".", "The", "21N1", "shade", "matches", "my", "skin", "perfectly", ".", "Stays", "put", "all", "day", "long", "."],
+    "ner_spans": [
+      {"text": "21N1", "label": "BASE_COLOR", "start": 43, "end": 47},
+      {"text": "HERA", "label": "BRAND", "start": 0, "end": 0}
+    ],
+    "bee_spans": [
+      {"text": "Perfect coverage without looking cakey", "label": "커버력", "start": 0, "end": 37, "sentiment": "긍정"},
+      {"text": "21N1 shade matches my skin perfectly", "label": "색상", "start": 43, "end": 78, "sentiment": "긍정"},
+      {"text": "Stays put all day long", "label": "지속력", "start": 80, "end": 101, "sentiment": "긍정"}
+    ],
+    "relation": []
+  }
+]

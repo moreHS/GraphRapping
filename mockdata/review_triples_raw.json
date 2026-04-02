@@ -5,26 +5,96 @@
     "prod_nm": "워터뱅크 블루 히알루로닉 세럼",
     "text": "히알루론산 세럼이라 보습력이 정말 좋고 흡수도 빨라요",
     "drup_dt": "2025-06-10",
+    "source_review_key": "REV-P001-001",
+    "author_key": "AUTHOR-001",
+    "source_product_id": "1051234567",
+    "channel": "031",
+    "reviewer_profile": {
+      "age_sctn_cd": "30",
+      "sex_cd": "F",
+      "sktp_nm": "건성",
+      "sktr_nm": "건조"
+    },
     "ner": [
-      {"word": "Reviewer", "entity_group": "PER", "start": null, "end": null, "sentiment": null},
-      {"word": "Review Target", "entity_group": "PRD", "start": null, "end": null, "sentiment": null},
-      {"word": "히알루론산", "entity_group": "ING", "start": 0, "end": 5, "sentiment": "중립"},
-      {"word": "세럼", "entity_group": "CAT", "start": 6, "end": 8, "sentiment": "중립"}
+      {
+        "word": "Reviewer",
+        "entity_group": "PER",
+        "start": null,
+        "end": null,
+        "sentiment": null
+      },
+      {
+        "word": "Review Target",
+        "entity_group": "PRD",
+        "start": null,
+        "end": null,
+        "sentiment": null
+      },
+      {
+        "word": "히알루론산",
+        "entity_group": "ING",
+        "start": 0,
+        "end": 5,
+        "sentiment": "중립"
+      },
+      {
+        "word": "세럼",
+        "entity_group": "CAT",
+        "start": 6,
+        "end": 8,
+        "sentiment": "중립"
+      }
     ],
     "bee": [
-      {"word": "보습력이 정말 좋고", "entity_group": "보습력", "start": 11, "end": 21, "sentiment": "긍정"},
-      {"word": "흡수도 빨라요", "entity_group": "흡수력", "start": 22, "end": 29, "sentiment": "긍정"}
+      {
+        "word": "보습력이 정말 좋고",
+        "entity_group": "보습력",
+        "start": 11,
+        "end": 21,
+        "sentiment": "긍정"
+      },
+      {
+        "word": "흡수도 빨라요",
+        "entity_group": "흡수력",
+        "start": 22,
+        "end": 29,
+        "sentiment": "긍정"
+      }
     ],
     "relation": [
       {
-        "subject": {"word": "히알루론산", "entity_group": "ING", "sentiment": "중립", "start": 0, "end": 5},
-        "object": {"word": "보습력이 정말 좋고", "entity_group": "보습력", "sentiment": "긍정", "start": 11, "end": 21},
+        "subject": {
+          "word": "히알루론산",
+          "entity_group": "ING",
+          "sentiment": "중립",
+          "start": 0,
+          "end": 5
+        },
+        "object": {
+          "word": "보습력이 정말 좋고",
+          "entity_group": "보습력",
+          "sentiment": "긍정",
+          "start": 11,
+          "end": 21
+        },
         "relation": "has_effect",
         "source_type": "NER-BeE"
       },
       {
-        "subject": {"word": "세럼", "entity_group": "CAT", "sentiment": "중립", "start": 6, "end": 8},
-        "object": {"word": "흡수도 빨라요", "entity_group": "흡수력", "sentiment": "긍정", "start": 22, "end": 29},
+        "subject": {
+          "word": "세럼",
+          "entity_group": "CAT",
+          "sentiment": "중립",
+          "start": 6,
+          "end": 8
+        },
+        "object": {
+          "word": "흡수도 빨라요",
+          "entity_group": "흡수력",
+          "sentiment": "긍정",
+          "start": 22,
+          "end": 29
+        },
         "relation": "has_attribute",
         "source_type": "NER-BeE"
       }
@@ -36,26 +106,96 @@
     "prod_nm": "워터뱅크 블루 히알루로닉 세럼",
     "text": "라네즈 워터뱅크 세럼 촉촉하고 사용감이 가벼워서 좋아요",
     "drup_dt": "2025-06-12",
+    "source_review_key": "REV-P001-002",
+    "author_key": "AUTHOR-002",
+    "source_product_id": "1051234567",
+    "channel": "031",
+    "reviewer_profile": {
+      "age_sctn_cd": "30",
+      "sex_cd": "F",
+      "sktp_nm": "건성",
+      "sktr_nm": "건조"
+    },
     "ner": [
-      {"word": "Reviewer", "entity_group": "PER", "start": null, "end": null, "sentiment": null},
-      {"word": "Review Target", "entity_group": "PRD", "start": null, "end": null, "sentiment": null},
-      {"word": "라네즈", "entity_group": "BRD", "start": 0, "end": 3, "sentiment": "중립"},
-      {"word": "워터뱅크 세럼", "entity_group": "PRD", "start": 4, "end": 11, "sentiment": "중립"}
+      {
+        "word": "Reviewer",
+        "entity_group": "PER",
+        "start": null,
+        "end": null,
+        "sentiment": null
+      },
+      {
+        "word": "Review Target",
+        "entity_group": "PRD",
+        "start": null,
+        "end": null,
+        "sentiment": null
+      },
+      {
+        "word": "라네즈",
+        "entity_group": "BRD",
+        "start": 0,
+        "end": 3,
+        "sentiment": "중립"
+      },
+      {
+        "word": "워터뱅크 세럼",
+        "entity_group": "PRD",
+        "start": 4,
+        "end": 11,
+        "sentiment": "중립"
+      }
     ],
     "bee": [
-      {"word": "촉촉하고", "entity_group": "보습력", "start": 12, "end": 16, "sentiment": "긍정"},
-      {"word": "사용감이 가벼워서 좋아요", "entity_group": "사용감", "start": 17, "end": 30, "sentiment": "긍정"}
+      {
+        "word": "촉촉하고",
+        "entity_group": "보습력",
+        "start": 12,
+        "end": 16,
+        "sentiment": "긍정"
+      },
+      {
+        "word": "사용감이 가벼워서 좋아요",
+        "entity_group": "사용감",
+        "start": 17,
+        "end": 30,
+        "sentiment": "긍정"
+      }
     ],
     "relation": [
       {
-        "subject": {"word": "워터뱅크 세럼", "entity_group": "PRD", "sentiment": "중립", "start": 4, "end": 11},
-        "object": {"word": "촉촉하고", "entity_group": "보습력", "sentiment": "긍정", "start": 12, "end": 16},
+        "subject": {
+          "word": "워터뱅크 세럼",
+          "entity_group": "PRD",
+          "sentiment": "중립",
+          "start": 4,
+          "end": 11
+        },
+        "object": {
+          "word": "촉촉하고",
+          "entity_group": "보습력",
+          "sentiment": "긍정",
+          "start": 12,
+          "end": 16
+        },
         "relation": "has_attribute",
         "source_type": "NER-BeE"
       },
       {
-        "subject": {"word": "워터뱅크 세럼", "entity_group": "PRD", "sentiment": "중립", "start": 4, "end": 11},
-        "object": {"word": "사용감이 가벼워서 좋아요", "entity_group": "사용감", "sentiment": "긍정", "start": 17, "end": 30},
+        "subject": {
+          "word": "워터뱅크 세럼",
+          "entity_group": "PRD",
+          "sentiment": "중립",
+          "start": 4,
+          "end": 11
+        },
+        "object": {
+          "word": "사용감이 가벼워서 좋아요",
+          "entity_group": "사용감",
+          "sentiment": "긍정",
+          "start": 17,
+          "end": 30
+        },
         "relation": "has_attribute",
         "source_type": "NER-BeE"
       }
@@ -67,19 +207,71 @@
     "prod_nm": "워터뱅크 블루 히알루로닉 세럼",
     "text": "세라마이드 성분 덕분에 보습 오래 가요 피부결도 좋아졌어요",
     "drup_dt": "2025-06-15",
+    "source_review_key": "REV-P001-003",
+    "author_key": "AUTHOR-001",
+    "source_product_id": "1051234567",
+    "channel": "031",
+    "reviewer_profile": {
+      "age_sctn_cd": "30",
+      "sex_cd": "F",
+      "sktp_nm": "건성",
+      "sktr_nm": "건조"
+    },
     "ner": [
-      {"word": "Reviewer", "entity_group": "PER", "start": null, "end": null, "sentiment": null},
-      {"word": "Review Target", "entity_group": "PRD", "start": null, "end": null, "sentiment": null},
-      {"word": "세라마이드", "entity_group": "ING", "start": 0, "end": 5, "sentiment": "중립"}
+      {
+        "word": "Reviewer",
+        "entity_group": "PER",
+        "start": null,
+        "end": null,
+        "sentiment": null
+      },
+      {
+        "word": "Review Target",
+        "entity_group": "PRD",
+        "start": null,
+        "end": null,
+        "sentiment": null
+      },
+      {
+        "word": "세라마이드",
+        "entity_group": "ING",
+        "start": 0,
+        "end": 5,
+        "sentiment": "중립"
+      }
     ],
     "bee": [
-      {"word": "보습 오래 가요", "entity_group": "보습력", "start": 13, "end": 21, "sentiment": "긍정"},
-      {"word": "피부결도 좋아졌어요", "entity_group": "효과", "start": 22, "end": 32, "sentiment": "긍정"}
+      {
+        "word": "보습 오래 가요",
+        "entity_group": "보습력",
+        "start": 13,
+        "end": 21,
+        "sentiment": "긍정"
+      },
+      {
+        "word": "피부결도 좋아졌어요",
+        "entity_group": "효과",
+        "start": 22,
+        "end": 32,
+        "sentiment": "긍정"
+      }
     ],
     "relation": [
       {
-        "subject": {"word": "세라마이드", "entity_group": "ING", "sentiment": "중립", "start": 0, "end": 5},
-        "object": {"word": "보습 오래 가요", "entity_group": "보습력", "sentiment": "긍정", "start": 13, "end": 21},
+        "subject": {
+          "word": "세라마이드",
+          "entity_group": "ING",
+          "sentiment": "중립",
+          "start": 0,
+          "end": 5
+        },
+        "object": {
+          "word": "보습 오래 가요",
+          "entity_group": "보습력",
+          "sentiment": "긍정",
+          "start": 13,
+          "end": 21
+        },
         "relation": "has_effect",
         "source_type": "NER-BeE"
       }
@@ -91,26 +283,96 @@
     "prod_nm": "자음생크림",
     "text": "설화수 자음생크림 인삼추출물이 들어있어서 피부가 탄탄해지는 느낌이에요",
     "drup_dt": "2025-06-08",
+    "source_review_key": "REV-P002-001",
+    "author_key": "AUTHOR-003",
+    "source_product_id": "1051234890",
+    "channel": "031",
+    "reviewer_profile": {
+      "age_sctn_cd": "40",
+      "sex_cd": "F",
+      "sktp_nm": "복합성",
+      "sktr_nm": "주름"
+    },
     "ner": [
-      {"word": "Reviewer", "entity_group": "PER", "start": null, "end": null, "sentiment": null},
-      {"word": "Review Target", "entity_group": "PRD", "start": null, "end": null, "sentiment": null},
-      {"word": "설화수", "entity_group": "BRD", "start": 0, "end": 3, "sentiment": "중립"},
-      {"word": "자음생크림", "entity_group": "PRD", "start": 4, "end": 9, "sentiment": "중립"},
-      {"word": "인삼추출물", "entity_group": "ING", "start": 10, "end": 15, "sentiment": "중립"}
+      {
+        "word": "Reviewer",
+        "entity_group": "PER",
+        "start": null,
+        "end": null,
+        "sentiment": null
+      },
+      {
+        "word": "Review Target",
+        "entity_group": "PRD",
+        "start": null,
+        "end": null,
+        "sentiment": null
+      },
+      {
+        "word": "설화수",
+        "entity_group": "BRD",
+        "start": 0,
+        "end": 3,
+        "sentiment": "중립"
+      },
+      {
+        "word": "자음생크림",
+        "entity_group": "PRD",
+        "start": 4,
+        "end": 9,
+        "sentiment": "중립"
+      },
+      {
+        "word": "인삼추출물",
+        "entity_group": "ING",
+        "start": 10,
+        "end": 15,
+        "sentiment": "중립"
+      }
     ],
     "bee": [
-      {"word": "피부가 탄탄해지는 느낌이에요", "entity_group": "효과", "start": 23, "end": 38, "sentiment": "긍정"}
+      {
+        "word": "피부가 탄탄해지는 느낌이에요",
+        "entity_group": "효과",
+        "start": 23,
+        "end": 38,
+        "sentiment": "긍정"
+      }
     ],
     "relation": [
       {
-        "subject": {"word": "인삼추출물", "entity_group": "ING", "sentiment": "중립", "start": 10, "end": 15},
-        "object": {"word": "자음생크림", "entity_group": "PRD", "sentiment": "중립", "start": 4, "end": 9},
+        "subject": {
+          "word": "인삼추출물",
+          "entity_group": "ING",
+          "sentiment": "중립",
+          "start": 10,
+          "end": 15
+        },
+        "object": {
+          "word": "자음생크림",
+          "entity_group": "PRD",
+          "sentiment": "중립",
+          "start": 4,
+          "end": 9
+        },
         "relation": "ingredient_of",
         "source_type": "NER-NER"
       },
       {
-        "subject": {"word": "자음생크림", "entity_group": "PRD", "sentiment": "중립", "start": 4, "end": 9},
-        "object": {"word": "피부가 탄탄해지는 느낌이에요", "entity_group": "효과", "sentiment": "긍정", "start": 23, "end": 38},
+        "subject": {
+          "word": "자음생크림",
+          "entity_group": "PRD",
+          "sentiment": "중립",
+          "start": 4,
+          "end": 9
+        },
+        "object": {
+          "word": "피부가 탄탄해지는 느낌이에요",
+          "entity_group": "효과",
+          "sentiment": "긍정",
+          "start": 23,
+          "end": 38
+        },
         "relation": "has_attribute",
         "source_type": "NER-BeE"
       }
@@ -122,26 +384,96 @@
     "prod_nm": "자음생크림",
     "text": "크림 제형이 무겁지 않고 보습력은 확실해요 가격이 좀 비싸긴 해요",
     "drup_dt": "2025-06-11",
+    "source_review_key": "REV-P002-002",
+    "author_key": "AUTHOR-003",
+    "source_product_id": "1051234890",
+    "channel": "031",
+    "reviewer_profile": {
+      "age_sctn_cd": "40",
+      "sex_cd": "F",
+      "sktp_nm": "복합성",
+      "sktr_nm": "주름"
+    },
     "ner": [
-      {"word": "Reviewer", "entity_group": "PER", "start": null, "end": null, "sentiment": null},
-      {"word": "Review Target", "entity_group": "PRD", "start": null, "end": null, "sentiment": null},
-      {"word": "크림", "entity_group": "CAT", "start": 0, "end": 2, "sentiment": "중립"}
+      {
+        "word": "Reviewer",
+        "entity_group": "PER",
+        "start": null,
+        "end": null,
+        "sentiment": null
+      },
+      {
+        "word": "Review Target",
+        "entity_group": "PRD",
+        "start": null,
+        "end": null,
+        "sentiment": null
+      },
+      {
+        "word": "크림",
+        "entity_group": "CAT",
+        "start": 0,
+        "end": 2,
+        "sentiment": "중립"
+      }
     ],
     "bee": [
-      {"word": "제형이 무겁지 않고", "entity_group": "제형", "start": 3, "end": 13, "sentiment": "긍정"},
-      {"word": "보습력은 확실해요", "entity_group": "보습력", "start": 14, "end": 23, "sentiment": "긍정"},
-      {"word": "가격이 좀 비싸긴 해요", "entity_group": "가성비", "start": 24, "end": 36, "sentiment": "부정"}
+      {
+        "word": "제형이 무겁지 않고",
+        "entity_group": "제형",
+        "start": 3,
+        "end": 13,
+        "sentiment": "긍정"
+      },
+      {
+        "word": "보습력은 확실해요",
+        "entity_group": "보습력",
+        "start": 14,
+        "end": 23,
+        "sentiment": "긍정"
+      },
+      {
+        "word": "가격이 좀 비싸긴 해요",
+        "entity_group": "가성비",
+        "start": 24,
+        "end": 36,
+        "sentiment": "부정"
+      }
     ],
     "relation": [
       {
-        "subject": {"word": "크림", "entity_group": "CAT", "sentiment": "중립", "start": 0, "end": 2},
-        "object": {"word": "제형이 무겁지 않고", "entity_group": "제형", "sentiment": "긍정", "start": 3, "end": 13},
+        "subject": {
+          "word": "크림",
+          "entity_group": "CAT",
+          "sentiment": "중립",
+          "start": 0,
+          "end": 2
+        },
+        "object": {
+          "word": "제형이 무겁지 않고",
+          "entity_group": "제형",
+          "sentiment": "긍정",
+          "start": 3,
+          "end": 13
+        },
         "relation": "has_attribute",
         "source_type": "NER-BeE"
       },
       {
-        "subject": {"word": "크림", "entity_group": "CAT", "sentiment": "중립", "start": 0, "end": 2},
-        "object": {"word": "보습력은 확실해요", "entity_group": "보습력", "sentiment": "긍정", "start": 14, "end": 23},
+        "subject": {
+          "word": "크림",
+          "entity_group": "CAT",
+          "sentiment": "중립",
+          "start": 0,
+          "end": 2
+        },
+        "object": {
+          "word": "보습력은 확실해요",
+          "entity_group": "보습력",
+          "sentiment": "긍정",
+          "start": 14,
+          "end": 23
+        },
         "relation": "has_attribute",
         "source_type": "NER-BeE"
       }
@@ -153,20 +485,78 @@
     "prod_nm": "그린티 씨드 세럼",
     "text": "가성비 좋은 세럼이에요 녹차추출물 덕분에 수분감이 오래 유지돼요",
     "drup_dt": "2025-06-14",
+    "source_review_key": "REV-P003-001",
+    "author_key": "AUTHOR-002",
+    "source_product_id": "IF20260002",
+    "channel": "036",
+    "reviewer_profile": {
+      "age_sctn_cd": "20",
+      "sex_cd": "M",
+      "sktp_nm": "지성",
+      "sktr_nm": "모공"
+    },
     "ner": [
-      {"word": "Reviewer", "entity_group": "PER", "start": null, "end": null, "sentiment": null},
-      {"word": "Review Target", "entity_group": "PRD", "start": null, "end": null, "sentiment": null},
-      {"word": "세럼", "entity_group": "CAT", "start": 7, "end": 9, "sentiment": "중립"},
-      {"word": "녹차추출물", "entity_group": "ING", "start": 13, "end": 18, "sentiment": "중립"}
+      {
+        "word": "Reviewer",
+        "entity_group": "PER",
+        "start": null,
+        "end": null,
+        "sentiment": null
+      },
+      {
+        "word": "Review Target",
+        "entity_group": "PRD",
+        "start": null,
+        "end": null,
+        "sentiment": null
+      },
+      {
+        "word": "세럼",
+        "entity_group": "CAT",
+        "start": 7,
+        "end": 9,
+        "sentiment": "중립"
+      },
+      {
+        "word": "녹차추출물",
+        "entity_group": "ING",
+        "start": 13,
+        "end": 18,
+        "sentiment": "중립"
+      }
     ],
     "bee": [
-      {"word": "가성비 좋은", "entity_group": "가성비", "start": 0, "end": 6, "sentiment": "긍정"},
-      {"word": "수분감이 오래 유지돼요", "entity_group": "보습력", "start": 23, "end": 35, "sentiment": "긍정"}
+      {
+        "word": "가성비 좋은",
+        "entity_group": "가성비",
+        "start": 0,
+        "end": 6,
+        "sentiment": "긍정"
+      },
+      {
+        "word": "수분감이 오래 유지돼요",
+        "entity_group": "보습력",
+        "start": 23,
+        "end": 35,
+        "sentiment": "긍정"
+      }
     ],
     "relation": [
       {
-        "subject": {"word": "녹차추출물", "entity_group": "ING", "sentiment": "중립", "start": 13, "end": 18},
-        "object": {"word": "수분감이 오래 유지돼요", "entity_group": "보습력", "sentiment": "긍정", "start": 23, "end": 35},
+        "subject": {
+          "word": "녹차추출물",
+          "entity_group": "ING",
+          "sentiment": "중립",
+          "start": 13,
+          "end": 18
+        },
+        "object": {
+          "word": "수분감이 오래 유지돼요",
+          "entity_group": "보습력",
+          "sentiment": "긍정",
+          "start": 23,
+          "end": 35
+        },
         "relation": "has_effect",
         "source_type": "NER-BeE"
       }
@@ -178,19 +568,71 @@
     "prod_nm": "그린티 씨드 세럼",
     "text": "이니스프리 그린티 세럼 산뜻하고 끈적임 없어서 여름에 딱이에요",
     "drup_dt": "2025-06-16",
+    "source_review_key": "REV-P003-002",
+    "author_key": "AUTHOR-004",
+    "source_product_id": "IF20260002",
+    "channel": "036",
+    "reviewer_profile": {
+      "age_sctn_cd": "20",
+      "sex_cd": "M",
+      "sktp_nm": "지성",
+      "sktr_nm": "모공"
+    },
     "ner": [
-      {"word": "Reviewer", "entity_group": "PER", "start": null, "end": null, "sentiment": null},
-      {"word": "Review Target", "entity_group": "PRD", "start": null, "end": null, "sentiment": null},
-      {"word": "이니스프리", "entity_group": "BRD", "start": 0, "end": 5, "sentiment": "중립"},
-      {"word": "그린티 세럼", "entity_group": "PRD", "start": 6, "end": 12, "sentiment": "중립"}
+      {
+        "word": "Reviewer",
+        "entity_group": "PER",
+        "start": null,
+        "end": null,
+        "sentiment": null
+      },
+      {
+        "word": "Review Target",
+        "entity_group": "PRD",
+        "start": null,
+        "end": null,
+        "sentiment": null
+      },
+      {
+        "word": "이니스프리",
+        "entity_group": "BRD",
+        "start": 0,
+        "end": 5,
+        "sentiment": "중립"
+      },
+      {
+        "word": "그린티 세럼",
+        "entity_group": "PRD",
+        "start": 6,
+        "end": 12,
+        "sentiment": "중립"
+      }
     ],
     "bee": [
-      {"word": "산뜻하고 끈적임 없어서", "entity_group": "사용감", "start": 13, "end": 25, "sentiment": "긍정"}
+      {
+        "word": "산뜻하고 끈적임 없어서",
+        "entity_group": "사용감",
+        "start": 13,
+        "end": 25,
+        "sentiment": "긍정"
+      }
     ],
     "relation": [
       {
-        "subject": {"word": "그린티 세럼", "entity_group": "PRD", "sentiment": "중립", "start": 6, "end": 12},
-        "object": {"word": "산뜻하고 끈적임 없어서", "entity_group": "사용감", "sentiment": "긍정", "start": 13, "end": 25},
+        "subject": {
+          "word": "그린티 세럼",
+          "entity_group": "PRD",
+          "sentiment": "중립",
+          "start": 6,
+          "end": 12
+        },
+        "object": {
+          "word": "산뜻하고 끈적임 없어서",
+          "entity_group": "사용감",
+          "sentiment": "긍정",
+          "start": 13,
+          "end": 25
+        },
         "relation": "has_attribute",
         "source_type": "NER-BeE"
       }
@@ -202,33 +644,121 @@
     "prod_nm": "블랙쿠션",
     "text": "헤라 블랙쿠션 밀착력이 대박이에요 커버력도 좋고 하루종일 지속돼요",
     "drup_dt": "2025-06-09",
+    "source_review_key": "REV-P005-001",
+    "author_key": "AUTHOR-005",
+    "source_product_id": "1051235123",
+    "channel": "031",
+    "reviewer_profile": {
+      "age_sctn_cd": "30",
+      "sex_cd": "F",
+      "sktp_nm": "복합성",
+      "sktr_nm": "None"
+    },
     "ner": [
-      {"word": "Reviewer", "entity_group": "PER", "start": null, "end": null, "sentiment": null},
-      {"word": "Review Target", "entity_group": "PRD", "start": null, "end": null, "sentiment": null},
-      {"word": "헤라", "entity_group": "BRD", "start": 0, "end": 2, "sentiment": "중립"},
-      {"word": "블랙쿠션", "entity_group": "PRD", "start": 3, "end": 7, "sentiment": "중립"}
+      {
+        "word": "Reviewer",
+        "entity_group": "PER",
+        "start": null,
+        "end": null,
+        "sentiment": null
+      },
+      {
+        "word": "Review Target",
+        "entity_group": "PRD",
+        "start": null,
+        "end": null,
+        "sentiment": null
+      },
+      {
+        "word": "헤라",
+        "entity_group": "BRD",
+        "start": 0,
+        "end": 2,
+        "sentiment": "중립"
+      },
+      {
+        "word": "블랙쿠션",
+        "entity_group": "PRD",
+        "start": 3,
+        "end": 7,
+        "sentiment": "중립"
+      }
     ],
     "bee": [
-      {"word": "밀착력이 대박이에요", "entity_group": "밀착력", "start": 8, "end": 18, "sentiment": "긍정"},
-      {"word": "커버력도 좋고", "entity_group": "커버력", "start": 19, "end": 26, "sentiment": "긍정"},
-      {"word": "하루종일 지속돼요", "entity_group": "지속력", "start": 27, "end": 36, "sentiment": "긍정"}
+      {
+        "word": "밀착력이 대박이에요",
+        "entity_group": "밀착력",
+        "start": 8,
+        "end": 18,
+        "sentiment": "긍정"
+      },
+      {
+        "word": "커버력도 좋고",
+        "entity_group": "커버력",
+        "start": 19,
+        "end": 26,
+        "sentiment": "긍정"
+      },
+      {
+        "word": "하루종일 지속돼요",
+        "entity_group": "지속력",
+        "start": 27,
+        "end": 36,
+        "sentiment": "긍정"
+      }
     ],
     "relation": [
       {
-        "subject": {"word": "블랙쿠션", "entity_group": "PRD", "sentiment": "중립", "start": 3, "end": 7},
-        "object": {"word": "밀착력이 대박이에요", "entity_group": "밀착력", "sentiment": "긍정", "start": 8, "end": 18},
+        "subject": {
+          "word": "블랙쿠션",
+          "entity_group": "PRD",
+          "sentiment": "중립",
+          "start": 3,
+          "end": 7
+        },
+        "object": {
+          "word": "밀착력이 대박이에요",
+          "entity_group": "밀착력",
+          "sentiment": "긍정",
+          "start": 8,
+          "end": 18
+        },
         "relation": "has_attribute",
         "source_type": "NER-BeE"
       },
       {
-        "subject": {"word": "블랙쿠션", "entity_group": "PRD", "sentiment": "중립", "start": 3, "end": 7},
-        "object": {"word": "커버력도 좋고", "entity_group": "커버력", "sentiment": "긍정", "start": 19, "end": 26},
+        "subject": {
+          "word": "블랙쿠션",
+          "entity_group": "PRD",
+          "sentiment": "중립",
+          "start": 3,
+          "end": 7
+        },
+        "object": {
+          "word": "커버력도 좋고",
+          "entity_group": "커버력",
+          "sentiment": "긍정",
+          "start": 19,
+          "end": 26
+        },
         "relation": "has_attribute",
         "source_type": "NER-BeE"
       },
       {
-        "subject": {"word": "블랙쿠션", "entity_group": "PRD", "sentiment": "중립", "start": 3, "end": 7},
-        "object": {"word": "하루종일 지속돼요", "entity_group": "지속력", "sentiment": "긍정", "start": 27, "end": 36},
+        "subject": {
+          "word": "블랙쿠션",
+          "entity_group": "PRD",
+          "sentiment": "중립",
+          "start": 3,
+          "end": 7
+        },
+        "object": {
+          "word": "하루종일 지속돼요",
+          "entity_group": "지속력",
+          "sentiment": "긍정",
+          "start": 27,
+          "end": 36
+        },
         "relation": "has_attribute",
         "source_type": "NER-BeE"
       }
@@ -240,20 +770,78 @@
     "prod_nm": "블랙쿠션",
     "text": "쿠션 발림성은 괜찮은데 오후에 좀 무너져요 커버력은 보통이에요",
     "drup_dt": "2025-06-13",
+    "source_review_key": "REV-P005-002",
+    "author_key": "AUTHOR-005",
+    "source_product_id": "1051235123",
+    "channel": "031",
+    "reviewer_profile": {
+      "age_sctn_cd": "30",
+      "sex_cd": "F",
+      "sktp_nm": "복합성",
+      "sktr_nm": "None"
+    },
     "ner": [
-      {"word": "Reviewer", "entity_group": "PER", "start": null, "end": null, "sentiment": null},
-      {"word": "Review Target", "entity_group": "PRD", "start": null, "end": null, "sentiment": null},
-      {"word": "쿠션", "entity_group": "CAT", "start": 0, "end": 2, "sentiment": "중립"}
+      {
+        "word": "Reviewer",
+        "entity_group": "PER",
+        "start": null,
+        "end": null,
+        "sentiment": null
+      },
+      {
+        "word": "Review Target",
+        "entity_group": "PRD",
+        "start": null,
+        "end": null,
+        "sentiment": null
+      },
+      {
+        "word": "쿠션",
+        "entity_group": "CAT",
+        "start": 0,
+        "end": 2,
+        "sentiment": "중립"
+      }
     ],
     "bee": [
-      {"word": "발림성은 괜찮은데", "entity_group": "발림성", "start": 3, "end": 12, "sentiment": "중립"},
-      {"word": "오후에 좀 무너져요", "entity_group": "지속력", "start": 13, "end": 23, "sentiment": "부정"},
-      {"word": "커버력은 보통이에요", "entity_group": "커버력", "start": 24, "end": 34, "sentiment": "중립"}
+      {
+        "word": "발림성은 괜찮은데",
+        "entity_group": "발림성",
+        "start": 3,
+        "end": 12,
+        "sentiment": "중립"
+      },
+      {
+        "word": "오후에 좀 무너져요",
+        "entity_group": "지속력",
+        "start": 13,
+        "end": 23,
+        "sentiment": "부정"
+      },
+      {
+        "word": "커버력은 보통이에요",
+        "entity_group": "커버력",
+        "start": 24,
+        "end": 34,
+        "sentiment": "중립"
+      }
     ],
     "relation": [
       {
-        "subject": {"word": "쿠션", "entity_group": "CAT", "sentiment": "중립", "start": 0, "end": 2},
-        "object": {"word": "오후에 좀 무너져요", "entity_group": "지속력", "sentiment": "부정", "start": 13, "end": 23},
+        "subject": {
+          "word": "쿠션",
+          "entity_group": "CAT",
+          "sentiment": "중립",
+          "start": 0,
+          "end": 2
+        },
+        "object": {
+          "word": "오후에 좀 무너져요",
+          "entity_group": "지속력",
+          "sentiment": "부정",
+          "start": 13,
+          "end": 23
+        },
         "relation": "has_attribute",
         "source_type": "NER-BeE"
       }
@@ -265,25 +853,89 @@
     "prod_nm": "레티놀 엑스퍼트 0.1%",
     "text": "레티놀 효과는 확실한데 처음에 자극이 좀 있었어요 민감한 분은 주의하세요",
     "drup_dt": "2025-06-07",
+    "source_review_key": "REV-P006-001",
+    "author_key": "AUTHOR-006",
+    "source_product_id": "1051236001",
+    "channel": "031",
+    "reviewer_profile": {
+      "age_sctn_cd": "40",
+      "sex_cd": "F",
+      "sktp_nm": "민감성",
+      "sktr_nm": "건조"
+    },
     "ner": [
-      {"word": "Reviewer", "entity_group": "PER", "start": null, "end": null, "sentiment": null},
-      {"word": "Review Target", "entity_group": "PRD", "start": null, "end": null, "sentiment": null},
-      {"word": "레티놀", "entity_group": "ING", "start": 0, "end": 3, "sentiment": "중립"}
+      {
+        "word": "Reviewer",
+        "entity_group": "PER",
+        "start": null,
+        "end": null,
+        "sentiment": null
+      },
+      {
+        "word": "Review Target",
+        "entity_group": "PRD",
+        "start": null,
+        "end": null,
+        "sentiment": null
+      },
+      {
+        "word": "레티놀",
+        "entity_group": "ING",
+        "start": 0,
+        "end": 3,
+        "sentiment": "중립"
+      }
     ],
     "bee": [
-      {"word": "효과는 확실한데", "entity_group": "효과", "start": 4, "end": 12, "sentiment": "긍정"},
-      {"word": "자극이 좀 있었어요", "entity_group": "자극도", "start": 17, "end": 27, "sentiment": "부정"}
+      {
+        "word": "효과는 확실한데",
+        "entity_group": "효과",
+        "start": 4,
+        "end": 12,
+        "sentiment": "긍정"
+      },
+      {
+        "word": "자극이 좀 있었어요",
+        "entity_group": "자극도",
+        "start": 17,
+        "end": 27,
+        "sentiment": "부정"
+      }
     ],
     "relation": [
       {
-        "subject": {"word": "레티놀", "entity_group": "ING", "sentiment": "중립", "start": 0, "end": 3},
-        "object": {"word": "효과는 확실한데", "entity_group": "효과", "sentiment": "긍정", "start": 4, "end": 12},
+        "subject": {
+          "word": "레티놀",
+          "entity_group": "ING",
+          "sentiment": "중립",
+          "start": 0,
+          "end": 3
+        },
+        "object": {
+          "word": "효과는 확실한데",
+          "entity_group": "효과",
+          "sentiment": "긍정",
+          "start": 4,
+          "end": 12
+        },
         "relation": "has_effect",
         "source_type": "NER-BeE"
       },
       {
-        "subject": {"word": "레티놀", "entity_group": "ING", "sentiment": "중립", "start": 0, "end": 3},
-        "object": {"word": "자극이 좀 있었어요", "entity_group": "자극도", "sentiment": "부정", "start": 17, "end": 27},
+        "subject": {
+          "word": "레티놀",
+          "entity_group": "ING",
+          "sentiment": "중립",
+          "start": 0,
+          "end": 3
+        },
+        "object": {
+          "word": "자극이 좀 있었어요",
+          "entity_group": "자극도",
+          "sentiment": "부정",
+          "start": 17,
+          "end": 27
+        },
         "relation": "has_effect",
         "source_type": "NER-BeE"
       }
@@ -295,27 +947,103 @@
     "prod_nm": "윤조에센스",
     "text": "설화수 윤조에센스 향이 정말 고급스럽고 피부에 윤기가 돌아요 계속 쓸 거예요",
     "drup_dt": "2025-06-05",
+    "source_review_key": "REV-P008-001",
+    "author_key": "AUTHOR-001",
+    "source_product_id": "1051234890",
+    "channel": "031",
+    "reviewer_profile": {
+      "age_sctn_cd": "40",
+      "sex_cd": "F",
+      "sktp_nm": "건성",
+      "sktr_nm": "주름"
+    },
     "ner": [
-      {"word": "Reviewer", "entity_group": "PER", "start": null, "end": null, "sentiment": null},
-      {"word": "Review Target", "entity_group": "PRD", "start": null, "end": null, "sentiment": null},
-      {"word": "설화수", "entity_group": "BRD", "start": 0, "end": 3, "sentiment": "중립"},
-      {"word": "윤조에센스", "entity_group": "PRD", "start": 4, "end": 9, "sentiment": "중립"}
+      {
+        "word": "Reviewer",
+        "entity_group": "PER",
+        "start": null,
+        "end": null,
+        "sentiment": null
+      },
+      {
+        "word": "Review Target",
+        "entity_group": "PRD",
+        "start": null,
+        "end": null,
+        "sentiment": null
+      },
+      {
+        "word": "설화수",
+        "entity_group": "BRD",
+        "start": 0,
+        "end": 3,
+        "sentiment": "중립"
+      },
+      {
+        "word": "윤조에센스",
+        "entity_group": "PRD",
+        "start": 4,
+        "end": 9,
+        "sentiment": "중립"
+      }
     ],
     "bee": [
-      {"word": "향이 정말 고급스럽고", "entity_group": "향", "start": 10, "end": 21, "sentiment": "긍정"},
-      {"word": "피부에 윤기가 돌아요", "entity_group": "효과", "start": 22, "end": 33, "sentiment": "긍정"},
-      {"word": "계속 쓸 거예요", "entity_group": "충성도", "start": 34, "end": 42, "sentiment": "긍정"}
+      {
+        "word": "향이 정말 고급스럽고",
+        "entity_group": "향",
+        "start": 10,
+        "end": 21,
+        "sentiment": "긍정"
+      },
+      {
+        "word": "피부에 윤기가 돌아요",
+        "entity_group": "효과",
+        "start": 22,
+        "end": 33,
+        "sentiment": "긍정"
+      },
+      {
+        "word": "계속 쓸 거예요",
+        "entity_group": "충성도",
+        "start": 34,
+        "end": 42,
+        "sentiment": "긍정"
+      }
     ],
     "relation": [
       {
-        "subject": {"word": "윤조에센스", "entity_group": "PRD", "sentiment": "중립", "start": 4, "end": 9},
-        "object": {"word": "향이 정말 고급스럽고", "entity_group": "향", "sentiment": "긍정", "start": 10, "end": 21},
+        "subject": {
+          "word": "윤조에센스",
+          "entity_group": "PRD",
+          "sentiment": "중립",
+          "start": 4,
+          "end": 9
+        },
+        "object": {
+          "word": "향이 정말 고급스럽고",
+          "entity_group": "향",
+          "sentiment": "긍정",
+          "start": 10,
+          "end": 21
+        },
         "relation": "has_attribute",
         "source_type": "NER-BeE"
       },
       {
-        "subject": {"word": "윤조에센스", "entity_group": "PRD", "sentiment": "중립", "start": 4, "end": 9},
-        "object": {"word": "피부에 윤기가 돌아요", "entity_group": "효과", "sentiment": "긍정", "start": 22, "end": 33},
+        "subject": {
+          "word": "윤조에센스",
+          "entity_group": "PRD",
+          "sentiment": "중립",
+          "start": 4,
+          "end": 9
+        },
+        "object": {
+          "word": "피부에 윤기가 돌아요",
+          "entity_group": "효과",
+          "sentiment": "긍정",
+          "start": 22,
+          "end": 33
+        },
         "relation": "has_attribute",
         "source_type": "NER-BeE"
       }
@@ -327,27 +1055,103 @@
     "prod_nm": "윤조에센스",
     "text": "인삼추출물 함유된 에센스인데 향도 좋고 효과도 확실해요 재구매 의사 있어요",
     "drup_dt": "2025-06-17",
+    "source_review_key": "REV-P008-002",
+    "author_key": "AUTHOR-007",
+    "source_product_id": "1051234890",
+    "channel": "031",
+    "reviewer_profile": {
+      "age_sctn_cd": "40",
+      "sex_cd": "F",
+      "sktp_nm": "건성",
+      "sktr_nm": "주름"
+    },
     "ner": [
-      {"word": "Reviewer", "entity_group": "PER", "start": null, "end": null, "sentiment": null},
-      {"word": "Review Target", "entity_group": "PRD", "start": null, "end": null, "sentiment": null},
-      {"word": "인삼추출물", "entity_group": "ING", "start": 0, "end": 5, "sentiment": "중립"},
-      {"word": "에센스", "entity_group": "CAT", "start": 10, "end": 13, "sentiment": "중립"}
+      {
+        "word": "Reviewer",
+        "entity_group": "PER",
+        "start": null,
+        "end": null,
+        "sentiment": null
+      },
+      {
+        "word": "Review Target",
+        "entity_group": "PRD",
+        "start": null,
+        "end": null,
+        "sentiment": null
+      },
+      {
+        "word": "인삼추출물",
+        "entity_group": "ING",
+        "start": 0,
+        "end": 5,
+        "sentiment": "중립"
+      },
+      {
+        "word": "에센스",
+        "entity_group": "CAT",
+        "start": 10,
+        "end": 13,
+        "sentiment": "중립"
+      }
     ],
     "bee": [
-      {"word": "향도 좋고", "entity_group": "향", "start": 16, "end": 21, "sentiment": "긍정"},
-      {"word": "효과도 확실해요", "entity_group": "효과", "start": 22, "end": 30, "sentiment": "긍정"},
-      {"word": "재구매 의사 있어요", "entity_group": "충성도", "start": 31, "end": 41, "sentiment": "긍정"}
+      {
+        "word": "향도 좋고",
+        "entity_group": "향",
+        "start": 16,
+        "end": 21,
+        "sentiment": "긍정"
+      },
+      {
+        "word": "효과도 확실해요",
+        "entity_group": "효과",
+        "start": 22,
+        "end": 30,
+        "sentiment": "긍정"
+      },
+      {
+        "word": "재구매 의사 있어요",
+        "entity_group": "충성도",
+        "start": 31,
+        "end": 41,
+        "sentiment": "긍정"
+      }
     ],
     "relation": [
       {
-        "subject": {"word": "인삼추출물", "entity_group": "ING", "sentiment": "중립", "start": 0, "end": 5},
-        "object": {"word": "효과도 확실해요", "entity_group": "효과", "sentiment": "긍정", "start": 22, "end": 30},
+        "subject": {
+          "word": "인삼추출물",
+          "entity_group": "ING",
+          "sentiment": "중립",
+          "start": 0,
+          "end": 5
+        },
+        "object": {
+          "word": "효과도 확실해요",
+          "entity_group": "효과",
+          "sentiment": "긍정",
+          "start": 22,
+          "end": 30
+        },
         "relation": "has_effect",
         "source_type": "NER-BeE"
       },
       {
-        "subject": {"word": "에센스", "entity_group": "CAT", "sentiment": "중립", "start": 10, "end": 13},
-        "object": {"word": "향도 좋고", "entity_group": "향", "sentiment": "긍정", "start": 16, "end": 21},
+        "subject": {
+          "word": "에센스",
+          "entity_group": "CAT",
+          "sentiment": "중립",
+          "start": 10,
+          "end": 13
+        },
+        "object": {
+          "word": "향도 좋고",
+          "entity_group": "향",
+          "sentiment": "긍정",
+          "start": 16,
+          "end": 21
+        },
         "relation": "has_attribute",
         "source_type": "NER-BeE"
       }
@@ -359,25 +1163,89 @@
     "prod_nm": "비자 시카밤 클렌징 폼",
     "text": "클렌징 폼 거품이 부드럽고 세안 후에도 당기지 않아서 편리해요",
     "drup_dt": "2025-06-18",
+    "source_review_key": "REV-P009-001",
+    "author_key": "AUTHOR-008",
+    "source_product_id": "IF20260004",
+    "channel": "036",
+    "reviewer_profile": {
+      "age_sctn_cd": "20",
+      "sex_cd": "M",
+      "sktp_nm": "지성",
+      "sktr_nm": "트러블"
+    },
     "ner": [
-      {"word": "Reviewer", "entity_group": "PER", "start": null, "end": null, "sentiment": null},
-      {"word": "Review Target", "entity_group": "PRD", "start": null, "end": null, "sentiment": null},
-      {"word": "클렌징 폼", "entity_group": "CAT", "start": 0, "end": 5, "sentiment": "중립"}
+      {
+        "word": "Reviewer",
+        "entity_group": "PER",
+        "start": null,
+        "end": null,
+        "sentiment": null
+      },
+      {
+        "word": "Review Target",
+        "entity_group": "PRD",
+        "start": null,
+        "end": null,
+        "sentiment": null
+      },
+      {
+        "word": "클렌징 폼",
+        "entity_group": "CAT",
+        "start": 0,
+        "end": 5,
+        "sentiment": "중립"
+      }
     ],
     "bee": [
-      {"word": "거품이 부드럽고", "entity_group": "사용감", "start": 6, "end": 14, "sentiment": "긍정"},
-      {"word": "당기지 않아서 편리해요", "entity_group": "편리성", "start": 22, "end": 34, "sentiment": "긍정"}
+      {
+        "word": "거품이 부드럽고",
+        "entity_group": "사용감",
+        "start": 6,
+        "end": 14,
+        "sentiment": "긍정"
+      },
+      {
+        "word": "당기지 않아서 편리해요",
+        "entity_group": "편리성",
+        "start": 22,
+        "end": 34,
+        "sentiment": "긍정"
+      }
     ],
     "relation": [
       {
-        "subject": {"word": "클렌징 폼", "entity_group": "CAT", "sentiment": "중립", "start": 0, "end": 5},
-        "object": {"word": "거품이 부드럽고", "entity_group": "사용감", "sentiment": "긍정", "start": 6, "end": 14},
+        "subject": {
+          "word": "클렌징 폼",
+          "entity_group": "CAT",
+          "sentiment": "중립",
+          "start": 0,
+          "end": 5
+        },
+        "object": {
+          "word": "거품이 부드럽고",
+          "entity_group": "사용감",
+          "sentiment": "긍정",
+          "start": 6,
+          "end": 14
+        },
         "relation": "has_attribute",
         "source_type": "NER-BeE"
       },
       {
-        "subject": {"word": "클렌징 폼", "entity_group": "CAT", "sentiment": "중립", "start": 0, "end": 5},
-        "object": {"word": "당기지 않아서 편리해요", "entity_group": "편리성", "sentiment": "긍정", "start": 22, "end": 34},
+        "subject": {
+          "word": "클렌징 폼",
+          "entity_group": "CAT",
+          "sentiment": "중립",
+          "start": 0,
+          "end": 5
+        },
+        "object": {
+          "word": "당기지 않아서 편리해요",
+          "entity_group": "편리성",
+          "sentiment": "긍정",
+          "start": 22,
+          "end": 34
+        },
         "relation": "has_attribute",
         "source_type": "NER-BeE"
       }
@@ -389,33 +1257,116 @@
     "prod_nm": "센슈얼 파우더 매트 립스틱",
     "text": "헤라 립스틱 발림성 좋고 색감이 예뻐요 매트한데 지속력도 괜찮아요",
     "drup_dt": "2025-06-19",
+    "source_review_key": "REV-P010-001",
+    "author_key": "AUTHOR-007",
+    "source_product_id": "SPD0000012348",
+    "channel": "kakao",
+    "reviewer_profile": null,
     "ner": [
-      {"word": "Reviewer", "entity_group": "PER", "start": null, "end": null, "sentiment": null},
-      {"word": "Review Target", "entity_group": "PRD", "start": null, "end": null, "sentiment": null},
-      {"word": "헤라", "entity_group": "BRD", "start": 0, "end": 2, "sentiment": "중립"},
-      {"word": "립스틱", "entity_group": "CAT", "start": 3, "end": 6, "sentiment": "중립"}
+      {
+        "word": "Reviewer",
+        "entity_group": "PER",
+        "start": null,
+        "end": null,
+        "sentiment": null
+      },
+      {
+        "word": "Review Target",
+        "entity_group": "PRD",
+        "start": null,
+        "end": null,
+        "sentiment": null
+      },
+      {
+        "word": "헤라",
+        "entity_group": "BRD",
+        "start": 0,
+        "end": 2,
+        "sentiment": "중립"
+      },
+      {
+        "word": "립스틱",
+        "entity_group": "CAT",
+        "start": 3,
+        "end": 6,
+        "sentiment": "중립"
+      }
     ],
     "bee": [
-      {"word": "발림성 좋고", "entity_group": "발림성", "start": 7, "end": 13, "sentiment": "긍정"},
-      {"word": "색감이 예뻐요", "entity_group": "색감", "start": 14, "end": 21, "sentiment": "긍정"},
-      {"word": "지속력도 괜찮아요", "entity_group": "지속력", "start": 27, "end": 36, "sentiment": "긍정"}
+      {
+        "word": "발림성 좋고",
+        "entity_group": "발림성",
+        "start": 7,
+        "end": 13,
+        "sentiment": "긍정"
+      },
+      {
+        "word": "색감이 예뻐요",
+        "entity_group": "색감",
+        "start": 14,
+        "end": 21,
+        "sentiment": "긍정"
+      },
+      {
+        "word": "지속력도 괜찮아요",
+        "entity_group": "지속력",
+        "start": 27,
+        "end": 36,
+        "sentiment": "긍정"
+      }
     ],
     "relation": [
       {
-        "subject": {"word": "립스틱", "entity_group": "CAT", "sentiment": "중립", "start": 3, "end": 6},
-        "object": {"word": "발림성 좋고", "entity_group": "발림성", "sentiment": "긍정", "start": 7, "end": 13},
+        "subject": {
+          "word": "립스틱",
+          "entity_group": "CAT",
+          "sentiment": "중립",
+          "start": 3,
+          "end": 6
+        },
+        "object": {
+          "word": "발림성 좋고",
+          "entity_group": "발림성",
+          "sentiment": "긍정",
+          "start": 7,
+          "end": 13
+        },
         "relation": "has_attribute",
         "source_type": "NER-BeE"
       },
       {
-        "subject": {"word": "립스틱", "entity_group": "CAT", "sentiment": "중립", "start": 3, "end": 6},
-        "object": {"word": "색감이 예뻐요", "entity_group": "색감", "sentiment": "긍정", "start": 14, "end": 21},
+        "subject": {
+          "word": "립스틱",
+          "entity_group": "CAT",
+          "sentiment": "중립",
+          "start": 3,
+          "end": 6
+        },
+        "object": {
+          "word": "색감이 예뻐요",
+          "entity_group": "색감",
+          "sentiment": "긍정",
+          "start": 14,
+          "end": 21
+        },
         "relation": "has_attribute",
         "source_type": "NER-BeE"
       },
       {
-        "subject": {"word": "립스틱", "entity_group": "CAT", "sentiment": "중립", "start": 3, "end": 6},
-        "object": {"word": "지속력도 괜찮아요", "entity_group": "지속력", "sentiment": "긍정", "start": 27, "end": 36},
+        "subject": {
+          "word": "립스틱",
+          "entity_group": "CAT",
+          "sentiment": "중립",
+          "start": 3,
+          "end": 6
+        },
+        "object": {
+          "word": "지속력도 괜찮아요",
+          "entity_group": "지속력",
+          "sentiment": "긍정",
+          "start": 27,
+          "end": 36
+        },
         "relation": "has_attribute",
         "source_type": "NER-BeE"
       }
@@ -427,13 +1378,47 @@
     "prod_nm": "워터뱅크 블루 히알루로닉 세럼",
     "text": "워터뱅크 세럼 촉촉함이 오래가고 피부가 편안해져요",
     "drup_dt": "2025-06-20",
+    "source_review_key": "REV-P001-004",
+    "author_key": "AUTHOR-008",
+    "source_product_id": "1051234567",
+    "channel": "031",
+    "reviewer_profile": {
+      "age_sctn_cd": "30",
+      "sex_cd": "F",
+      "sktp_nm": "건성",
+      "sktr_nm": "건조"
+    },
     "ner": [
-      {"word": "Reviewer", "entity_group": "PER", "start": null, "end": null, "sentiment": null},
-      {"word": "Review Target", "entity_group": "PRD", "start": null, "end": null, "sentiment": null}
+      {
+        "word": "Reviewer",
+        "entity_group": "PER",
+        "start": null,
+        "end": null,
+        "sentiment": null
+      },
+      {
+        "word": "Review Target",
+        "entity_group": "PRD",
+        "start": null,
+        "end": null,
+        "sentiment": null
+      }
     ],
     "bee": [
-      {"word": "촉촉함이 오래가고", "entity_group": "보습력", "start": 8, "end": 17, "sentiment": "긍정"},
-      {"word": "피부가 편안해져요", "entity_group": "사용감", "start": 18, "end": 27, "sentiment": "긍정"}
+      {
+        "word": "촉촉함이 오래가고",
+        "entity_group": "보습력",
+        "start": 8,
+        "end": 17,
+        "sentiment": "긍정"
+      },
+      {
+        "word": "피부가 편안해져요",
+        "entity_group": "사용감",
+        "start": 18,
+        "end": 27,
+        "sentiment": "긍정"
+      }
     ],
     "relation": []
   }

@@ -201,8 +201,15 @@ def _novelty_bonus(user_profile: dict, product_profile: dict) -> float:
     product_id = product_profile.get("product_id", "")
     brand_id = product_profile.get("brand_id", "")
 
-    owned = {entry["id"] if isinstance(entry, dict) else entry
-             for entry in (user_profile.get("owned_product_ids") or [])}
+    # owned_product_ids may contain product IRIs ("product:P001") or raw IDs
+    owned_raw = {entry["id"] if isinstance(entry, dict) else entry
+                 for entry in (user_profile.get("owned_product_ids") or [])}
+    owned = set()
+    for oid in owned_raw:
+        if oid.startswith("product:"):
+            owned.add(oid[len("product:"):])
+        else:
+            owned.add(oid)
     if product_id in owned:
         return 0.0
 

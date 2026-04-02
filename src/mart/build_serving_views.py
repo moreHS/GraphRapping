@@ -130,6 +130,7 @@ def build_serving_user_profile(
         "preferred_context_ids": _collect("PREFERS_CONTEXT"),
         # Behavior section (purchase-derived)
         "recent_purchase_brand_ids": _collect("RECENTLY_PURCHASED"),
-        "repurchase_brand_ids": _collect("REPURCHASES_PRODUCT_OR_FAMILY"),
+        "repurchase_brand_ids": _collect("REPURCHASES_BRAND"),
+        "repurchase_category_ids": _collect("REPURCHASES_CATEGORY"),
         "owned_product_ids": _collect("OWNS_PRODUCT"),
     }

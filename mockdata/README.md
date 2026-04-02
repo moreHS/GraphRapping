@@ -12,6 +12,8 @@ GraphRapping 프로젝트의 3대 데이터 소스(유저/상품/리뷰트리플
 | `user_profiles_normalized.json` | JSON dict | 3명 | `load_users_from_profiles()` 입력 |
 | `review_triples_raw.json` | JSON array | 15개 리뷰 | `load_reviews_from_json()` 입력 |
 | `review_kg_output.json` | JSON object | entities ~44, edges ~51 | KG 파이프라인 출력 참조 |
+| `review_rs_samples.json` | JSON array | 20개 (own 10 + extn 6 + glb 4) | **실제 S3 rs.jsonl 형식** 참조 데이터 |
+| `SCHEMA_RS_JSONL.md` | Markdown | - | rs.jsonl 전체 스키마 + Snowflake 매핑 문서 |
 
 ## 데이터 소스별 스키마
 
@@ -35,16 +37,42 @@ SALE_STATUS                → 필터 ("판매중" only)
 
 **Normalized (3-group)**: `basic`, `purchase_analysis`, `chat` — `adapt_user_profile()` 소비 형식
 
+### 유저 데이터 로딩 계약
+
+**공식 입력 형식**: `user_profiles_normalized.json` (3-group: basic/purchase_analysis/chat)
+- `load_users_from_profiles()` 직접 입력 가능
+- `adapt_user_profile()` 소비 형식과 동일
+
+**참조용**: `user_profiles_raw.json` (7-column: personal-agent 원본)
+- GraphRapping loader에 직접 입력 불가
+- personal-agent의 `_normalize_profile()` 변환이 필요
+- 스키마 참조 및 미래 raw → normalized 변환기 개발 시 활용
+
 ### 3. 리뷰 트리플 (review_triples_raw.json)
 
-Relation 프로젝트 NER+BEE+REL 추출 출력:
+GraphRapping `load_reviews_from_json()` 입력 형식 (중간 변환 포맷):
 
 ```
 brnd_nm, clct_site_nm, prod_nm, text, drup_dt
+source_review_key: stable external review ID — deterministic review_id 생성
+author_key: stable reviewer identity — cross-review reviewer proxy
+source_product_id: 소스 시스템 원본 상품 ID (own: ecp_onln_prd_srno, extn: std_prd_cd)
+channel: 채널 코드 ("031", "036", "navershopping", "kakao" 등)
+reviewer_profile: 리뷰어 인구통계 (own만 제공, extn/glb은 null)
 ner[]: {word, entity_group, start, end, sentiment}
 bee[]: {word, entity_group, start, end, sentiment}
 relation[]: {subject, object, relation, source_type}
 ```
+
+### 3-1. 실제 파이프라인 원본 (review_rs_samples.json)
+
+S3 rs.jsonl 원본 형식. 상세 스키마: [SCHEMA_RS_JSONL.md](SCHEMA_RS_JSONL.md)
+
+| Source | 레코드 수 | Channel | 전용 필드 |
+|--------|----------|---------|----------|
+| own | 10 | 031, 036, 048 | age_sctn_cd, sex_cd, sktp_nm, sktr_nm |
+| extn | 6 | navershopping, ssg, oliveyoung, kakao | rspn_sal_lcns_nm |
+| glb | 4 | amazon, sephora | rspn_sal_lcns_nm |
 
 ### 4. KG 출력 (review_kg_output.json)
 

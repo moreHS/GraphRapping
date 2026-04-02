@@ -47,7 +47,15 @@ def generate_candidates(
     preferred_bee_attrs = _extract_ids(user_profile.get("preferred_bee_attr_ids", []))
     preferred_contexts = _extract_ids(user_profile.get("preferred_context_ids", []))
     goal_ids = _extract_ids(user_profile.get("goal_ids", []))
-    owned_product_ids = _extract_ids(user_profile.get("owned_product_ids", []))
+    owned_product_ids_raw = _extract_ids(user_profile.get("owned_product_ids", []))
+    # Normalize: owned_product_ids may contain product IRIs ("product:P001")
+    # or raw IDs ("P001"). Build a set that matches against raw product_id.
+    owned_product_ids = set()
+    for oid in owned_product_ids_raw:
+        if oid.startswith("product:"):
+            owned_product_ids.add(oid[len("product:"):])
+        else:
+            owned_product_ids.add(oid)
 
     candidates: list[CandidateProduct] = []
 

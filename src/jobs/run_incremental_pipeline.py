@@ -311,4 +311,5 @@ def _agg_to_dict(agg) -> dict:
         "score": agg.score,
         "support_count": agg.support_count,
         "last_seen_at": agg.last_seen_at,
+        "is_promoted": agg.is_promoted,
     }

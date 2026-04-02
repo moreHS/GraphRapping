@@ -4,7 +4,8 @@ Elasticsearch product index → ProductRecord[] + ProductIndex + concept_links l
 Reads from ES 'amore-prod-mstr' index and builds all product-side inputs
 required by run_batch(): product_masters, product_index, concept_links.
 
-MVP: price/ingredients/main_benefits are empty defaults (enrich later from separate source).
+Field mapping uses mock product truth fields from the ES index
+(SALE_PRICE, MAIN_EFFECT, MAIN_INGREDIENT, REPRESENTATIVE_PROD_CODE, etc.).
 """
 
 from __future__ import annotations
@@ -16,6 +17,35 @@ from src.ingest.product_ingest import ProductRecord, ingest_product
 from src.link.product_matcher import ProductIndex
 from src.common.text_normalize import normalize_text
 from src.common.ids import make_product_iri
+
+
+# ---------------------------------------------------------------------------
+# Parsing helpers
+# ---------------------------------------------------------------------------
+
+def _parse_comma_list(value: str | None) -> list[str]:
+    """Parse a comma-delimited string into a list of stripped strings.
+
+    Returns [] if value is None or empty string.
+    Returns [value] if it's a non-delimited string.
+    Splits by "," and strips whitespace for comma-delimited strings.
+    """
+    if value is None or (isinstance(value, str) and value.strip() == ""):
+        return []
+    s = str(value).strip()
+    if "," not in s:
+        return [s]
+    return [part.strip() for part in s.split(",") if part.strip()]
+
+
+def _parse_price(value: Any) -> float | None:
+    """Convert value to float, returning None on failure or if value is None."""
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (ValueError, TypeError):
+        return None
 
 
 @dataclass
@@ -39,13 +69,17 @@ def load_products_from_es_records(
         es_records: List of ES _source dicts from amore-prod-mstr index
         sale_status_filter: Only include products with this SALE_STATUS
 
-    Field mapping:
+    Field mapping (ES field → ProductRecord field):
       ONLINE_PROD_SERIAL_NUMBER → product_id
       prd_nm → product_name
       BRAND_NAME → brand_name, brand_id=normalize(BRAND_NAME)
       CTGR_SS_NAME → category_name, category_id=normalize(CTGR_SS_NAME)
       SALE_STATUS → filter (판매중 only)
-      price, ingredients, main_benefits, country_of_origin → defaults (MVP)
+      SALE_PRICE → price (float, None on failure)
+      MAIN_INGREDIENT → ingredients (comma-split list)
+      MAIN_EFFECT → main_benefits (comma-split list)
+      COUNTRY_OF_ORIGIN → country_of_origin
+      REPRESENTATIVE_PROD_CODE → variant_family_id
     """
     result = ProductLoadResult()
     index_data = []
@@ -69,18 +103,26 @@ def load_products_from_es_records(
             brand_id=normalize_text(brand_name) if brand_name else None,
             category_name=category_name,
             category_id=normalize_text(category_name) if category_name else None,
-            # MVP defaults — enrich later from separate source
-            price=None,
-            ingredients=[],
-            main_benefits=[],
-            country_of_origin=None,
+            price=_parse_price(record.get("SALE_PRICE")),
+            ingredients=_parse_comma_list(record.get("MAIN_INGREDIENT", "")),
+            main_benefits=_parse_comma_list(record.get("MAIN_EFFECT", "")),
+            country_of_origin=record.get("COUNTRY_OF_ORIGIN"),
+            variant_family_id=record.get("REPRESENTATIVE_PROD_CODE"),
         )
 
         # Run product_ingest to generate master row + concept seeds + links
         ingest_result = ingest_product(pr)
 
         product_iri = make_product_iri(product_id)
-        result.product_masters[product_id] = ingest_result["product_master"]
+        master = ingest_result["product_master"]
+        master["_es_meta"] = {
+            "REPRESENTATIVE_PROD_NAME": record.get("REPRESENTATIVE_PROD_NAME"),
+            "REVIEW_COUNT": record.get("REVIEW_COUNT"),
+            "REVIEW_SCORE": record.get("REVIEW_SCORE"),
+            "SAP_CODE": record.get("SAP_CODE"),
+            "ONLINE_PROD_CODE": record.get("ONLINE_PROD_CODE"),
+        }
+        result.product_masters[product_id] = master
         result.concept_links[product_iri] = [
             {"concept_id": link.concept_id, "link_type": link.link_type,
              "confidence": link.confidence, "source": link.source}

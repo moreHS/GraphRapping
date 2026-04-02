@@ -610,4 +610,6 @@ def _agg_to_dict(agg) -> dict:
         "pos_cnt": agg.pos_cnt,
         "neg_cnt": agg.neg_cnt,
         "score": agg.score,
+        "is_promoted": agg.is_promoted,
+        "last_seen_at": agg.last_seen_at,
     }
