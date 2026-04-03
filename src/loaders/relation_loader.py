@@ -1,10 +1,14 @@
 """
 Relation project JSON → RawReviewRecord[] loader.
 
-Reads extraction output (NER+BEE+REL) from Relation project JSON files
-and converts to GraphRapping's RawReviewRecord format.
+Contract: Accepts extraction output from Relation project (NER+BEE+REL)
+with relation[] already in 65 canonical predicates. This is the
+intermediate format produced by the NLP extraction pipeline.
 
-Prerequisite: input file contains reviews with relation[] already in 65 canonical predicates.
+Difference from rs_jsonl_loader:
+  - rs_jsonl_loader accepts raw S3 operational output and performs label mapping
+  - relation_loader expects already-extracted and canonicalized relations
+  - Both produce the same RawReviewRecord output type
 """
 
 from __future__ import annotations

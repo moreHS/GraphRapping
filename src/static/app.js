@@ -164,15 +164,43 @@ async function showUserDetail(id) {
 // Recommendation Tester
 // =============================================================================
 const DEFAULT_WEIGHTS = {
-  keyword_match: 0.28, residual_bee_attr_match: 0.12, context_match: 0.15,
-  concern_fit: 0.15, ingredient_match: 0.10, brand_match_conf_weighted: 0.08,
-  goal_fit: 0.08, category_affinity: 0.05, freshness_boost: 0.05,
+  keyword_match: 0.20, residual_bee_attr_match: 0.09, context_match: 0.11,
+  concern_fit: 0.11, ingredient_match: 0.08, brand_match_conf_weighted: 0.07,
+  goal_fit_master: 0.05, goal_fit_review_signal: 0.05,
+  category_affinity: 0.05, freshness_boost: 0.04,
+  skin_type_fit: 0.06, purchase_loyalty_score: 0.04, novelty_bonus: 0.02,
+  owned_family_penalty: 0.04, repurchase_family_affinity: 0.03,
+  tool_alignment: 0.02, coused_product_bonus: 0.02,
 };
-const WEIGHT_LABELS = {
-  keyword_match: '키워드 일치', residual_bee_attr_match: '잔여 BEE속성',
-  context_match: '맥락 일치', concern_fit: '고민 적합도', ingredient_match: '성분 일치',
-  brand_match_conf_weighted: '브랜드 신뢰', goal_fit: '목표 적합도',
-  category_affinity: '카테고리', freshness_boost: '최신성',
+const WEIGHT_META = {
+  keyword_match:              { label: '키워드 일치',      group: 'core',    desc: '리뷰에서 추출된 구체 키워드(촉촉, 물광 등)와 유저 선호 키워드의 겹침. 가장 핵심적인 매칭 축.' },
+  residual_bee_attr_match:    { label: '잔여 BEE속성',    group: 'core',    desc: '키워드로 이미 커버되지 않은 상위 BEE 속성(제형, 발림성 등)의 추가 매칭. 키워드와 중복 카운트를 방지하는 잔여분만 반영.' },
+  context_match:              { label: '맥락 일치',       group: 'core',    desc: '사용 맥락(아침, 세안 후, 여름 등)이 유저 선호 맥락과 겹치는 정도.' },
+  concern_fit:                { label: '고민 적합도',      group: 'core',    desc: '유저 피부 고민(건조, 모공, 트러블 등)을 제품 리뷰 시그널이 얼마나 다루는지.' },
+  ingredient_match:           { label: '성분 일치',       group: 'core',    desc: '유저가 선호하는 성분(히알루론산, 나이아신아마이드 등)이 제품에 포함된 정도.' },
+  brand_match_conf_weighted:  { label: '브랜드 신뢰',      group: 'core',    desc: '유저 선호 브랜드와 제품 브랜드 일치 여부. 구매 이력 기반이면 더 강한 신뢰도 반영.' },
+  goal_fit_master:            { label: '목표(제품truth)',  group: 'core',    desc: '제품 마스터 데이터에 등록된 주요 효능(보습, 미백 등)과 유저 케어 목표의 일치.' },
+  goal_fit_review_signal:     { label: '목표(리뷰시그널)', group: 'core',    desc: '리뷰에서 추출된 효능/목표 시그널과 유저 케어 목표의 일치. 제품truth와 별개로 리뷰 기반 근거.' },
+  category_affinity:          { label: '카테고리',        group: 'core',    desc: '유저 선호 카테고리(에센스, 크림, 쿠션 등)와 제품 카테고리 일치.' },
+  freshness_boost:            { label: '최신성',          group: 'meta',    desc: '최근 30일 리뷰 수 기반. 리뷰가 활발한 제품에 가산점. (10건↑=1.0, 3건↑=0.6, 1건↑=0.3)' },
+  skin_type_fit:              { label: '피부타입 적합',    group: 'meta',    desc: '유저 피부타입(건성/지성/복합/민감)과 제품 리뷰의 고민 시그널 간 궁합. 건성에 보습 긍정 → 가산, 끈적 부정 → 감점.' },
+  purchase_loyalty_score:     { label: '구매 충성도',      group: 'personal', desc: '유저가 해당 브랜드 제품을 재구매한 이력이 있으면 1.0, 최근 구매면 0.5.' },
+  novelty_bonus:              { label: '신규성 보너스',    group: 'personal', desc: '유저가 아직 모르는 브랜드/제품일수록 높은 점수. 이미 보유한 제품=0, 같은 패밀리=0.2, 아는 브랜드=0.5, 처음=1.0.' },
+  owned_family_penalty:       { label: '보유패밀리 감점',  group: 'personal', desc: '유저가 이미 같은 variant family(같은 제품군의 다른 호수/용량) 제품을 보유하면 감점. 중복 추천 방지.' },
+  repurchase_family_affinity: { label: '재구매패밀리 가산', group: 'personal', desc: '유저가 재구매한 패밀리의 다른 SKU에 가산. "이 라인 좋아하시네요" 식의 확장 추천.' },
+  tool_alignment:             { label: '도구 일치',       group: 'coused',  desc: '제품과 함께 언급되는 도구(퍼프, 브러시 등)가 유저 선호 도구와 겹칠 때 가산.' },
+  coused_product_bonus:       { label: '함께쓰는제품',     group: 'coused',  desc: '유저가 보유한 제품과 자주 함께 쓰이는 제품에 가산. 루틴/번들 추천 근거.' },
+};
+const GROUP_LABELS = {
+  core: '핵심 매칭 (유저↔제품 시그널 겹침)',
+  meta: '메타 시그널 (제품 상태)',
+  personal: '개인화 (구매/보유 이력 기반)',
+  coused: '함께쓰기 (루틴/번들)',
+};
+const MODE_DESC = {
+  explore: '카테고리 불일치 시 감점만 적용 (penalty 0.3). 다양한 카테고리 탐색 가능. 기본 모드.',
+  strict: '유저 선호 카테고리와 불일치하면 점수를 0으로 만듦. 정확한 카테고리 내에서만 추천.',
+  compare: '카테고리 제한 없음. 비교/대안 추천용. 다른 카테고리 제품도 자유롭게 노출.',
 };
 
 async function initRecommendPanel() {
@@ -181,29 +209,64 @@ async function initRecommendPanel() {
     const sel = document.getElementById('recUser');
     sel.innerHTML = users.items.map(u => `<option value="${u.user_id}">${u.user_id} (${u.skin_type||''}/${u.gender||''})</option>`).join('');
   } catch(e) {}
-  // Weight sliders
+  // Mode description
+  const modeDesc = document.getElementById('modeDesc');
+  const modeSelect = document.getElementById('recMode');
+  if (modeDesc) modeDesc.textContent = MODE_DESC[modeSelect.value] || '';
+  modeSelect.onchange = () => { if (modeDesc) modeDesc.textContent = MODE_DESC[modeSelect.value] || ''; };
+
+  // Weight sliders grouped
   const container = document.getElementById('weightSliders');
-  container.innerHTML = Object.entries(DEFAULT_WEIGHTS).map(([k, v]) => `
-    <div class="slider-group">
-      <label><span>${WEIGHT_LABELS[k] || k}</span><span id="w_${k}_val">${v.toFixed(2)}</span></label>
-      <input type="range" min="0" max="50" value="${Math.round(v*100)}" id="w_${k}"
-        oninput="document.getElementById('w_${k}_val').textContent=(this.value/100).toFixed(2)">
+  const groups = {};
+  for (const [k, v] of Object.entries(DEFAULT_WEIGHTS)) {
+    const meta = WEIGHT_META[k] || {};
+    const g = meta.group || 'other';
+    if (!groups[g]) groups[g] = [];
+    groups[g].push({ key: k, value: v, meta });
+  }
+  container.innerHTML = Object.entries(groups).map(([g, items]) => `
+    <div class="weight-group">
+      <div class="weight-group-label">${GROUP_LABELS[g] || g}</div>
+      ${items.map(({ key, value, meta }) => `
+        <div class="slider-group" title="${meta.desc || ''}">
+          <label>
+            <span class="weight-name">${meta.label || key}</span>
+            <span id="w_${key}_val">${value.toFixed(2)}</span>
+          </label>
+          <input type="range" min="0" max="50" value="${Math.round(value*100)}" id="w_${key}"
+            oninput="document.getElementById('w_${key}_val').textContent=(this.value/100).toFixed(2); showWeightDesc('${key}')">
+          <div class="weight-desc" id="desc_${key}" style="display:none">${meta.desc || ''}</div>
+        </div>
+      `).join('')}
     </div>
   `).join('');
+}
+
+function showWeightDesc(key) {
+  const el = document.getElementById('desc_' + key);
+  if (el) el.style.display = 'block';
 }
 
 async function runRecommend() {
   const userId = document.getElementById('recUser').value;
   if (!userId) return;
+
+  // Collect weights from sliders — check if any were changed from default
   const weights = {};
+  let customized = false;
   for (const k of Object.keys(DEFAULT_WEIGHTS)) {
-    weights[k] = parseInt(document.getElementById('w_' + k).value) / 100;
+    const el = document.getElementById('w_' + k);
+    if (!el) continue;
+    const val = parseInt(el.value) / 100;
+    weights[k] = val;
+    if (Math.abs(val - DEFAULT_WEIGHTS[k]) > 0.005) customized = true;
   }
+
   const body = {
     user_id: userId,
     mode: document.getElementById('recMode').value,
     top_k: 10,
-    weights,
+    weights: customized ? weights : null,  // null → server uses YAML config
     shrinkage_k: parseFloat(document.getElementById('shrinkageK').value),
     diversity_weight: parseInt(document.getElementById('diversityW').value) / 100,
   };

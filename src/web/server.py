@@ -48,8 +48,9 @@ _DEFAULT_REVIEW_PATH = "/Users/amore/Jupyter_workplace/Relation/source_data/hab_
 
 class PipelineRunRequest(BaseModel):
     review_json_path: str = _DEFAULT_REVIEW_PATH
-    max_reviews: int = 100
+    max_reviews: int = 5000
     source: str = "demo"
+    review_format: str = "relation"
 
 
 @app.post("/api/pipeline/run")
@@ -98,6 +99,7 @@ async def pipeline_run(req: PipelineRunRequest):
         user_profiles=mock_users,
         max_reviews=req.max_reviews,
         source=req.source,
+        review_format=req.review_format,
     )
 
     return {
@@ -218,14 +220,12 @@ async def recommend(req: RecommendRequest):
 
     candidates = generate_candidates(user, demo_state.serving_products, mode=mode, max_candidates=50)
 
-    weights = req.weights or {
-        "keyword_match": 0.28, "residual_bee_attr_match": 0.12,
-        "context_match": 0.15, "concern_fit": 0.15, "ingredient_match": 0.10,
-        "brand_match_conf_weighted": 0.08, "goal_fit": 0.08,
-        "category_affinity": 0.05, "freshness_boost": 0.05,
-    }
     scorer = Scorer()
-    scorer.load_from_dict(weights, shrinkage_k=req.shrinkage_k)
+    if req.weights:
+        scorer.load_from_dict(req.weights, shrinkage_k=req.shrinkage_k)
+    else:
+        scorer.load_config()
+    weights = scorer._weights
 
     scored = []
     for c in candidates:

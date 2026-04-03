@@ -61,6 +61,15 @@ tr.clickable { cursor: pointer; }
 .slider-group label { display: flex; justify-content: space-between; font-size: 12px; color: var(--text2); margin-bottom: 4px; }
 .slider-group input[type="range"] { width: 100%; accent-color: var(--primary); }
 
+/* Weight groups */
+.weight-group { margin-bottom: 12px; }
+.weight-group-label { font-size: 11px; font-weight: 600; color: var(--primary-light); text-transform: uppercase; letter-spacing: .5px; padding: 6px 0 4px; border-bottom: 1px solid var(--border); margin-bottom: 4px; }
+.weight-desc { font-size: 11px; color: var(--text2); line-height: 1.5; padding: 4px 0 2px; opacity: 0.85; }
+.weight-name { max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Mode description */
+.mode-desc { font-size: 11px; color: var(--text2); line-height: 1.5; margin-top: 6px; padding: 6px 8px; background: var(--surface2); border-radius: 4px; }
+
 /* Charts */
 .chart-container { position: relative; height: 250px; margin: 12px 0; }
 

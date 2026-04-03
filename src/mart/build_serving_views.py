@@ -79,6 +79,7 @@ def build_serving_product_profile(
         "country_of_origin": product_master.get("country_of_origin"),
         "price": product_master.get("price"),
         "variant_family_id": product_master.get("variant_family_id"),
+        "representative_product_name": product_master.get("_es_meta", {}).get("REPRESENTATIVE_PROD_NAME"),
         "ingredient_ids": product_master.get("ingredients", []),
         # Concept ID fields (canonical join keys — concept_id, not raw IRI)
         "brand_concept_ids": brand_concepts,

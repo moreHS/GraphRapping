@@ -62,9 +62,11 @@ def load_demo_data(
     user_profiles: dict[str, dict],
     max_reviews: int = 100,
     source: str = "demo",
+    review_format: str = "relation",
 ) -> DemoState:
     """Load data and run pipeline, populating demo_state."""
     from src.loaders.relation_loader import load_reviews_from_json
+    from src.loaders.rs_jsonl_loader import load_reviews_from_rs_jsonl
     from src.loaders.product_loader import load_products_from_es_records
     from src.loaders.user_loader import load_users_from_profiles
     from src.normalize.bee_normalizer import BEENormalizer
@@ -99,7 +101,10 @@ def load_demo_data(
     demo_state.user_adapted_facts = user_result.user_adapted_facts
 
     # Load reviews
-    reviews = load_reviews_from_json(review_json_path, max_count=max_reviews)
+    if review_format == "rs_jsonl":
+        reviews = load_reviews_from_rs_jsonl(review_json_path, max_count=max_reviews)
+    else:
+        reviews = load_reviews_from_json(review_json_path, max_count=max_reviews)
     demo_state.review_count = len(reviews)
 
     # Init normalizers

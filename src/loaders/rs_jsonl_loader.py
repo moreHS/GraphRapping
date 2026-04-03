@@ -1,10 +1,16 @@
 """
 S3 rs.jsonl → RawReviewRecord loader.
 
-Converts the operational review analysis pipeline output (rs.jsonl format)
-to GraphRapping's RawReviewRecord format for KG processing.
+Contract: Accepts raw operational pipeline output (rs.jsonl format from S3)
+and converts to GraphRapping's RawReviewRecord. Performs NER label mapping
+and sentiment normalization during conversion.
 
-rs.jsonl schema: see mockdata/SCHEMA_RS_JSONL.md
+Difference from relation_loader:
+  - relation_loader expects pre-canonicalized relation[] with 65 canonical predicates
+  - rs_jsonl_loader expects raw NER/BEE spans from the operational pipeline
+  - Both produce the same RawReviewRecord output type
+
+See mockdata/SCHEMA_RS_JSONL.md for the full input schema.
 """
 
 from __future__ import annotations

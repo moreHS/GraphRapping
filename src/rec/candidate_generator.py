@@ -92,6 +92,14 @@ def generate_candidates(
                     candidates.append(candidate)
                     continue
 
+        # 3. Family suppression (mode-dependent)
+        if candidate.owned_family_match:
+            if mode == RecommendationMode.STRICT:
+                candidate.hard_filtered = True
+                candidate.filter_reason = "OWNED_FAMILY_STRICT_SUPPRESS"
+                candidates.append(candidate)
+                continue
+
         # --- Concept overlap scoring ---
         # NOTE: catalog_validation signals are excluded — they must not influence
         # candidate generation, scoring, or standard explanation (QA/debug only)
@@ -144,6 +152,13 @@ def generate_candidates(
         product_coused = _extract_signal_ids(product.get("top_coused_product_ids", []))
         for co in owned_product_ids & product_coused:
             overlap.append(f"coused:{co}")
+
+        # Family overlap (for explanation paths)
+        if candidate.owned_family_match and product_family:
+            overlap.append(f"owned_family:{product_family}")
+        repurchased_families = _extract_ids(user_profile.get("repurchased_family_ids", []))
+        if product_family and product_family in repurchased_families:
+            overlap.append(f"repurchased_family:{product_family}")
 
         candidate.overlap_concepts = overlap
         candidate.overlap_score = len(overlap)

@@ -50,7 +50,7 @@
 
     <!-- Recommendation Tester -->
     <div class="section" id="sec-recommend">
-      <div style="display:grid;grid-template-columns:280px 1fr;gap:16px">
+      <div style="display:grid;grid-template-columns:320px 1fr;gap:16px">
         <div class="panel">
           <h2>추천 설정</h2>
           <div style="margin:8px 0">
@@ -64,16 +64,20 @@
               <option value="strict">엄격 (Strict)</option>
               <option value="compare">비교 (Compare)</option>
             </select>
+            <div class="mode-desc" id="modeDesc">카테고리 불일치 시 감점만 적용 (penalty 0.3). 다양한 카테고리 탐색 가능. 기본 모드.</div>
           </div>
-          <h3>가중치 조절</h3>
+          <h3>가중치 조절 <span style="font-weight:400;font-size:11px;color:var(--text2)">(슬라이더 조작 시 설명 표시)</span></h3>
           <div id="weightSliders"></div>
+          <h3>후처리 파라미터</h3>
           <div class="slider-group">
             <label><span>shrinkage_k</span><span id="skVal">10</span></label>
             <input type="range" min="1" max="50" value="10" id="shrinkageK" oninput="document.getElementById('skVal').textContent=this.value">
+            <div class="weight-desc">리뷰 수가 적은 제품의 점수를 줄이는 정도. 값이 클수록 리뷰 적은 제품이 더 많이 감점됨. 공식: score × (리뷰수 / (리뷰수 + k))</div>
           </div>
           <div class="slider-group">
             <label><span>다양성 가중치</span><span id="dwVal">0.10</span></label>
             <input type="range" min="0" max="30" value="10" id="diversityW" oninput="document.getElementById('dwVal').textContent=(this.value/100).toFixed(2)">
+            <div class="weight-desc">같은 브랜드/카테고리가 연속 노출되지 않도록 리랭킹 시 다양성 보너스 부여. 0이면 순수 점수 순서.</div>
           </div>
           <button class="btn btn-primary" style="width:100%;margin-top:12px" onclick="runRecommend()">추천 실행</button>
         </div>

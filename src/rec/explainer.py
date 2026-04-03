@@ -49,6 +49,8 @@ _EDGE_MAP = {
     "ingredient": ("PREFERS_INGREDIENT", "HAS_INGREDIENT"),
     "tool": ("PREFERS_TOOL", "USED_WITH_TOOL_SIGNAL"),
     "coused": ("OWNS_PRODUCT", "USED_WITH_PRODUCT_SIGNAL"),
+    "owned_family": ("OWNS_FAMILY", "HAS_VARIANT_FAMILY"),
+    "repurchased_family": ("REPURCHASES_FAMILY", "HAS_VARIANT_FAMILY"),
 }
 
 
@@ -120,6 +122,8 @@ def _concept_to_feature(concept_type: str) -> str:
         "ingredient": "ingredient_match",
         "tool": "tool_alignment",
         "coused": "coused_product_bonus",
+        "owned_family": "owned_family_penalty",
+        "repurchased_family": "repurchase_family_affinity",
     }
     return mapping.get(concept_type, "")
 
@@ -177,6 +181,10 @@ def _generate_summary_ko(paths: list[ExplanationPath]) -> str:
             parts.append(f"'{p.concept_id}' 도구와 함께 사용 패턴")
         elif p.concept_type == "coused":
             parts.append(f"'{p.concept_id}' 제품과 함께 사용 패턴")
+        elif p.concept_type == "owned_family":
+            parts.append("현재 사용 중인 제품과 같은 라인")
+        elif p.concept_type == "repurchased_family":
+            parts.append("같은 패밀리 재구매 성향")
         else:
             parts.append(f"'{p.concept_id}' 일치")
 

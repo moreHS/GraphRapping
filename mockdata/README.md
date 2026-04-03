@@ -109,3 +109,18 @@ users = load_users_from_profiles(profiles)
 # 리뷰 로딩
 reviews = load_reviews_from_json("mockdata/review_triples_raw.json")
 ```
+
+### Loader 계약 구분
+
+| Loader | 입력 형식 | 전제조건 | 사용처 |
+|--------|----------|----------|--------|
+| `relation_loader.load_reviews_from_json()` | Relation project JSON | relation[]이 65개 canonical predicates로 이미 추출됨 | 기본 파이프라인 |
+| `rs_jsonl_loader.load_reviews_from_rs_jsonl()` | S3 rs.jsonl | NER/BEE spans 존재, NER 라벨/감성 매핑은 loader가 수행 | 운영 원본 소스 |
+
+두 loader 모두 `RawReviewRecord`를 출력합니다.
+
+**rs_jsonl 사용 예시:**
+```python
+from src.loaders.rs_jsonl_loader import load_reviews_from_rs_jsonl
+reviews = load_reviews_from_rs_jsonl("mockdata/review_rs_samples.json")
+```

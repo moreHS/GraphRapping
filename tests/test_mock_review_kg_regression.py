@@ -60,3 +60,32 @@ def test_placeholder_entities_have_scope_key():
     for e in kg["entities"]:
         if e["entity_type"] == "PRD" and e.get("is_placeholder", False):
             assert e.get("scope_key"), f"Placeholder PRD {e['entity_id']} missing scope_key"
+
+
+def test_bee_synthetic_demoted_below_raw_rel():
+    """BEE_SYNTHETIC edges must have strictly lower confidence than RAW_REL edges."""
+    kg = _load_kg()
+    raw_confs = [e["confidence"] for e in kg["edges"] if e["evidence_kind"] == "RAW_REL"]
+    synth_confs = [e["confidence"] for e in kg["edges"] if e["evidence_kind"] == "BEE_SYNTHETIC"]
+    assert raw_confs and synth_confs, "Need both RAW_REL and BEE_SYNTHETIC edges"
+    assert min(raw_confs) > max(synth_confs), \
+        f"RAW_REL min ({min(raw_confs)}) must exceed BEE_SYNTHETIC max ({max(synth_confs)})"
+
+
+def test_auto_keyword_confidence_ceiling():
+    """AUTO_KEYWORD edges must not exceed 0.4 confidence ceiling."""
+    kg = _load_kg()
+    auto_confs = [e["confidence"] for e in kg["edges"] if e["evidence_kind"] == "AUTO_KEYWORD"]
+    assert auto_confs, "Need AUTO_KEYWORD edges"
+    assert max(auto_confs) <= 0.4, f"AUTO_KEYWORD max conf {max(auto_confs)} exceeds 0.4 ceiling"
+
+
+def test_auto_keyword_entities_are_keywords():
+    """AUTO_KEYWORD edge objects must point to KEYWORD-type entities."""
+    kg = _load_kg()
+    kw_entity_ids = {e["entity_id"] for e in kg["entities"] if e["entity_type"] == "KEYWORD"}
+    auto_edges = [e for e in kg["edges"] if e["evidence_kind"] == "AUTO_KEYWORD"]
+    assert auto_edges, "Need AUTO_KEYWORD edges"
+    for edge in auto_edges:
+        assert edge["obj_entity_id"] in kw_entity_ids, \
+            f"AUTO_KEYWORD edge {edge['edge_id']} obj {edge['obj_entity_id']} is not a KEYWORD entity"

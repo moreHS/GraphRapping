@@ -103,3 +103,45 @@ def test_repurchase_family_boost():
     s1 = scorer.score(user, product_repurchased_fam)
     s2 = scorer.score(user, product_other)
     assert s1.raw_score > s2.raw_score
+
+
+def test_strict_mode_suppresses_owned_family():
+    """STRICT mode should hard-filter products in owned family."""
+    user = _user(owned_family_ids=["FAM001"])
+    products = [_product("P002", "FAM001"), _product("P003", "FAM002")]
+    candidates = generate_candidates(user, products, mode=RecommendationMode.STRICT)
+    fam_match = [c for c in candidates if c.product_id == "P002"]
+    # P002 should not appear in valid candidates (hard-filtered)
+    assert len(fam_match) == 0 or fam_match[0].hard_filtered is True
+
+
+def test_explore_mode_passes_owned_family():
+    """EXPLORE mode should pass owned-family products with flag and overlap concept."""
+    user = _user(owned_family_ids=["FAM001"])
+    products = [_product("P002", "FAM001")]
+    candidates = generate_candidates(user, products, mode=RecommendationMode.EXPLORE)
+    valid = [c for c in candidates if not c.hard_filtered]
+    assert len(valid) == 1
+    assert valid[0].owned_family_match is True
+    assert any("owned_family:" in c for c in valid[0].overlap_concepts)
+
+
+def test_compare_mode_allows_owned_family():
+    """COMPARE mode should allow owned-family products freely."""
+    user = _user(owned_family_ids=["FAM001"])
+    products = [_product("P002", "FAM001")]
+    candidates = generate_candidates(user, products, mode=RecommendationMode.COMPARE)
+    valid = [c for c in candidates if not c.hard_filtered]
+    assert len(valid) == 1
+    assert valid[0].owned_family_match is True
+
+
+def test_repurchase_family_in_overlap_concepts():
+    """Repurchased family products should have repurchased_family overlap concept."""
+    user = _user(repurchased_family_ids=["FAM001"])
+    products = [_product("P002", "FAM001"), _product("P003", "FAM002")]
+    candidates = generate_candidates(user, products, mode=RecommendationMode.EXPLORE)
+    p002 = next(c for c in candidates if c.product_id == "P002")
+    p003 = next(c for c in candidates if c.product_id == "P003")
+    assert any("repurchased_family:" in c for c in p002.overlap_concepts)
+    assert not any("repurchased_family:" in c for c in p003.overlap_concepts)

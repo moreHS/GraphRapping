@@ -46,3 +46,29 @@
 휴대편함:
   - keyword_id: kw_portable
     label_ko: 휴대편함
+
+# Texture surface forms (synchronized with texture_keyword_map.yaml)
+크리미:
+  - keyword_id: CreamyLike
+    label_ko: 크리미
+촉촉한:
+  - keyword_id: MoistLike
+    label_ko: 촉촉한
+젤:
+  - keyword_id: GelLike
+    label_ko: 젤
+젤타입:
+  - keyword_id: GelLike
+    label_ko: 젤타입
+가벼운로션:
+  - keyword_id: LightLotionLike
+    label_ko: 가벼운로션
+워터리:
+  - keyword_id: WateryLike
+    label_ko: 워터리
+리치크림:
+  - keyword_id: RichCreamLike
+    label_ko: 리치크림
+밀크:
+  - keyword_id: MilkLike
+    label_ko: 밀크
