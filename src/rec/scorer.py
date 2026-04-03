@@ -94,7 +94,9 @@ class Scorer:
             "skin_type_fit": skin_type_fit_val,
             "purchase_loyalty_score": purchase_loyalty,
             "novelty_bonus": novelty,
+            "exact_owned_penalty": _exact_owned_penalty(user_profile, product_profile),
             "owned_family_penalty": _owned_family_penalty(user_profile, product_profile),
+            "same_family_explore_bonus": _same_family_explore_bonus(user_profile, product_profile),
             "repurchase_family_affinity": _repurchase_family_affinity(user_profile, product_profile),
             "tool_alignment": min(overlaps_by_type.get("tool", 0) / 2.0, 1.0),
             "coused_product_bonus": min(overlaps_by_type.get("coused", 0) / 2.0, 1.0),
@@ -201,7 +203,15 @@ def _purchase_loyalty_score(user_profile: dict, product_profile: dict) -> float:
 
 
 def _novelty_bonus(user_profile: dict, product_profile: dict) -> float:
-    """Score novelty: unknown brand → 1.0, known → 0.5, owned → 0.0."""
+    """Score novelty: unknown brand → 1.0, known → 0.5, owned → 0.0, same family → 0.2.
+
+    Priority vs family features:
+    - exact_owned_penalty: strong negative for exact SKU (separate feature)
+    - owned_family_penalty: mild negative for same family different variant
+    - same_family_explore_bonus: positive for exploring known family's other variants
+    - novelty_bonus: rewards truly unknown products; reduced for known family
+    These features are additive and designed not to double-count.
+    """
     product_id = product_profile.get("product_id", "")
     brand_id = product_profile.get("brand_id", "")
 
@@ -236,15 +246,60 @@ def _novelty_bonus(user_profile: dict, product_profile: dict) -> float:
     return 1.0
 
 
+def _exact_owned_penalty(user_profile: dict, product_profile: dict) -> float:
+    """Strong penalty for exact SKU the user already owns."""
+    product_id = product_profile.get("product_id", "")
+    owned_raw = {entry["id"] if isinstance(entry, dict) else entry
+                 for entry in (user_profile.get("owned_product_ids") or [])}
+    owned = set()
+    for oid in owned_raw:
+        owned.add(oid[len("product:"):] if oid.startswith("product:") else oid)
+    if product_id in owned:
+        return -1.0  # Strong penalty for exact same SKU
+    return 0.0
+
+
 def _owned_family_penalty(user_profile: dict, product_profile: dict) -> float:
-    """Penalize products in same variant family as owned products."""
+    """Mild penalty for same variant family (different SKU) as owned products."""
     family_id = product_profile.get("variant_family_id")
     if not family_id:
         return 0.0
+    # Skip if it's an exact owned product (handled by exact_owned_penalty)
+    product_id = product_profile.get("product_id", "")
+    owned_raw = {entry["id"] if isinstance(entry, dict) else entry
+                 for entry in (user_profile.get("owned_product_ids") or [])}
+    owned = {oid[len("product:"):] if oid.startswith("product:") else oid for oid in owned_raw}
+    if product_id in owned:
+        return 0.0  # exact owned handled separately
     owned_families = {entry["id"] if isinstance(entry, dict) else entry
                       for entry in (user_profile.get("owned_family_ids") or [])}
     if family_id in owned_families:
-        return -0.5  # Penalty for same family
+        return -0.3  # Milder penalty for same family different variant
+    return 0.0
+
+
+def _same_family_explore_bonus(user_profile: dict, product_profile: dict) -> float:
+    """Bonus for exploring a different variant in a family the user has experience with.
+
+    Only applies when the product is NOT exact-owned but IS in an owned or repurchased family.
+    Encourages "try a different shade/size from a line you know".
+    """
+    family_id = product_profile.get("variant_family_id")
+    if not family_id:
+        return 0.0
+    product_id = product_profile.get("product_id", "")
+    owned_raw = {entry["id"] if isinstance(entry, dict) else entry
+                 for entry in (user_profile.get("owned_product_ids") or [])}
+    owned = {oid[len("product:"):] if oid.startswith("product:") else oid for oid in owned_raw}
+    if product_id in owned:
+        return 0.0  # exact owned — no explore bonus
+    # Check if in any known family (owned or repurchased)
+    known_families = set()
+    for key in ("owned_family_ids", "repurchased_family_ids"):
+        for entry in (user_profile.get(key) or []):
+            known_families.add(entry["id"] if isinstance(entry, dict) else entry)
+    if family_id in known_families:
+        return 0.5  # Bonus for exploring familiar family
     return 0.0
 
 

@@ -23,6 +23,10 @@ class CandidateProduct:
     filter_reason: str | None = None
     already_owned: bool = False
     owned_family_match: bool = False
+    # Granular family distinction:
+    # - already_owned=True, owned_family_match=True → exact SKU re-encounter
+    # - already_owned=False, owned_family_match=True → same family, different variant
+    repurchased_family_match: bool = False
 
 
 def generate_candidates(
@@ -69,6 +73,9 @@ def generate_candidates(
         product_family = product.get("variant_family_id")
         if product_family and product_family in owned_family_ids:
             candidate.owned_family_match = True
+        repurchased_families = _extract_ids(user_profile.get("repurchased_family_ids", []))
+        if product_family and product_family in repurchased_families:
+            candidate.repurchased_family_match = True
 
         # --- Hard filters (zero-out) ---
 
@@ -92,8 +99,15 @@ def generate_candidates(
                     candidates.append(candidate)
                     continue
 
-        # 3. Family suppression (mode-dependent)
-        if candidate.owned_family_match:
+        # 3. Ownership suppression (mode-dependent)
+        # Priority: exact SKU owned > same family other variant > repurchased family
+        if candidate.already_owned:
+            if mode == RecommendationMode.STRICT:
+                candidate.hard_filtered = True
+                candidate.filter_reason = "EXACT_SKU_OWNED_SUPPRESS"
+                candidates.append(candidate)
+                continue
+        elif candidate.owned_family_match:
             if mode == RecommendationMode.STRICT:
                 candidate.hard_filtered = True
                 candidate.filter_reason = "OWNED_FAMILY_STRICT_SUPPRESS"
@@ -156,8 +170,7 @@ def generate_candidates(
         # Family overlap (for explanation paths)
         if candidate.owned_family_match and product_family:
             overlap.append(f"owned_family:{product_family}")
-        repurchased_families = _extract_ids(user_profile.get("repurchased_family_ids", []))
-        if product_family and product_family in repurchased_families:
+        if candidate.repurchased_family_match and product_family:
             overlap.append(f"repurchased_family:{product_family}")
 
         candidate.overlap_concepts = overlap

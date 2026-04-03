@@ -16,7 +16,9 @@ features:
   purchase_loyalty_score: 0.04
   novelty_bonus: 0.02
   # Personalization & co-use features (P0-1, P1-2)
-  owned_family_penalty: 0.04
+  exact_owned_penalty: 0.05
+  owned_family_penalty: 0.03
+  same_family_explore_bonus: 0.02
   repurchase_family_affinity: 0.03
   tool_alignment: 0.02
   coused_product_bonus: 0.02
