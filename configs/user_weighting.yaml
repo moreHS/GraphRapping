@@ -1,0 +1,15 @@
+# User preference aggregation weighting config
+# Used by aggregate_user_preferences.py
+
+source_type_weights:
+  purchase: 1.2
+  chat: 1.0
+  basic: 0.8
+  inferred: 0.6
+  default: 0.8
+
+recency_lambda: 0.01
+
+frequency:
+  denominator: 3.0
+  cap: 1.5

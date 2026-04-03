@@ -41,8 +41,13 @@ async def index():
 # Pipeline
 # =============================================================================
 
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+_MOCKDATA_DIR = _PROJECT_ROOT / "mockdata"
+_DEFAULT_REVIEW_PATH = "/Users/amore/Jupyter_workplace/Relation/source_data/hab_rel_sample_ko_withPRD_listkeyword.json"
+
+
 class PipelineRunRequest(BaseModel):
-    review_json_path: str = "/Users/amore/Jupyter_workplace/Relation/source_data/hab_rel_sample_ko_withPRD_listkeyword.json"
+    review_json_path: str = _DEFAULT_REVIEW_PATH
     max_reviews: int = 100
     source: str = "demo"
 
@@ -50,44 +55,45 @@ class PipelineRunRequest(BaseModel):
 @app.post("/api/pipeline/run")
 async def pipeline_run(req: PipelineRunRequest):
     import json as _json
-    from pathlib import Path as _Path
+    import random as _random
 
-    # Extract unique (prod_nm, brnd_nm) pairs from actual review data to build mock products
-    review_path = _Path(req.review_json_path)
+    # --- 1. Load products from mock catalog ---
+    mock_products = _json.loads((_MOCKDATA_DIR / "product_catalog_es.json").read_text(encoding="utf-8"))
+
+    # --- 2. Load users from mock profiles ---
+    mock_users = _json.loads((_MOCKDATA_DIR / "user_profiles_normalized.json").read_text(encoding="utf-8"))
+
+    # --- 3. Prepare product assignment pool (active products only) ---
+    active_products = [p for p in mock_products if p.get("SALE_STATUS") == "판매중"]
+    product_pairs = [
+        (p["prd_nm"], p["BRAND_NAME"]) for p in active_products
+    ]
+
+    # --- 4. Remap external review data to mock product IDs ---
+    review_path = Path(req.review_json_path)
+    remapped_path = _PROJECT_ROOT / "mockdata" / "_remapped_reviews.json"
+
     if review_path.exists():
         raw_data = _json.loads(review_path.read_text(encoding="utf-8"))
-        seen = {}
-        for record in raw_data[:max(req.max_reviews * 2, 500)]:
-            pid = record.get("prod_nm", "")
-            brand = record.get("brnd_nm", "")
-            if pid and pid not in seen:
-                seen[pid] = brand
-        mock_products = [
-            {"ONLINE_PROD_SERIAL_NUMBER": pid, "prd_nm": pid,
-             "BRAND_NAME": brand, "CTGR_SS_NAME": "스킨케어", "SALE_STATUS": "판매중"}
-            for pid, brand in seen.items()
-        ]
-    else:
-        mock_products = []
+        _random.seed(42)  # deterministic
+        for record in raw_data:
+            prd_nm, brnd_nm = _random.choice(product_pairs)
+            record["prod_nm"] = prd_nm
+            record["brnd_nm"] = brnd_nm
 
-    mock_users = {
-        "u_dry_30f": {
-            "basic": {"gender": "female", "age": "30s", "skin_type": "건성", "skin_concerns": ["건조함", "잔주름"]},
-            "purchase_analysis": {"preferred_skincare_brand": ["설화수", "라네즈"], "preferred_brand": ["설화수"]},
-            "chat": {
-                "face": {"skin_concerns": ["건조함"], "skincare_goals": ["보습", "탄력"], "preferred_texture": ["크림"]},
-                "ingredients": {"preferred": ["히알루론산", "세라마이드"], "avoid": ["알코올"], "allergy": []},
-            },
-        },
-        "u_oily_20m": {
-            "basic": {"gender": "male", "age": "20s", "skin_type": "지성", "skin_concerns": ["번들거림"]},
-            "purchase_analysis": {"preferred_skincare_brand": ["이니스프리"], "preferred_brand": ["이니스프리"]},
-            "chat": None,
-        },
-    }
+        # --- 5. Append mock 15 reviews (cross-referenced) ---
+        mock_review_path = _MOCKDATA_DIR / "review_triples_raw.json"
+        if mock_review_path.exists():
+            mock_reviews = _json.loads(mock_review_path.read_text(encoding="utf-8"))
+            raw_data.extend(mock_reviews)
+
+        remapped_path.write_text(_json.dumps(raw_data, ensure_ascii=False), encoding="utf-8")
+    else:
+        # Fallback: use mock reviews only
+        remapped_path = _MOCKDATA_DIR / "review_triples_raw.json"
 
     load_demo_data(
-        review_json_path=req.review_json_path,
+        review_json_path=str(remapped_path),
         product_es_records=mock_products,
         user_profiles=mock_users,
         max_reviews=req.max_reviews,

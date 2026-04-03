@@ -9,28 +9,32 @@ from __future__ import annotations
 
 from typing import Any
 
+from src.common.config_loader import load_yaml
 from src.common.ids import make_concept_iri, make_product_iri
 from src.common.text_normalize import normalize_text
 from src.common.enums import ConceptType
 
 
 # ---------------------------------------------------------------------------
-# Texture normalization
+# Texture normalization (loaded from configs/texture_keyword_map.yaml)
 # ---------------------------------------------------------------------------
 
-_TEXTURE_BEE_ATTR = "Texture"
+_texture_config: dict | None = None
 
-# Surface form → normalized keyword mapping
-_TEXTURE_KEYWORD_MAP: dict[str, str] = {
-    "크리미": "CreamyLike",
-    "촉촉한": "MoistLike",
-    "젤": "GelLike",
-    "가벼운로션": "LightLotionLike",
-    "가벼운 로션": "LightLotionLike",
-    "워터리": "WateryLike",
-    "리치크림": "RichCreamLike",
-    "밀크": "MilkLike",
-}
+
+def _get_texture_config() -> dict:
+    global _texture_config
+    if _texture_config is None:
+        _texture_config = load_yaml("texture_keyword_map.yaml")
+    return _texture_config
+
+
+def _get_texture_axis() -> str:
+    return _get_texture_config().get("texture_axis", "Texture")
+
+
+def _get_texture_keyword_map() -> dict[str, str]:
+    return _get_texture_config().get("surface_to_keyword", {})
 
 
 def adapt_user_profile(
@@ -98,9 +102,10 @@ def adapt_user_profile(
         textures = face.get("preferred_texture", [])
         if textures:
             # Axis-level: emit once regardless of how many textures
-            facts.append(_make_pref("PREFERS_BEE_ATTR", ConceptType.BEE_ATTR, _TEXTURE_BEE_ATTR, user_id, "chat"))
+            facts.append(_make_pref("PREFERS_BEE_ATTR", ConceptType.BEE_ATTR, _get_texture_axis(), user_id, "chat"))
+            texture_map = _get_texture_keyword_map()
             for texture in textures:
-                keyword = _TEXTURE_KEYWORD_MAP.get(texture.replace(" ", ""), texture)
+                keyword = texture_map.get(texture.replace(" ", ""), texture)
                 facts.append(_make_pref("PREFERS_KEYWORD", ConceptType.KEYWORD, keyword, user_id, "chat"))
 
         # Hair profile
@@ -121,6 +126,10 @@ def adapt_user_profile(
         # Fix A: OWNS_PRODUCT → entity reference, not concept
         for pid in purchase_features.get("owned_product_ids", []):
             facts.append(_make_product_ref("OWNS_PRODUCT", pid, user_id, "purchase", confidence=0.9, last_seen_at=pf_last_seen))
+        for fid in purchase_features.get("owned_family_ids", []):
+            facts.append(_make_product_ref("OWNS_FAMILY", fid, user_id, "purchase", confidence=0.85, last_seen_at=pf_last_seen))
+        for fid in purchase_features.get("repurchased_family_ids", []):
+            facts.append(_make_pref("REPURCHASES_FAMILY", ConceptType.BRAND, fid, user_id, "purchase", confidence=0.9, last_seen_at=pf_last_seen))
         # Fix C: REPURCHASES_BRAND instead of REPURCHASES_PRODUCT_OR_FAMILY
         for brand_id in purchase_features.get("repurchased_brand_ids", []):
             facts.append(_make_pref("REPURCHASES_BRAND", ConceptType.BRAND, brand_id, user_id, "purchase", confidence=0.9, last_seen_at=pf_last_seen))

@@ -47,6 +47,8 @@ _EDGE_MAP = {
     "goal_master": ("WANTS_GOAL", "HAS_MAIN_BENEFIT"),
     "goal_review": ("WANTS_GOAL", "ADDRESSES_CONCERN_SIGNAL"),
     "ingredient": ("PREFERS_INGREDIENT", "HAS_INGREDIENT"),
+    "tool": ("PREFERS_TOOL", "USED_WITH_TOOL_SIGNAL"),
+    "coused": ("OWNS_PRODUCT", "USED_WITH_PRODUCT_SIGNAL"),
 }
 
 
@@ -116,24 +118,34 @@ def _concept_to_feature(concept_type: str) -> str:
         "goal_master": "goal_fit_master",
         "goal_review": "goal_fit_review_signal",
         "ingredient": "ingredient_match",
+        "tool": "tool_alignment",
+        "coused": "coused_product_bonus",
     }
     return mapping.get(concept_type, "")
 
 
-_TEXTURE_KEYWORDS = {
-    "GelLike", "CreamyLike", "MoistLike", "LightLotionLike",
-    "WateryLike", "RichCreamLike", "MilkLike",
-}
+_texture_config: dict | None = None
 
-_TEXTURE_KEYWORD_KO = {
-    "GelLike": "젤",
-    "CreamyLike": "크리미",
-    "MoistLike": "촉촉한",
-    "LightLotionLike": "가벼운 로션",
-    "WateryLike": "워터리",
-    "RichCreamLike": "리치 크림",
-    "MilkLike": "밀크",
-}
+
+def _get_texture_config() -> dict:
+    global _texture_config
+    if _texture_config is None:
+        from src.common.config_loader import load_yaml
+        _texture_config = load_yaml("texture_keyword_map.yaml")
+    return _texture_config
+
+
+def _get_texture_keywords() -> set[str]:
+    return set(_get_texture_config().get("surface_to_keyword", {}).values())
+
+
+def _get_texture_keyword_ko() -> dict[str, str]:
+    s2k = _get_texture_config().get("surface_to_keyword", {})
+    reverse: dict[str, str] = {}
+    for surface, keyword in s2k.items():
+        if keyword not in reverse or len(surface) > len(reverse[keyword]):
+            reverse[keyword] = surface
+    return reverse
 
 
 def _generate_summary_ko(paths: list[ExplanationPath]) -> str:
@@ -143,8 +155,8 @@ def _generate_summary_ko(paths: list[ExplanationPath]) -> str:
     parts = []
     for p in paths[:3]:
         if p.concept_type == "keyword":
-            if p.concept_id in _TEXTURE_KEYWORDS:
-                ko = _TEXTURE_KEYWORD_KO.get(p.concept_id, p.concept_id)
+            if p.concept_id in _get_texture_keywords():
+                ko = _get_texture_keyword_ko().get(p.concept_id, p.concept_id)
                 parts.append(f"제형 선호 '{ko}' 계열과 일치")
             else:
                 parts.append(f"'{p.concept_id}' 키워드 선호와 일치")
@@ -161,6 +173,10 @@ def _generate_summary_ko(paths: list[ExplanationPath]) -> str:
                 parts.append(f"'{p.concept_id}' 속성 선호와 일치")
         elif p.concept_type in ("goal_master", "goal_review"):
             parts.append(f"'{p.concept_id}' 케어 목표와 부합")
+        elif p.concept_type == "tool":
+            parts.append(f"'{p.concept_id}' 도구와 함께 사용 패턴")
+        elif p.concept_type == "coused":
+            parts.append(f"'{p.concept_id}' 제품과 함께 사용 패턴")
         else:
             parts.append(f"'{p.concept_id}' 일치")
 

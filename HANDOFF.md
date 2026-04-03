@@ -1,71 +1,73 @@
-# HANDOFF — vNext final patch 완료 상태
+# HANDOFF — 후속 수정 지시서 완료 상태
 
 ## 이번 세션 완료 항목
 
-### Phase A — mock schema alignment
-- [x] P0-1: product_loader가 SALE_PRICE→price, MAIN_EFFECT→main_benefits, MAIN_INGREDIENT→ingredients, REPRESENTATIVE_PROD_CODE→variant_family_id 실제 매핑
-- [x] P0-2: user adapter 3가지 수정
-  - OWNS_PRODUCT → Product entity reference (ConceptType.BRAND 아닌 실제 product identity)
-  - preferred_texture → BEE_ATTR("Texture") axis + KEYWORD("GelLike" 등) 2-layer 생성
-  - REPURCHASES_PRODUCT_OR_FAMILY → REPURCHASES_BRAND + REPURCHASES_CATEGORY 분리
-- [x] P0-2 downstream: enums.py, build_serving_views.py, candidate_generator.py, scorer.py 일관 반영
+### P0-1 확장: family-level identity 연결
+- [x] serving_product_profile에 `variant_family_id` 추가
+- [x] serving_user_profile에 `owned_family_ids`, `repurchased_family_ids` 추가
+- [x] personal_agent_adapter에 `OWNS_FAMILY`, `REPURCHASES_FAMILY` predicate 수용
+- [x] enums.py에 새 predicate 등록
+- [x] candidate_generator에 `owned_family_match` 플래그 + same-family detection
+- [x] scorer에 `owned_family_penalty`, `repurchase_family_affinity` feature + novelty에 family 반영
 
-### Phase B — serving/runtime enforcement
-- [x] P0-3: promoted-only 전경로 강제 검증
-  - **버그 발견/수정**: run_daily_pipeline.py, run_incremental_pipeline.py의 `_agg_to_dict()`에 `is_promoted` 누락 → 모든 promoted 시그널이 serving에서 탈락되던 문제 수정
-- [x] P0-4: provenance SoT = signal_evidence 강제, source_fact_ids 캐시 주석 강화
-- [x] P0-5: review mock에 source_review_key/author_key 추가 (8 distinct authors, 15 reviews)
-- [x] P1-3: texture 2-layer scorer (residual BEE_ATTR) + explainer (제형 축 + 구체 표현 분리 설명)
+### P0-2 확장: texture config 분리
+- [x] `configs/texture_keyword_map.yaml` 신규 생성 (texture_axis + surface_to_keyword)
+- [x] personal_agent_adapter: 하드코드 `_TEXTURE_KEYWORD_MAP` → config loader 전환
 
-### Phase C — mock 계약 및 회귀 테스트
-- [x] P1-4: raw/normalized user mock 계약 명확화 (README에 공식 입력=normalized 명시)
-- [x] P1-5: shared_entities/review_kg 회귀 테스트 (cross-source integrity + evidence kind coverage)
+### P0-4 확장: raw profile validation
+- [x] user_loader.py: raw 7-column 감지 시 ValueError, basic 키 누락 시 ValueError
+
+### P1-2 신규: co-used product / tool feature
+- [x] candidate_generator: tool/co-used overlap 추가
+- [x] scorer: `tool_alignment`, `coused_product_bonus` feature
+- [x] explainer: tool/co-used 한국어 설명 + edge map
+
+### P1-4 신규: rs.jsonl first-class loader
+- [x] `src/loaders/rs_jsonl_loader.py` 신규 — S3 rs.jsonl → RawReviewRecord 변환
+- [x] NER label 매핑 (BASE_COLOR→COL, CAPACITY→VOL, BRAND→BRD, CATEGORY→CAT)
+- [x] channel→site 매핑, author_key 생성, 복합 sentiment 처리
+
+### 프론트 mock 통합 (이전 세션)
+- [x] server.py: mockdata/ 상품/유저 로딩 + 50K 리뷰 랜덤 상품ID 배분
 
 ## 테스트 상태
-- **218 tests 전부 통과** (이전 180 → 218, 신규 38)
+- **239 tests 전부 통과** (이전 218 → 239, 신규 21)
 
-## 신규 테스트 파일
-- tests/test_product_loader_mock_schema.py (5 tests) — P0-1
-- tests/test_user_adapter_semantics.py (3 tests) — P0-2
-- tests/test_serving_profile_promotion_gate.py (5 tests) — P0-3
-- tests/test_signal_evidence_source_of_truth.py (+2 tests 추가) — P0-4
-- tests/test_mock_review_contract.py (3 tests) — P0-5
-- tests/test_texture_preference_flow.py (6 tests) — P1-3
-- tests/test_mock_user_contract.py (4 tests) — P1-4
-- tests/test_mock_integrity.py (5 tests) — P1-5
-- tests/test_mock_review_kg_regression.py (6 tests) — P1-5
+## 신규 테스트 파일 (이번 세션)
+- tests/test_family_level_personalization.py (4 tests) — P0-1
+- tests/test_texture_taxonomy_alignment.py (4 tests) — P0-2
+- tests/test_user_loader_contract.py (3 tests) — P0-4
+- tests/test_rs_jsonl_transform.py (6 tests) — P1-4
+- tests/test_coused_product_and_tool_features.py (4 tests) — P1-2
 
-## 수정된 소스 파일
-- src/loaders/product_loader.py — ES 필드 실제 매핑 + _es_meta
-- src/user/adapters/personal_agent_adapter.py — 3가지 concept 매핑 수정
-- src/common/enums.py — REPURCHASES_BRAND, REPURCHASES_CATEGORY 추가
-- src/mart/build_serving_views.py — repurchase_category_ids 분리
-- src/rec/candidate_generator.py — owned_product_ids product: prefix 처리
-- src/rec/scorer.py — product: prefix normalization
-- src/rec/explainer.py — texture 2-layer 설명
-- src/wrap/signal_emitter.py — source_fact_ids 캐시 주석
-- src/jobs/run_daily_pipeline.py — _agg_to_dict에 is_promoted 추가
-- src/jobs/run_incremental_pipeline.py — _agg_to_dict에 is_promoted 추가
-- src/loaders/relation_loader.py — source_review_key, author_key 매핑
-- sql/ddl_signal.sql — source_fact_ids 캐시 DDL 주석
-- mockdata/review_triples_raw.json — stable keys 추가
-- mockdata/README.md — 계약 명확화
+## 수정된 소스 파일 (이번 세션)
+- src/mart/build_serving_views.py — variant_family_id + owned/repurchased family_ids
+- src/common/enums.py — OWNS_FAMILY, REPURCHASES_FAMILY
+- src/user/adapters/personal_agent_adapter.py — family predicates + texture config 전환
+- src/rec/candidate_generator.py — family match + tool/co-use overlap
+- src/rec/scorer.py — family penalty/affinity + tool/co-use features
+- src/rec/explainer.py — tool/co-use 설명 + edge map
+- src/loaders/user_loader.py — raw profile validation
+- src/loaders/rs_jsonl_loader.py (신규) — rs.jsonl loader
+- src/web/server.py — mock 데이터 통합 로딩
+- configs/texture_keyword_map.yaml (신규) — texture 정규화 config
+- .gitignore — _remapped_reviews.json 제외
 
 ## 최종 완료 기준 체크리스트
-1. [x] product loader가 mock product truth를 실제 ingest에 반영
-2. [x] OWNS_PRODUCT가 실제 product identity로 동작
-3. [x] preferred_texture가 BEE_ATTR(Texture) + KEYWORD 두 층으로 반영
-4. [x] serving product profile 기본 경로는 promoted signal만 사용
-5. [x] provenance 정본은 signal_evidence로 일관
-6. [x] raw/normalized user mock 계약이 문서와 실행 경로에서 충돌하지 않음
-7. [x] shared_entities/review_kg_output이 실제 테스트 자산으로 사용됨
-8. [x] product truth + review corpus signal + user profile이 shared concept plane에서 일관 연결
+1. [x] product truth 필드가 loader→ingest→serving까지 반영
+2. [x] variant_family_id가 serving profile에 노출
+3. [x] family-level owned/repurchased가 candidate/scorer에서 구분
+4. [x] texture가 BEE_ATTR + KEYWORD 2단으로 config 기반 정규화
+5. [x] promoted-only serving 전경로 강제
+6. [x] raw profile 입력 시 명시적 validation error
+7. [x] rs.jsonl → RawReviewRecord first-class transform 경로
+8. [x] co-used/tool signal이 scoring feature로 활용
+9. [x] mock regression tests 가동 (shared_entities, review_kg_output)
+10. [x] 프론트에서 mock 데이터 기반 파이프라인 실행 가능
 
 ## 향후 작업 (deferred)
-- [ ] P2-1: fact_provenance 범용화 (source_domain/source_kind 확장)
-- [ ] P2-2: repo boundary 정리 (코어 serving vs evidence 경계 문서화)
-- [ ] NER-BeE flatten → anchor evidence transition
-- [ ] BEE contract 추가 필드 (evidence_text, evidence_span, derived_qualifiers)
-- [ ] kg_mode legacy/shadow 완전 분리
-- [ ] SQL prefilter 실제 DB 통합 테스트
-- [ ] corpus_weight 기반 scorer feature 계산
+- [ ] P1-1: user weighting config 분리 (configs/user_weighting.yaml)
+- [ ] P1-3: generic provenance 범용화 (source_domain/source_kind 확장)
+- [ ] P2-2: SQL-first candidate path 공식화
+- [ ] keyword_normalizer에서도 texture config 공유
+- [ ] rs.jsonl loader를 server.py demo에 연동

@@ -94,6 +94,10 @@ class Scorer:
             "skin_type_fit": skin_type_fit_val,
             "purchase_loyalty_score": purchase_loyalty,
             "novelty_bonus": novelty,
+            "owned_family_penalty": _owned_family_penalty(user_profile, product_profile),
+            "repurchase_family_affinity": _repurchase_family_affinity(user_profile, product_profile),
+            "tool_alignment": min(overlaps_by_type.get("tool", 0) / 2.0, 1.0),
+            "coused_product_bonus": min(overlaps_by_type.get("coused", 0) / 2.0, 1.0),
         }
 
         raw_score = sum(
@@ -213,6 +217,14 @@ def _novelty_bonus(user_profile: dict, product_profile: dict) -> float:
     if product_id in owned:
         return 0.0
 
+    # Same variant family but different SKU = low novelty
+    product_family = product_profile.get("variant_family_id")
+    if product_family:
+        owned_families = {entry["id"] if isinstance(entry, dict) else entry
+                         for entry in (user_profile.get("owned_family_ids") or [])}
+        if product_family in owned_families:
+            return 0.2
+
     all_brands = set()
     for key in ("recent_purchase_brand_ids", "repurchase_brand_ids", "preferred_brand_ids"):
         for entry in (user_profile.get(key) or []):
@@ -222,3 +234,27 @@ def _novelty_bonus(user_profile: dict, product_profile: dict) -> float:
         return 0.5
 
     return 1.0
+
+
+def _owned_family_penalty(user_profile: dict, product_profile: dict) -> float:
+    """Penalize products in same variant family as owned products."""
+    family_id = product_profile.get("variant_family_id")
+    if not family_id:
+        return 0.0
+    owned_families = {entry["id"] if isinstance(entry, dict) else entry
+                      for entry in (user_profile.get("owned_family_ids") or [])}
+    if family_id in owned_families:
+        return -0.5  # Penalty for same family
+    return 0.0
+
+
+def _repurchase_family_affinity(user_profile: dict, product_profile: dict) -> float:
+    """Boost products in same family as repurchased products."""
+    family_id = product_profile.get("variant_family_id")
+    if not family_id:
+        return 0.0
+    repurchased_families = {entry["id"] if isinstance(entry, dict) else entry
+                           for entry in (user_profile.get("repurchased_family_ids") or [])}
+    if family_id in repurchased_families:
+        return 1.0
+    return 0.0

@@ -34,6 +34,9 @@ ENV/
 *.sqlite3
 *.db
 
+# Generated mock data (large remapped review files)
+mockdata/_remapped_reviews.json
+
 # OS / editor files
 .DS_Store
 .idea/

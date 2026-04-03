@@ -247,6 +247,8 @@ USER_PREFERENCE_EDGE_TYPES = frozenset({
     "REPURCHASES_CATEGORY",
     "RECENTLY_PURCHASED",
     "OWNS_PRODUCT",
+    "OWNS_FAMILY",
+    "REPURCHASES_FAMILY",
 })
 
 # Fact family groupings for user facts
@@ -261,6 +263,7 @@ USER_BEHAVIOR_EDGE_TYPES = frozenset({
     "REPURCHASES_PRODUCT_OR_FAMILY",  # backward compat (no longer generated)
     "REPURCHASES_BRAND", "REPURCHASES_CATEGORY",
     "RECENTLY_PURCHASED", "OWNS_PRODUCT",
+    "OWNS_FAMILY", "REPURCHASES_FAMILY",
 })
 
 

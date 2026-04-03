@@ -44,6 +44,18 @@ def load_users_from_profiles(
     result = UserLoadResult()
 
     for user_id, profile in user_profiles.items():
+        # Validate normalized 3-group format
+        if "user_profile" in profile or "skin_profile" in profile:
+            raise ValueError(
+                f"User '{user_id}' appears to be in raw 7-column format. "
+                f"Use normalized 3-group format (basic/purchase_analysis/chat) instead. "
+                f"See mockdata/README.md for details."
+            )
+        if "basic" not in profile:
+            raise ValueError(
+                f"User '{user_id}' missing required 'basic' key. "
+                f"Expected normalized 3-group format: {{basic, purchase_analysis, chat}}."
+            )
         basic = profile.get("basic", {})
 
         # Build user_master row

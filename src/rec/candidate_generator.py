@@ -22,6 +22,7 @@ class CandidateProduct:
     hard_filtered: bool = False
     filter_reason: str | None = None
     already_owned: bool = False
+    owned_family_match: bool = False
 
 
 def generate_candidates(
@@ -48,6 +49,7 @@ def generate_candidates(
     preferred_contexts = _extract_ids(user_profile.get("preferred_context_ids", []))
     goal_ids = _extract_ids(user_profile.get("goal_ids", []))
     owned_product_ids_raw = _extract_ids(user_profile.get("owned_product_ids", []))
+    owned_family_ids = _extract_ids(user_profile.get("owned_family_ids", []))
     # Normalize: owned_product_ids may contain product IRIs ("product:P001")
     # or raw IDs ("P001"). Build a set that matches against raw product_id.
     owned_product_ids = set()
@@ -64,6 +66,9 @@ def generate_candidates(
         candidate = CandidateProduct(product_id=pid)
         if pid in owned_product_ids:
             candidate.already_owned = True
+        product_family = product.get("variant_family_id")
+        if product_family and product_family in owned_family_ids:
+            candidate.owned_family_match = True
 
         # --- Hard filters (zero-out) ---
 
@@ -128,6 +133,17 @@ def generate_candidates(
         # Goal from review signals: product concerns that match user goals
         for g in goal_ids & product_concerns:
             overlap.append(f"goal_review:{g}")
+
+        # Tool overlap (user preferred tools × product tool signals)
+        preferred_tools = _extract_ids(user_profile.get("preferred_tool_ids", []))
+        product_tools = _extract_signal_ids(product.get("top_tool_ids", []))
+        for t in preferred_tools & product_tools:
+            overlap.append(f"tool:{t}")
+
+        # Co-used product overlap (user owned products × product co-use signals)
+        product_coused = _extract_signal_ids(product.get("top_coused_product_ids", []))
+        for co in owned_product_ids & product_coused:
+            overlap.append(f"coused:{co}")
 
         candidate.overlap_concepts = overlap
         candidate.overlap_score = len(overlap)

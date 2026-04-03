@@ -78,6 +78,7 @@ def build_serving_product_profile(
         "category_name": product_master.get("category_name"),
         "country_of_origin": product_master.get("country_of_origin"),
         "price": product_master.get("price"),
+        "variant_family_id": product_master.get("variant_family_id"),
         "ingredient_ids": product_master.get("ingredients", []),
         # Concept ID fields (canonical join keys — concept_id, not raw IRI)
         "brand_concept_ids": brand_concepts,
@@ -133,4 +134,6 @@ def build_serving_user_profile(
         "repurchase_brand_ids": _collect("REPURCHASES_BRAND"),
         "repurchase_category_ids": _collect("REPURCHASES_CATEGORY"),
         "owned_product_ids": _collect("OWNS_PRODUCT"),
+        "owned_family_ids": _collect("OWNS_FAMILY"),
+        "repurchased_family_ids": _collect("REPURCHASES_FAMILY"),
     }
