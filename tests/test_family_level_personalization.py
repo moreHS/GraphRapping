@@ -145,3 +145,13 @@ def test_repurchase_family_in_overlap_concepts():
     p003 = next(c for c in candidates if c.product_id == "P003")
     assert any("repurchased_family:" in c for c in p002.overlap_concepts)
     assert not any("repurchased_family:" in c for c in p003.overlap_concepts)
+
+
+def test_same_family_detected_with_product_prefix():
+    """Family matching must work when IDs have product: IRI prefix (as produced by adapter)."""
+    user = _user(owned_family_ids=["product:FAM001"])
+    products = [_product("P002", "FAM001"), _product("P003", "FAM002")]
+    candidates = generate_candidates(user, products, mode=RecommendationMode.EXPLORE)
+    fam_match = [c for c in candidates if c.product_id == "P002"]
+    assert len(fam_match) == 1
+    assert fam_match[0].owned_family_match is True

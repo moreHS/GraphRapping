@@ -230,8 +230,9 @@ def _novelty_bonus(user_profile: dict, product_profile: dict) -> float:
     # Same variant family but different SKU = low novelty
     product_family = product_profile.get("variant_family_id")
     if product_family:
-        owned_families = {entry["id"] if isinstance(entry, dict) else entry
-                         for entry in (user_profile.get("owned_family_ids") or [])}
+        owned_families_raw = {entry["id"] if isinstance(entry, dict) else entry
+                              for entry in (user_profile.get("owned_family_ids") or [])}
+        owned_families = {fid[len("product:"):] if fid.startswith("product:") else fid for fid in owned_families_raw}
         if product_family in owned_families:
             return 0.2
 
@@ -271,8 +272,9 @@ def _owned_family_penalty(user_profile: dict, product_profile: dict) -> float:
     owned = {oid[len("product:"):] if oid.startswith("product:") else oid for oid in owned_raw}
     if product_id in owned:
         return 0.0  # exact owned handled separately
-    owned_families = {entry["id"] if isinstance(entry, dict) else entry
-                      for entry in (user_profile.get("owned_family_ids") or [])}
+    owned_families_raw = {entry["id"] if isinstance(entry, dict) else entry
+                          for entry in (user_profile.get("owned_family_ids") or [])}
+    owned_families = {fid[len("product:"):] if fid.startswith("product:") else fid for fid in owned_families_raw}
     if family_id in owned_families:
         return -0.3  # Milder penalty for same family different variant
     return 0.0
@@ -294,10 +296,11 @@ def _same_family_explore_bonus(user_profile: dict, product_profile: dict) -> flo
     if product_id in owned:
         return 0.0  # exact owned — no explore bonus
     # Check if in any known family (owned or repurchased)
-    known_families = set()
+    known_families_raw = set()
     for key in ("owned_family_ids", "repurchased_family_ids"):
         for entry in (user_profile.get(key) or []):
-            known_families.add(entry["id"] if isinstance(entry, dict) else entry)
+            known_families_raw.add(entry["id"] if isinstance(entry, dict) else entry)
+    known_families = {fid[len("product:"):] if fid.startswith("product:") else fid for fid in known_families_raw}
     if family_id in known_families:
         return 0.5  # Bonus for exploring familiar family
     return 0.0
@@ -308,8 +311,9 @@ def _repurchase_family_affinity(user_profile: dict, product_profile: dict) -> fl
     family_id = product_profile.get("variant_family_id")
     if not family_id:
         return 0.0
-    repurchased_families = {entry["id"] if isinstance(entry, dict) else entry
-                           for entry in (user_profile.get("repurchased_family_ids") or [])}
+    repurchased_families_raw = {entry["id"] if isinstance(entry, dict) else entry
+                                for entry in (user_profile.get("repurchased_family_ids") or [])}
+    repurchased_families = {fid[len("product:"):] if fid.startswith("product:") else fid for fid in repurchased_families_raw}
     if family_id in repurchased_families:
         return 1.0
     return 0.0

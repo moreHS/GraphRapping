@@ -53,15 +53,18 @@ def generate_candidates(
     preferred_contexts = _extract_ids(user_profile.get("preferred_context_ids", []))
     goal_ids = _extract_ids(user_profile.get("goal_ids", []))
     owned_product_ids_raw = _extract_ids(user_profile.get("owned_product_ids", []))
-    owned_family_ids = _extract_ids(user_profile.get("owned_family_ids", []))
-    # Normalize: owned_product_ids may contain product IRIs ("product:P001")
-    # or raw IDs ("P001"). Build a set that matches against raw product_id.
+    owned_family_ids_raw = _extract_ids(user_profile.get("owned_family_ids", []))
+    repurchased_family_ids_raw = _extract_ids(user_profile.get("repurchased_family_ids", []))
+    # Normalize: owned_product_ids / family_ids may contain product IRIs ("product:P001")
+    # or raw IDs ("P001"). Strip prefix to match against raw product_id / variant_family_id.
     owned_product_ids = set()
     for oid in owned_product_ids_raw:
         if oid.startswith("product:"):
             owned_product_ids.add(oid[len("product:"):])
         else:
             owned_product_ids.add(oid)
+    owned_family_ids = {fid[len("product:"):] if fid.startswith("product:") else fid for fid in owned_family_ids_raw}
+    repurchased_families = {fid[len("product:"):] if fid.startswith("product:") else fid for fid in repurchased_family_ids_raw}
 
     candidates: list[CandidateProduct] = []
 
@@ -73,7 +76,6 @@ def generate_candidates(
         product_family = product.get("variant_family_id")
         if product_family and product_family in owned_family_ids:
             candidate.owned_family_match = True
-        repurchased_families = _extract_ids(user_profile.get("repurchased_family_ids", []))
         if product_family and product_family in repurchased_families:
             candidate.repurchased_family_match = True
 

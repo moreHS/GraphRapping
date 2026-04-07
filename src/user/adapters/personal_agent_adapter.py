@@ -129,7 +129,7 @@ def adapt_user_profile(
         for fid in purchase_features.get("owned_family_ids", []):
             facts.append(_make_product_ref("OWNS_FAMILY", fid, user_id, "purchase", confidence=0.85, last_seen_at=pf_last_seen))
         for fid in purchase_features.get("repurchased_family_ids", []):
-            facts.append(_make_pref("REPURCHASES_FAMILY", ConceptType.BRAND, fid, user_id, "purchase", confidence=0.9, last_seen_at=pf_last_seen))
+            facts.append(_make_product_ref("REPURCHASES_FAMILY", fid, user_id, "purchase", confidence=0.9, last_seen_at=pf_last_seen))
         # Fix C: REPURCHASES_BRAND instead of REPURCHASES_PRODUCT_OR_FAMILY
         for brand_id in purchase_features.get("repurchased_brand_ids", []):
             facts.append(_make_pref("REPURCHASES_BRAND", ConceptType.BRAND, brand_id, user_id, "purchase", confidence=0.9, last_seen_at=pf_last_seen))

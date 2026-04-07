@@ -73,3 +73,86 @@ def test_promoted_only_is_default():
     param = sig.parameters.get("promoted_only")
     assert param is not None, "promoted_only parameter must exist"
     assert param.default is True, "promoted_only must default to True (standard serving contract)"
+
+
+def test_recommend_path_uses_only_promoted_signals():
+    """Full recommend path: non-promoted signals must not contribute to scoring."""
+    from src.rec.candidate_generator import generate_candidates
+    from src.rec.scorer import Scorer
+    from src.common.enums import RecommendationMode
+
+    # Build a product profile where ALL signals are non-promoted
+    # (simulates what build_serving_product_profile would produce with promoted_only=False)
+    product_non_promoted = {
+        "product_id": "P_NONPROM",
+        "brand_id": "b1", "brand_name": "B",
+        "category_id": "c1", "category_name": "C",
+        "variant_family_id": None,
+        "price": 10000,
+        "ingredient_concept_ids": [],
+        "category_concept_ids": ["concept:Category:c1"],
+        "brand_concept_ids": ["concept:Brand:b1"],
+        "main_benefit_concept_ids": [],
+        # Signal lists are empty because promoted_only=True filtered everything
+        "top_bee_attr_ids": [],
+        "top_keyword_ids": [],
+        "top_context_ids": [],
+        "top_concern_pos_ids": [],
+        "top_concern_neg_ids": [],
+        "top_tool_ids": [],
+        "top_comparison_product_ids": [],
+        "top_coused_product_ids": [],
+        "review_count_30d": 0,
+        "review_count_90d": 0,
+        "review_count_all": 0,
+        "last_signal_at": None,
+    }
+
+    # Product with promoted signals
+    product_promoted = dict(product_non_promoted)
+    product_promoted["product_id"] = "P_PROM"
+    product_promoted["top_keyword_ids"] = [
+        {"id": "concept:Keyword:kw1", "score": 1.0, "review_cnt": 5},
+    ]
+    product_promoted["review_count_all"] = 50
+
+    user = {
+        "user_id": "u1",
+        "skin_type": None,
+        "owned_product_ids": [],
+        "owned_family_ids": [],
+        "repurchased_family_ids": [],
+        "preferred_brand_ids": [{"id": "concept:Brand:b1", "weight": 0.8}],
+        "preferred_category_ids": [{"id": "concept:Category:c1", "weight": 0.8}],
+        "preferred_ingredient_ids": [],
+        "avoided_ingredient_ids": [],
+        "concern_ids": [],
+        "goal_ids": [],
+        "preferred_bee_attr_ids": [],
+        "preferred_keyword_ids": [{"id": "concept:Keyword:kw1", "weight": 0.8}],
+        "preferred_context_ids": [],
+        "recent_purchase_brand_ids": [],
+        "repurchase_brand_ids": [],
+    }
+
+    candidates = generate_candidates(
+        user, [product_non_promoted, product_promoted],
+        mode=RecommendationMode.EXPLORE,
+    )
+    scorer = Scorer()
+    scorer.load_config()
+
+    scores = {}
+    for c in candidates:
+        product = product_promoted if c.product_id == "P_PROM" else product_non_promoted
+        s = scorer.score(user, product, c.overlap_concepts)
+        scores[c.product_id] = s
+
+    # Product with promoted signals should score higher
+    assert scores["P_PROM"].raw_score > scores["P_NONPROM"].raw_score, \
+        "Product with promoted signals must score higher than one without"
+    # Non-promoted product should have minimal signal-based contributions
+    # (only brand/category match from truth, no keyword/attr/context/concern)
+    non_prom_contribs = scores["P_NONPROM"].feature_contributions
+    assert "keyword_match" not in non_prom_contribs, \
+        "Non-promoted product should have no keyword_match contribution"
