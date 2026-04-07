@@ -163,7 +163,7 @@ def _generate_summary_ko(paths: list[ExplanationPath]) -> str:
         elif p.concept_type == "brand":
             parts.append(f"선호 브랜드 '{p.concept_id}' 일치")
         elif p.concept_type == "bee_attr":
-            if "Texture" in p.concept_id or "texture" in p.concept_id.lower():
+            if "formulation" in p.concept_id.lower() or "texture" in p.concept_id.lower():
                 parts.append("제형 축 선호와 일치")
             else:
                 parts.append(f"'{p.concept_id}' 속성 선호와 일치")

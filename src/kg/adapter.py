@@ -36,13 +36,30 @@ _KG_TYPE_TO_GR_TYPE = {
 }
 
 
+_bee_attr_dict: dict | None = None
+
+
+def _get_bee_attr_dict() -> dict:
+    global _bee_attr_dict
+    if _bee_attr_dict is None:
+        from src.common.config_loader import load_yaml
+        _bee_attr_dict = load_yaml("bee_attr_dict.yaml")
+    return _bee_attr_dict
+
+
 def to_graphrapping_iri(kg_entity: KGEntity) -> str:
     """Convert KG entity to GraphRapping concept IRI."""
     gr_type = _KG_TYPE_TO_GR_TYPE.get(kg_entity.entity_type, kg_entity.entity_type)
 
     if kg_entity.entity_type == "BEE_ATTR":
-        # BEE_ATTR: use bee_type only (polarity moves to fact)
-        return make_concept_iri(gr_type, normalize_text(kg_entity.bee_type or kg_entity.word))
+        # BEE_ATTR: use canonical attr_id from bee_attr_dict (not raw Korean label)
+        raw_label = kg_entity.bee_type or kg_entity.word or ""
+        bee_dict = _get_bee_attr_dict()
+        entry = bee_dict.get(raw_label) or bee_dict.get(normalize_text(raw_label))
+        if entry and entry.get("attr_id"):
+            return make_concept_iri(gr_type, entry["attr_id"])
+        # Fallback: use normalized label
+        return make_concept_iri(gr_type, normalize_text(raw_label))
     elif kg_entity.entity_type == "KEYWORD":
         return make_concept_iri(gr_type, kg_entity.normalized_value)
     elif kg_entity.is_placeholder:
@@ -164,8 +181,9 @@ def kg_result_to_facts(
 
         # Determine predicate, polarity, modality from actual KG data
         predicate = edge.relation_type.lower()
-        if edge.relation_type in ("HAS_ATTRIBUTE", "HAS_KEYWORD"):
-            predicate = edge.relation_type  # keep original case for registry
+        if edge.relation_type == "HAS_KEYWORD":
+            predicate = "HAS_KEYWORD"  # keep uppercase — registry expects this exact case
+        # has_attribute stays lowercase — registry maps has_attribute(Product, BEEAttr) -> BEE_ATTR
 
         # Polarity: from BEE_ATTR entity if available, else edge sentiment
         polarity = None

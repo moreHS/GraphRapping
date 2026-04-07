@@ -30,7 +30,7 @@ def test_texture_generates_attr_and_keyword():
     facts = adapt_user_profile("u1", profile)
     predicates = [(f["predicate"], f["concept_type"], f["concept_value"]) for f in facts]
     # Should have Texture axis BEE_ATTR
-    assert any(p == "PREFERS_BEE_ATTR" and v == "Texture" for p, t, v in predicates)
+    assert any(p == "PREFERS_BEE_ATTR" and v == "bee_attr_formulation" for p, t, v in predicates)
     # Should have specific keywords
     assert any(p == "PREFERS_KEYWORD" and "GelLike" in v for p, t, v in predicates)
     assert any(p == "PREFERS_KEYWORD" and "LightLotionLike" in v for p, t, v in predicates)

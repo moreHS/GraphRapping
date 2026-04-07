@@ -44,7 +44,7 @@ def test_texture_axis_from_config():
     }
     facts = adapt_user_profile("u1", profile)
     attrs = [f for f in facts if f["predicate"] == "PREFERS_BEE_ATTR"]
-    texture_attrs = [f for f in attrs if f["concept_value"] == "Texture"]
+    texture_attrs = [f for f in attrs if f["concept_value"] == "bee_attr_formulation"]
     assert len(texture_attrs) == 1
 
 

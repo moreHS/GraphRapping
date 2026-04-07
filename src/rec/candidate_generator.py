@@ -153,6 +153,12 @@ def generate_candidates(
         for ctx in preferred_contexts & product_contexts:
             overlap.append(f"context:{ctx}")
 
+        # Ingredient overlap (product truth ingredients vs user preferred ingredients)
+        product_ingredients_concept = set(product.get("ingredient_concept_ids") or [])
+        preferred_ingredients = _extract_ids(user_profile.get("preferred_ingredient_ids", []))
+        for ing in preferred_ingredients & product_ingredients_concept:
+            overlap.append(f"ingredient:{ing}")
+
         # Concern overlap (product addresses user's concern)
         product_concerns = _extract_signal_ids(product.get("top_concern_pos_ids", []))
         for c in concern_ids & product_concerns:

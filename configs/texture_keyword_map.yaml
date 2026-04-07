@@ -5,7 +5,8 @@
 version: "v1"
 authoritative: true
 
-texture_axis: "Texture"
+# texture_axis: canonical BEE_ATTR ID (must match bee_attr_dict.yaml → 제형.attr_id)
+texture_axis: "bee_attr_formulation"
 
 # Canonical keywords and their surface forms
 keywords:
