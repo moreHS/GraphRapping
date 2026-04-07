@@ -39,3 +39,32 @@ def load_csv(filename: str) -> list[dict[str, str]]:
                 f"CSV '{filename}' row {i + 2} has more columns than header"
             )
     return rows
+
+
+# ---------------------------------------------------------------------------
+# Texture taxonomy shared loader
+# ---------------------------------------------------------------------------
+
+_texture_taxonomy: dict | None = None
+
+
+def load_texture_taxonomy() -> dict:
+    """Load texture taxonomy from authoritative source (texture_keyword_map.yaml).
+
+    Both user adapter and review normalizer should use this function
+    to ensure they reference the same taxonomy version.
+    """
+    global _texture_taxonomy
+    if _texture_taxonomy is None:
+        _texture_taxonomy = load_yaml("texture_keyword_map.yaml")
+    return _texture_taxonomy
+
+
+def get_texture_surface_to_keyword() -> dict[str, str]:
+    """Get surface -> canonical keyword mapping from texture taxonomy."""
+    return load_texture_taxonomy().get("surface_to_keyword", {})
+
+
+def get_texture_axis() -> str:
+    """Get the texture BEE_ATTR axis name."""
+    return load_texture_taxonomy().get("texture_axis", "Texture")

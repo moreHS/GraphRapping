@@ -9,32 +9,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from src.common.config_loader import load_yaml
+from src.common.config_loader import get_texture_surface_to_keyword, get_texture_axis
 from src.common.ids import make_concept_iri, make_product_iri
 from src.common.text_normalize import normalize_text
 from src.common.enums import ConceptType
-
-
-# ---------------------------------------------------------------------------
-# Texture normalization (loaded from configs/texture_keyword_map.yaml)
-# ---------------------------------------------------------------------------
-
-_texture_config: dict | None = None
-
-
-def _get_texture_config() -> dict:
-    global _texture_config
-    if _texture_config is None:
-        _texture_config = load_yaml("texture_keyword_map.yaml")
-    return _texture_config
-
-
-def _get_texture_axis() -> str:
-    return _get_texture_config().get("texture_axis", "Texture")
-
-
-def _get_texture_keyword_map() -> dict[str, str]:
-    return _get_texture_config().get("surface_to_keyword", {})
 
 
 def adapt_user_profile(
@@ -102,8 +80,8 @@ def adapt_user_profile(
         textures = face.get("preferred_texture", [])
         if textures:
             # Axis-level: emit once regardless of how many textures
-            facts.append(_make_pref("PREFERS_BEE_ATTR", ConceptType.BEE_ATTR, _get_texture_axis(), user_id, "chat"))
-            texture_map = _get_texture_keyword_map()
+            facts.append(_make_pref("PREFERS_BEE_ATTR", ConceptType.BEE_ATTR, get_texture_axis(), user_id, "chat"))
+            texture_map = get_texture_surface_to_keyword()
             for texture in textures:
                 keyword = texture_map.get(texture.replace(" ", ""), texture)
                 facts.append(_make_pref("PREFERS_KEYWORD", ConceptType.KEYWORD, keyword, user_id, "chat"))

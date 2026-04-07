@@ -14,7 +14,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from src.web.state import demo_state, load_demo_data
-from src.rec.candidate_generator import generate_candidates
+from src.rec.candidate_generator import generate_candidates, generate_candidates_prefiltered
 from src.rec.scorer import Scorer
 from src.rec.reranker import rerank
 from src.rec.explainer import explain
@@ -218,7 +218,15 @@ async def recommend(req: RecommendRequest):
     mode_map = {"strict": RecommendationMode.STRICT, "explore": RecommendationMode.EXPLORE, "compare": RecommendationMode.COMPARE}
     mode = mode_map.get(req.mode, RecommendationMode.EXPLORE)
 
-    candidates = generate_candidates(user, demo_state.serving_products, mode=mode, max_candidates=50)
+    # SQL-first: use prefiltered path as default (avoids Python full-scan of all products)
+    product_map = {p["product_id"]: p for p in demo_state.serving_products}
+    candidates = generate_candidates_prefiltered(
+        user_profile=user,
+        prefiltered_product_ids=list(product_map.keys()),
+        product_profiles_by_id=product_map,
+        mode=mode,
+        max_candidates=50,
+    )
 
     scorer = Scorer()
     if req.weights:
@@ -229,14 +237,13 @@ async def recommend(req: RecommendRequest):
 
     scored = []
     for c in candidates:
-        p = next((p for p in demo_state.serving_products if p["product_id"] == c.product_id), None)
+        p = product_map.get(c.product_id)
         if p:
             s = scorer.score(user, p, c.overlap_concepts)
             scored.append((c, s))
 
     scored.sort(key=lambda x: x[1].final_score, reverse=True)
 
-    product_map = {p["product_id"]: p for p in demo_state.serving_products}
     reranked = rerank([s for _, s in scored], product_profiles=product_map,
                       diversity_weight=req.diversity_weight, top_k=req.top_k)
 

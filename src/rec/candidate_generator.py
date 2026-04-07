@@ -23,10 +23,12 @@ class CandidateProduct:
     filter_reason: str | None = None
     already_owned: bool = False
     owned_family_match: bool = False
-    # Granular family distinction:
-    # - already_owned=True, owned_family_match=True → exact SKU re-encounter
-    # - already_owned=False, owned_family_match=True → same family, different variant
     repurchased_family_match: bool = False
+    # Family candidate bucket: classifies the product's relationship to user's owned inventory
+    #   EXACT_OWNED — exact SKU the user already has
+    #   SAME_FAMILY_OTHER_VARIANT — different SKU in an owned/known family
+    #   NON_FAMILY — no family relationship
+    candidate_bucket: str = "NON_FAMILY"
 
 
 def generate_candidates(
@@ -78,6 +80,12 @@ def generate_candidates(
             candidate.owned_family_match = True
         if product_family and product_family in repurchased_families:
             candidate.repurchased_family_match = True
+
+        # Classify candidate bucket
+        if candidate.already_owned:
+            candidate.candidate_bucket = "EXACT_OWNED"
+        elif candidate.owned_family_match or candidate.repurchased_family_match:
+            candidate.candidate_bucket = "SAME_FAMILY_OTHER_VARIANT"
 
         # --- Hard filters (zero-out) ---
 

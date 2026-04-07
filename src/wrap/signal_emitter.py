@@ -29,6 +29,8 @@ class WrappedSignal:
     user_id: str | None
     target_product_id: str | None
     source_fact_ids: list[str]  # DEPRECATED: write-only cache. Read provenance from signal_evidence table.
+    # NOTE: All provenance reads must use signal_evidence table, not source_fact_ids.
+    # This field is populated for backward compatibility only and will be removed.
     signal_family: str
     edge_type: str
     dst_type: str

@@ -128,23 +128,15 @@ def _concept_to_feature(concept_type: str) -> str:
     return mapping.get(concept_type, "")
 
 
-_texture_config: dict | None = None
-
-
-def _get_texture_config() -> dict:
-    global _texture_config
-    if _texture_config is None:
-        from src.common.config_loader import load_yaml
-        _texture_config = load_yaml("texture_keyword_map.yaml")
-    return _texture_config
+from src.common.config_loader import get_texture_surface_to_keyword
 
 
 def _get_texture_keywords() -> set[str]:
-    return set(_get_texture_config().get("surface_to_keyword", {}).values())
+    return set(get_texture_surface_to_keyword().values())
 
 
 def _get_texture_keyword_ko() -> dict[str, str]:
-    s2k = _get_texture_config().get("surface_to_keyword", {})
+    s2k = get_texture_surface_to_keyword()
     reverse: dict[str, str] = {}
     for surface, keyword in s2k.items():
         if keyword not in reverse or len(surface) > len(reverse[keyword]):

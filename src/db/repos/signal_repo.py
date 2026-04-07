@@ -41,7 +41,8 @@ async def replace_signals_for_review(
 
     # Insert new signals
     for sig in signals:
-        # source_fact_ids: cache-only; SoT = signal_evidence table
+        # source_fact_ids: DEPRECATED cache-only field. SoT = signal_evidence table.
+        # Will be removed in future migration. Do NOT read this field for provenance.
         await uow.execute("""
             INSERT INTO wrapped_signal (signal_id, review_id, user_id, target_product_id,
                 source_fact_ids, signal_family, edge_type, dst_type, dst_id, dst_ref_kind,

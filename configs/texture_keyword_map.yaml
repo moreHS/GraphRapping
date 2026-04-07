@@ -1,10 +1,23 @@
-# Texture keyword normalization: surface form → canonical keyword
-# Used by both user adapter (preference) and review normalizer (review signals)
-# Upper axis: always "Texture" (BEE_ATTR)
-# Lower keywords: specific texture expressions (KEYWORD)
+# Texture taxonomy — AUTHORITATIVE SOURCE
+# All texture normalization (user adapter + review normalizer) must reference this file.
+# keyword_surface_map.yaml texture section is a DERIVED subset — do not edit independently.
+
+version: "v1"
+authoritative: true
 
 texture_axis: "Texture"
 
+# Canonical keywords and their surface forms
+keywords:
+  CreamyLike: ["크리미"]
+  MoistLike: ["촉촉한"]
+  GelLike: ["젤", "젤타입"]
+  LightLotionLike: ["가벼운로션", "가벼운 로션"]
+  WateryLike: ["워터리"]
+  RichCreamLike: ["리치크림", "리치 크림"]
+  MilkLike: ["밀크"]
+
+# Legacy flat mapping (backward compat with existing loaders)
 surface_to_keyword:
   크리미: CreamyLike
   촉촉한: MoistLike

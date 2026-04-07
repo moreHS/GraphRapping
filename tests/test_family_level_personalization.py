@@ -155,3 +155,23 @@ def test_same_family_detected_with_product_prefix():
     fam_match = [c for c in candidates if c.product_id == "P002"]
     assert len(fam_match) == 1
     assert fam_match[0].owned_family_match is True
+
+
+def test_candidate_bucket_classification():
+    """Candidate bucket must classify exact_owned / same_family / non_family."""
+    user = _user(owned_family_ids=["FAM001"], repurchased_family_ids=["FAM002"])
+    user["owned_product_ids"] = [{"id": "product:P002", "weight": 1.0}]
+    products = [
+        _product("P002", "FAM001"),  # exact owned + same family
+        _product("P003", "FAM001"),  # same family, different SKU
+        _product("P004", "FAM002"),  # repurchased family
+        _product("P005", "FAM999"),  # no family relation
+    ]
+    candidates = generate_candidates(user, products, mode=RecommendationMode.EXPLORE)
+    by_id = {c.product_id: c for c in candidates}
+    # P003 is same family other variant
+    assert by_id["P003"].candidate_bucket == "SAME_FAMILY_OTHER_VARIANT"
+    # P004 is repurchased family
+    assert by_id["P004"].candidate_bucket == "SAME_FAMILY_OTHER_VARIANT"
+    # P005 is no family relation
+    assert by_id["P005"].candidate_bucket == "NON_FAMILY"

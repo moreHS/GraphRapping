@@ -47,7 +47,8 @@
   - keyword_id: kw_portable
     label_ko: 휴대편함
 
-# Texture surface forms (synchronized with texture_keyword_map.yaml)
+# AUTO-GENERATED from texture_keyword_map.yaml — DO NOT EDIT MANUALLY
+# Run tests/test_texture_taxonomy_alignment.py to verify sync
 크리미:
   - keyword_id: CreamyLike
     label_ko: 크리미

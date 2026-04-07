@@ -8,7 +8,7 @@ create table if not exists wrapped_signal (
     review_id text,
     user_id text,
     target_product_id text,
-    source_fact_ids text[] not null default '{}',  -- CACHE-ONLY: provenance SoT = signal_evidence table
+    source_fact_ids text[] NOT NULL DEFAULT '{}',  -- DEPRECATED: write-only cache. SoT = signal_evidence table. Target: remove in next schema migration.
     signal_family text not null,           -- BEE_ATTR|BEE_KEYWORD|CONTEXT|TOOL|
                                            -- CONCERN_POS|CONCERN_NEG|COMPARISON|COUSED_PRODUCT|
                                            -- SEGMENT|CATALOG_VALIDATION
