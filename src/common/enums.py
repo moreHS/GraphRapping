@@ -301,6 +301,29 @@ class PromotionDecision(str, Enum):
 
 
 # ---------------------------------------------------------------------------
+# BEE Target Attribution (review target attribution gate)
+# ---------------------------------------------------------------------------
+
+class AttributionSource(str, Enum):
+    """How a BEE phrase was attributed to the review target product."""
+    DIRECT_REL = "direct_rel"                    # Explicit NER-BEE relation to review target
+    PLACEHOLDER_RESOLVED = "placeholder_resolved"  # Subject is placeholder resolved to target
+    SAME_ENTITY_RESOLVED = "same_entity_resolved"  # Subject resolved via same_entity merge
+    COMPARISON_RESOLVED = "comparison_resolved"    # Target side proven via comparison structure
+    UNLINKED = "unlinked"                          # No proof of target attribution
+
+
+# Priority order: higher = stronger attribution evidence
+ATTRIBUTION_PRIORITY = {
+    AttributionSource.DIRECT_REL: 4,
+    AttributionSource.PLACEHOLDER_RESOLVED: 3,
+    AttributionSource.SAME_ENTITY_RESOLVED: 2,
+    AttributionSource.COMPARISON_RESOLVED: 1,
+    AttributionSource.UNLINKED: 0,
+}
+
+
+# ---------------------------------------------------------------------------
 # Keyword Source (dictionary validation status)
 # ---------------------------------------------------------------------------
 

@@ -51,8 +51,10 @@ def build_serving_product_profile(
     for s in window_signals:
         by_edge[s.get("canonical_edge_type", "")].append(s)
 
-    def _top_n(edge_type: str, n: int = 10) -> list[dict]:
+    def _top_n(edge_type: str, n: int = 10, min_label_len: int = 0) -> list[dict]:
         items = by_edge.get(edge_type, [])
+        if min_label_len > 0:
+            items = [i for i in items if len((i.get("dst_node_id") or "").split(":")[-1]) >= min_label_len]
         items.sort(key=lambda x: x.get("score", 0), reverse=True)
         return [{"id": i["dst_node_id"], "score": i["score"], "review_cnt": i["review_cnt"]} for i in items[:n]]
 
@@ -88,7 +90,7 @@ def build_serving_product_profile(
         "main_benefit_concept_ids": benefit_concepts,
         # Signal columns
         "top_bee_attr_ids": _top_n("HAS_BEE_ATTR_SIGNAL"),
-        "top_keyword_ids": _top_n("HAS_BEE_KEYWORD_SIGNAL"),
+        "top_keyword_ids": _top_n("HAS_BEE_KEYWORD_SIGNAL", min_label_len=2),
         "top_context_ids": _top_n("USED_IN_CONTEXT_SIGNAL"),
         "top_concern_pos_ids": _top_n("ADDRESSES_CONCERN_SIGNAL"),
         "top_concern_neg_ids": _top_n("MAY_CAUSE_CONCERN_SIGNAL"),

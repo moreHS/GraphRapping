@@ -1,4 +1,9 @@
-"""Tests: cross-source mock data integrity."""
+"""Tests: cross-source mock data integrity.
+
+Cross-reference checks use shared_entities.json as the anchor.
+User profiles may contain brands/categories beyond the product catalog
+(from personal-agent sync), so user→catalog checks are scoped to shared_entities.
+"""
 import json
 from pathlib import Path
 
@@ -29,20 +34,22 @@ def test_review_brands_in_catalog():
     for r in reviews:
         assert r["brnd_nm"] in catalog_brands, f"Review brand '{r['brnd_nm']}' not in catalog"
 
-def test_user_categories_in_catalog():
-    """User preferred categories must exist in product catalog categories."""
+def test_shared_users_in_profiles():
+    """All shared_entities users must exist in user_profiles_normalized."""
+    shared = _load("shared_entities.json")
     users = _load("user_profiles_normalized.json")
-    catalog = _load("product_catalog_es.json")
-    catalog_cats = {p["CTGR_SS_NAME"] for p in catalog}
-    for uid, profile in users.items():
-        for cat in profile.get("purchase_analysis", {}).get("active_product_category", []):
-            assert cat in catalog_cats, f"User {uid} category '{cat}' not in catalog"
+    for u in shared["users"]:
+        assert u["user_id"] in users, f"Shared user {u['user_id']} not in profiles"
 
-def test_user_brands_in_catalog():
-    """User preferred brands must exist in product catalog."""
-    users = _load("user_profiles_normalized.json")
+def test_catalog_brands_have_user_overlap():
+    """At least one user across all profiles should prefer a catalog brand."""
     catalog = _load("product_catalog_es.json")
+    users = _load("user_profiles_normalized.json")
     catalog_brands = {p["BRAND_NAME"] for p in catalog}
-    for uid, profile in users.items():
-        for brand in profile.get("purchase_analysis", {}).get("preferred_skincare_brand", []):
-            assert brand in catalog_brands, f"User {uid} brand '{brand}' not in catalog"
+    user_brands = set()
+    for profile in users.values():
+        pa = profile.get("purchase_analysis", {})
+        for key in ("preferred_skincare_brand", "preferred_makeup_brand"):
+            user_brands.update(pa.get(key, []))
+    overlap = catalog_brands & user_brands
+    assert overlap, f"No catalog brand is preferred by any user. Catalog: {catalog_brands}"

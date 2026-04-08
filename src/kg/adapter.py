@@ -81,11 +81,27 @@ def to_graphrapping_entity(kg_entity: KGEntity) -> CanonicalEntity:
     )
 
 
+def _is_bee_edge(edge: KGEdge, kg_subj: KGEntity | None, kg_obj: KGEntity | None) -> bool:
+    """Check if an edge involves BEE_ATTR or KEYWORD entities."""
+    return (
+        (kg_subj and kg_subj.entity_type in ("BEE_ATTR", "KEYWORD")) or
+        (kg_obj and kg_obj.entity_type in ("BEE_ATTR", "KEYWORD"))
+    )
+
+
 def _classify_promotion(edge: KGEdge, kg_subj: KGEntity | None, kg_obj: KGEntity | None) -> str:
     """Classify an edge for promotion gate.
 
     Returns PromotionDecision value.
+
+    BEE attribution gate (§원칙2): BEE signal 승격은 relation-gated.
+    Unlinked BEE → KEEP_EVIDENCE_ONLY regardless of other conditions.
     """
+    # BEE target attribution gate: unlinked BEE → evidence only
+    if _is_bee_edge(edge, kg_subj, kg_obj):
+        if edge.target_linked is False:
+            return PromotionDecision.KEEP_EVIDENCE_ONLY
+
     # Synthetic BEE relations → evidence only
     if edge.evidence_kind == "BEE_SYNTHETIC":
         return PromotionDecision.KEEP_EVIDENCE_ONLY

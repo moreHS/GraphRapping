@@ -208,6 +208,16 @@ class SignalEmitter:
             if getattr(fact, "fact_status", "CANONICAL_PROMOTED") == "EVIDENCE_ONLY":
                 continue
 
+            # Defense-in-depth: BEE attribution gate (§원칙2)
+            # Unlinked BEE facts must NEVER produce BEE_ATTR or BEE_KEYWORD signals
+            is_bee_fact = (
+                (fact.predicate == "has_attribute" and fact.object_type == "BEEAttr") or
+                (fact.predicate == "HAS_KEYWORD" and fact.subject_type == "BEEAttr")
+            )
+            if is_bee_fact and getattr(fact, "target_linked", None) is False:
+                self._quarantined.append(fact.fact_id)
+                continue
+
             # Auto-detect BEE metadata from fact context
             bee_attr_id = None
             keyword_id = None

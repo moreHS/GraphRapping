@@ -331,6 +331,9 @@ async def product_graph(product_id: str, view: str = "corpus"):
                          "label": "HAS_ATTRIBUTE", "weight": sig.get("weight", 1)})
 
         elif family == "BEE_KEYWORD" and dst_id:
+            # Filter 1-char keywords (noise like 좋, 해, 나)
+            if len(dst_label) < 2:
+                continue
             # BEE_ATTR → KEYWORD (hierarchical!)
             parent = bee_attr_id or product_id
             if dst_id not in nodes_map:

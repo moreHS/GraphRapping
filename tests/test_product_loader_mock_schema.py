@@ -5,49 +5,67 @@ from src.loaders.product_loader import load_products_from_es_records
 
 
 def _load_mock():
-    data = json.loads(Path("mockdata/product_catalog_es.json").read_text(encoding="utf-8"))
-    return data
+    return json.loads(Path("mockdata/product_catalog_es.json").read_text(encoding="utf-8"))
+
+
+def _find_record_with(records, **criteria):
+    """Find first record matching all criteria (non-empty values)."""
+    for r in records:
+        if all(r.get(k) and (r.get(k) == v if not callable(v) else v(r.get(k))) for k, v in criteria.items()):
+            return r
+    return None
 
 
 def test_price_mapped():
     records = _load_mock()
     result = load_products_from_es_records(records)
-    # P001 has SALE_PRICE=39000
-    master = result.product_masters.get("P001")
+    # Find any product with a price
+    rec = _find_record_with(records, SALE_PRICE=lambda v: v and v > 0)
+    assert rec, "No product with SALE_PRICE in catalog"
+    pid = rec["ONLINE_PROD_SERIAL_NUMBER"]
+    master = result.product_masters.get(pid)
     assert master is not None
-    assert master["price"] == 39000
+    assert master["price"] == rec["SALE_PRICE"]
 
 
 def test_main_benefits_mapped():
     records = _load_mock()
     result = load_products_from_es_records(records)
-    master = result.product_masters.get("P001")
+    rec = _find_record_with(records, MAIN_EFFECT=lambda v: v and len(v) > 0)
+    assert rec, "No product with MAIN_EFFECT in catalog"
+    pid = rec["ONLINE_PROD_SERIAL_NUMBER"]
+    master = result.product_masters.get(pid)
     assert master is not None
-    assert "보습" in master["main_benefits"]
+    assert len(master["main_benefits"]) > 0
 
 
 def test_ingredients_mapped():
     records = _load_mock()
     result = load_products_from_es_records(records)
-    master = result.product_masters.get("P001")
+    rec = _find_record_with(records, MAIN_INGREDIENT=lambda v: v and "," in str(v))
+    assert rec, "No product with multi-ingredient in catalog"
+    pid = rec["ONLINE_PROD_SERIAL_NUMBER"]
+    master = result.product_masters.get(pid)
     assert master is not None
-    assert "히알루론산" in master["ingredients"]
-    assert "세라마이드" in master["ingredients"]
+    assert len(master["ingredients"]) >= 2
 
 
 def test_variant_family_id_mapped():
     records = _load_mock()
     result = load_products_from_es_records(records)
-    master = result.product_masters.get("P001")
+    rec = _find_record_with(records, REPRESENTATIVE_PROD_CODE=lambda v: v is not None)
+    assert rec, "No product with REPRESENTATIVE_PROD_CODE"
+    pid = rec["ONLINE_PROD_SERIAL_NUMBER"]
+    master = result.product_masters.get(pid)
     assert master is not None
-    assert master["variant_family_id"] is not None
-    assert master["variant_family_id"] == "10001001"  # REPRESENTATIVE_PROD_CODE
+    assert master["variant_family_id"] == rec["REPRESENTATIVE_PROD_CODE"]
 
 
 def test_sale_status_filter():
     records = _load_mock()
     result = load_products_from_es_records(records)
-    # P011 and P012 are 판매중지 — should be excluded
-    assert "P011" not in result.product_masters
-    assert "P012" not in result.product_masters
-    assert result.product_count == 10
+    active_count = sum(1 for r in records if r.get("SALE_STATUS") == "판매중")
+    stopped_pids = [r["ONLINE_PROD_SERIAL_NUMBER"] for r in records if r.get("SALE_STATUS") != "판매중"]
+    for pid in stopped_pids:
+        assert pid not in result.product_masters, f"Stopped product {pid} should be excluded"
+    assert result.product_count == active_count

@@ -113,6 +113,25 @@ def process_review(
         reviewer_proxy_iri=ingested.reviewer_proxy_id,
     )
 
+    # 3-b. BEE target attribution (§원칙2: relation-gated signal 승격)
+    from src.link.bee_attribution import attribute_bee_rows
+    bee_attributions = attribute_bee_rows(
+        bee_rows=ingested.bee_rows,
+        rel_rows=ingested.rel_rows,
+        target_product_name=record.prod_nm,
+        same_entity_pairs=[
+            {"subj_text": r.get("subj_text", ""), "obj_text": r.get("obj_text", "")}
+            for r in ingested.rel_rows
+            if r.get("relation_raw", "").lower() == "same_entity"
+        ] if ingested.rel_rows else None,
+    )
+    # Enrich bee_rows with attribution metadata
+    for attr in bee_attributions:
+        if attr.bee_idx < len(ingested.bee_rows):
+            ingested.bee_rows[attr.bee_idx]["target_linked"] = attr.target_linked
+            ingested.bee_rows[attr.bee_idx]["attribution_source"] = attr.attribution_source.value
+            ingested.bee_rows[attr.bee_idx]["attribution_confidence"] = attr.attribution_confidence
+
     # 4. Build canonical facts
     builder = CanonicalFactBuilder(predicate_contracts=predicate_contracts)
 
@@ -206,8 +225,13 @@ def process_review(
                 )
 
     # 4-c-legacy. Process BEE rows (legacy path — off or shadow mode)
+    # GUARD (§원칙5): BEE phrase 단독으로 concern/context signal 생성 금지.
+    # Concern/Context는 explicit relation (addresses, used_on, benefits, causes 등)에서만 생성.
     if kg_mode in ("off", "shadow"):
       for i, bee_row in enumerate(ingested.bee_rows):
+        # BEE attribution gate: only process target-linked BEE (§원칙2)
+        if not bee_row.get("target_linked", True):
+            continue
         bee_result = bee_normalizer.normalize(
             phrase_text=bee_row["phrase_text"],
             bee_attr_raw=bee_row["bee_attr_raw"],

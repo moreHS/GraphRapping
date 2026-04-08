@@ -120,10 +120,10 @@ async function loadProducts() {
   const data = await res.json();
   const panel = document.getElementById('explorerContent');
   panel.innerHTML = `<table><thead><tr>
-    <th>Product ID</th><th>브랜드</th><th>카테고리</th><th>리뷰수(all)</th><th>Top BEE</th>
+    <th>상품명</th><th>브랜드</th><th>카테고리</th><th>리뷰수(all)</th><th>Top BEE</th>
   </tr></thead><tbody>${data.items.map(p => `
     <tr class="clickable" onclick="showProductDetail('${p.product_id}')">
-      <td>${p.product_id}</td><td>${p.brand_name || '-'}</td><td>${p.category_name || '-'}</td>
+      <td>${productDisplayName(p)}</td><td>${p.brand_name || '-'}</td><td>${p.category_name || '-'}</td>
       <td>${p.review_count_all || 0}</td>
       <td>${(p.top_bee_attr_ids||[]).slice(0,2).map(a => a.id ? a.id.split(':').pop() : '').join(', ')}</td>
     </tr>`).join('')}</tbody></table>`;
@@ -134,7 +134,9 @@ async function showProductDetail(id) {
   const d = await res.json();
   const dp = document.getElementById('explorerDetail');
   dp.style.display = 'block';
-  dp.innerHTML = `<h3>상품 상세: ${id}</h3><pre>${JSON.stringify(d, null, 2)}</pre>`;
+  const sp = d.serving_profile || {};
+  const name = sp.representative_product_name ? `${sp.brand_name || ''} ${sp.representative_product_name}` : id;
+  dp.innerHTML = `<h3>상품 상세: ${name}</h3><pre>${JSON.stringify(d, null, 2)}</pre>`;
 }
 
 async function loadUsers() {
@@ -158,6 +160,17 @@ async function showUserDetail(id) {
   const dp = document.getElementById('explorerDetail');
   dp.style.display = 'block';
   dp.innerHTML = `<h3>유저 상세: ${id}</h3><pre>${JSON.stringify(d, null, 2)}</pre>`;
+}
+
+// =============================================================================
+// Product display name helper
+// =============================================================================
+function productDisplayName(p) {
+  const name = p.representative_product_name || p.product_name || '';
+  const brand = p.brand_name || '';
+  if (name && brand) return `${brand} ${name}`;
+  if (name) return name;
+  return p.product_id;
 }
 
 // =============================================================================
@@ -295,7 +308,7 @@ function renderRecommendResults(data) {
     <div class="rec-card">
       <div class="rank">#${r.rank}</div>
       <div>
-        <strong>${r.product_id}</strong>
+        <strong>${r.product.representative_product_name ? (r.product.brand_name || '') + ' ' + r.product.representative_product_name : r.product_id}</strong>
         <span class="score">점수: ${r.final_score.toFixed(4)} (raw: ${r.raw_score.toFixed(4)}, shrink: ${r.shrinked_score.toFixed(4)}, diversity: ${r.diversity_bonus >= 0 ? '+' : ''}${r.diversity_bonus.toFixed(4)})</span>
         <div class="explanation">${r.explanation || '설명 없음'}</div>
         ${r.explanation_paths.length ? '<h3 style="margin-top:8px">설명 경로</h3>' + r.explanation_paths.map(p => `
@@ -330,7 +343,7 @@ async function initGraphPanel() {
     ]);
     const sel = document.getElementById('graphTarget');
     sel.innerHTML = '<option value="">대상 선택...</option>'
-      + products.items.map(p => `<option value="product:${p.product_id}">🏷️ ${p.product_id} (${p.brand_name || ''})</option>`).join('')
+      + products.items.map(p => `<option value="product:${p.product_id}">🏷️ ${productDisplayName(p)}</option>`).join('')
       + users.items.map(u => `<option value="user:${u.user_id}">👤 ${u.user_id}</option>`).join('');
   } catch(e) {}
 }

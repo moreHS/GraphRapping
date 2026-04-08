@@ -78,6 +78,9 @@ class CanonicalFact:
     intensity: float | None = None
     evidence_kind: str | None = None
     fact_status: str = "CANONICAL_PROMOTED"  # EVIDENCE_ONLY|CANONICAL_PROMOTED|REJECTED
+    # BEE target attribution (set by adapter, used by signal emitter as defense-in-depth)
+    target_linked: bool | None = None
+    attribution_source: str | None = None
 
 
 class CanonicalFactBuilder:

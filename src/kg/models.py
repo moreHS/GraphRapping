@@ -33,6 +33,9 @@ class EntityMention:
     mention_id: str = field(default_factory=lambda: uuid.uuid4().hex[:16])
     mention_confidence: float = 1.0      # Source-based confidence (ner:1.0, bee:0.9, synthetic:0.4)
     is_generated: bool = False           # True for auto-generated mentions
+    # BEE target attribution (set by bee_attribution.py before KG processing)
+    target_linked: bool | None = None    # True if BEE is attributed to review target
+    attribution_source: str | None = None  # AttributionSource value
 
     def get_dedup_key(self) -> tuple:
         return (self.review_id, self.type, self.word, self.start, self.end)
@@ -52,6 +55,9 @@ class RelationMention:
     is_synthetic: bool = False         # True for auto-generated BEE-only relations
     evidence_kind: str | None = None   # EvidenceKind value (RAW_REL, BEE_SYNTHETIC, etc.)
     promotion_eligible: bool = True    # False → will not be promoted to canonical fact
+    # BEE target attribution
+    target_linked: bool | None = None
+    attribution_source: str | None = None
 
 
 @dataclass
@@ -64,6 +70,9 @@ class KeywordMention:
     bee_mention_id: str          # Link to parent BEE_ATTR EntityMention
     mention_id: str = field(default_factory=lambda: uuid.uuid4().hex[:16])
     keyword_source: str | None = None  # DICT|RULE|CANDIDATE — validation status
+    # BEE target attribution (inherited from parent BEE mention)
+    target_linked: bool | None = None
+    attribution_source: str | None = None
 
     def get_dedup_key(self) -> tuple:
         return (self.review_id, self.word, self.bee_attr_type)
@@ -94,6 +103,9 @@ class KGEntity:
     bee_type: str | None = None  # BEE_ATTR only: 밀착력, 보습력 etc.
     polarity: str | None = None  # BEE_ATTR only: POS, NEG, NEU
     original_phrases: list[str] = field(default_factory=list)
+    # BEE target attribution summary (mirror, not gate authority)
+    target_linked: bool | None = None
+    attribution_source: str | None = None
 
 
 @dataclass
@@ -109,6 +121,9 @@ class KGEdge:
     intensity: float | None = None     # 0.0~1.5 intensity modifier
     evidence_kind: str | None = None   # EvidenceKind value
     confidence: float | None = None    # Source-type based confidence (REL:1.0, synthetic:0.4)
+    # BEE target attribution (copied from relation mention)
+    target_linked: bool | None = None
+    attribution_source: str | None = None
 
 
 @dataclass
