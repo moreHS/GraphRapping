@@ -159,17 +159,30 @@ def generate_candidates(
         for ing in preferred_ingredients & product_ingredients_concept:
             overlap.append(f"ingredient:{ing}")
 
-        # Concern overlap (product addresses user's concern)
-        product_concerns = _extract_signal_ids(product.get("top_concern_pos_ids", []))
-        for c in concern_ids & product_concerns:
+        # Concern overlap (with ID normalization for cross-source matching)
+        from src.common.concept_resolver import resolve_concern_id, resolve_goal_id
+        user_concerns_norm = {resolve_concern_id(c) for c in concern_ids}
+        product_concerns_raw = _extract_signal_ids(product.get("top_concern_pos_ids", []))
+        product_concerns_norm = {resolve_concern_id(c) for c in product_concerns_raw}
+        for c in user_concerns_norm & product_concerns_norm:
             overlap.append(f"concern:{c}")
 
-        # Goal overlap: master (product benefits) + review (concern→goal match)
+        # BEE_ATTR → Concern bridge (discounted indirect matching)
+        from src.rec.concern_bridge import compute_bridged_concerns
+        bridged = compute_bridged_concerns(product.get("top_bee_attr_ids", []))
+        explicit_concerns = {c.split(":", 1)[1] for c in overlap if c.startswith("concern:")}
+        for bridge_concern_id in user_concerns_norm & set(bridged.keys()):
+            if bridge_concern_id not in explicit_concerns:
+                overlap.append(f"concern_bridge:{bridge_concern_id}")
+
+        # Goal overlap: master (with alias normalization)
+        user_goals_norm = {resolve_goal_id(g) for g in goal_ids}
         product_benefits = set(product.get("main_benefit_concept_ids") or product.get("main_benefit_ids") or [])
-        for g in goal_ids & product_benefits:
+        product_benefits_norm = {resolve_goal_id(g) for g in product_benefits}
+        for g in user_goals_norm & product_benefits_norm:
             overlap.append(f"goal_master:{g}")
         # Goal from review signals: product concerns that match user goals
-        for g in goal_ids & product_concerns:
+        for g in user_goals_norm & product_concerns_norm:
             overlap.append(f"goal_review:{g}")
 
         # Tool overlap (user preferred tools × product tool signals)

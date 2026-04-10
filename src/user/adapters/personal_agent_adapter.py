@@ -69,12 +69,15 @@ def adapt_user_profile(
         for ing in ingredients.get("allergy", []):
             facts.append(_make_pref("AVOIDS_INGREDIENT", ConceptType.INGREDIENT, ing, user_id, "chat", confidence=1.0))
 
-        # Face profile
+        # Face profile (concern/goal → canonical IDs via resolver)
+        from src.common.concept_resolver import resolve_concern_id, resolve_goal_id
         face = chat.get("face", {})
         for concern in face.get("skin_concerns", []):
-            facts.append(_make_pref("HAS_CONCERN", ConceptType.CONCERN, concern, user_id, "chat"))
+            canonical = resolve_concern_id(concern)
+            facts.append(_make_pref("HAS_CONCERN", ConceptType.CONCERN, canonical, user_id, "chat"))
         for goal in face.get("skincare_goals", []):
-            facts.append(_make_pref("WANTS_GOAL", ConceptType.GOAL, goal, user_id, "chat"))
+            canonical = resolve_goal_id(goal)
+            facts.append(_make_pref("WANTS_GOAL", ConceptType.GOAL, canonical, user_id, "chat"))
 
         # Fix B: texture → axis-level BEE_ATTR + specific KEYWORD
         textures = face.get("preferred_texture", [])

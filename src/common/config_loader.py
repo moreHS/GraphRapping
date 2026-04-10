@@ -68,3 +68,36 @@ def get_texture_surface_to_keyword() -> dict[str, str]:
 def get_texture_axis() -> str:
     """Get the texture BEE_ATTR axis name."""
     return load_texture_taxonomy().get("texture_axis", "Texture")
+
+
+# ---------------------------------------------------------------------------
+# Concern / Goal / Bridge loaders
+# ---------------------------------------------------------------------------
+
+_concern_dict: dict | None = None
+_goal_alias_map: dict | None = None
+_concern_bee_attr_map: dict | None = None
+
+
+def load_concern_dict() -> dict:
+    """Load concern dictionary (surface form → concept_id)."""
+    global _concern_dict
+    if _concern_dict is None:
+        _concern_dict = load_yaml("concern_dict.yaml")
+    return _concern_dict
+
+
+def load_goal_alias_map() -> dict:
+    """Load goal alias map (alias → canonical goal)."""
+    global _goal_alias_map
+    if _goal_alias_map is None:
+        _goal_alias_map = load_yaml("goal_alias_map.yaml")
+    return _goal_alias_map
+
+
+def load_concern_bee_attr_map() -> dict:
+    """Load BEE_ATTR → Concern bridge mapping."""
+    global _concern_bee_attr_map
+    if _concern_bee_attr_map is None:
+        _concern_bee_attr_map = load_yaml("concern_bee_attr_map.yaml")
+    return _concern_bee_attr_map

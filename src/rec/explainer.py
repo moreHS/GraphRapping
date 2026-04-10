@@ -41,6 +41,7 @@ _EDGE_MAP = {
     "keyword": ("PREFERS_KEYWORD", "HAS_BEE_KEYWORD_SIGNAL"),
     "bee_attr": ("PREFERS_BEE_ATTR", "HAS_BEE_ATTR_SIGNAL"),
     "concern": ("HAS_CONCERN", "ADDRESSES_CONCERN_SIGNAL"),
+    "concern_bridge": ("HAS_CONCERN", "HAS_BEE_ATTR_SIGNAL"),
     "context": ("PREFERS_CONTEXT", "USED_IN_CONTEXT_SIGNAL"),
     "brand": ("PREFERS_BRAND", "HAS_BRAND"),
     "category": ("PREFERS_CATEGORY", "IN_CATEGORY"),
@@ -114,6 +115,7 @@ def _concept_to_feature(concept_type: str) -> str:
         "keyword": "keyword_match",
         "bee_attr": "residual_bee_attr_match",
         "concern": "concern_fit",
+        "concern_bridge": "concern_bridge_fit",
         "context": "context_match",
         "brand": "brand_match_conf_weighted",
         "category": "category_affinity",
@@ -157,7 +159,13 @@ def _generate_summary_ko(paths: list[ExplanationPath]) -> str:
             else:
                 parts.append(f"'{p.concept_id}' 키워드 선호와 일치")
         elif p.concept_type == "concern":
-            parts.append(f"'{p.concept_id}' 고민 대응 신호 보유")
+            from src.common.concept_resolver import concern_label
+            label = concern_label(p.concept_id)
+            parts.append(f"'{label}' 고민 대응 신호 보유")
+        elif p.concept_type == "concern_bridge":
+            from src.common.concept_resolver import concern_label
+            label = concern_label(p.concept_id)
+            parts.append(f"BEE 속성 기반 '{label}' 대응 추정")
         elif p.concept_type == "context":
             parts.append(f"'{p.concept_id}' 사용 맥락과 일치")
         elif p.concept_type == "brand":

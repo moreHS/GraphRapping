@@ -6,6 +6,7 @@ features:
   residual_bee_attr_match: 0.09
   context_match: 0.11
   concern_fit: 0.11
+  concern_bridge_fit: 0.04
   ingredient_match: 0.08
   brand_match_conf_weighted: 0.07
   goal_fit_master: 0.05

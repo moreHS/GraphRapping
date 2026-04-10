@@ -85,6 +85,7 @@ class Scorer:
             "residual_bee_attr_match": min(residual_attr / 2.0, 1.0),
             "context_match": min(overlaps_by_type.get("context", 0) / 2.0, 1.0),
             "concern_fit": min(overlaps_by_type.get("concern", 0) / 2.0, 1.0),
+            "concern_bridge_fit": min(overlaps_by_type.get("concern_bridge", 0) / 2.0, 1.0),
             "ingredient_match": min(overlaps_by_type.get("ingredient", 0) / 3.0, 1.0),
             "brand_match_conf_weighted": _brand_score(overlaps_by_type.get("brand", 0), brand_source, self._brand_confidence),
             "goal_fit_master": min(goal_master_count / 2.0, 1.0),

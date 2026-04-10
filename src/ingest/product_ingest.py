@@ -140,9 +140,10 @@ def ingest_product(record: ProductRecord) -> dict[str, Any]:
             link_type="HAS_INGREDIENT",
         ))
 
-    # Seed Goal concepts from main_benefits
+    # Seed Goal concepts from main_benefits (canonical via goal alias map)
+    from src.common.concept_resolver import resolve_goal_id
     for benefit in record.main_benefits or []:
-        benefit_norm = normalize_text(benefit)
+        benefit_norm = resolve_goal_id(benefit)
         benefit_cid = _make_concept_id(ConceptType.GOAL, benefit_norm)
         concepts.append(ConceptSeed(
             concept_id=benefit_cid,

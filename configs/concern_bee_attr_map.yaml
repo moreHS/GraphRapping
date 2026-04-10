@@ -1,0 +1,29 @@
+# BEE_ATTR → Concern bridge mapping
+# BEE 속성이 강한 긍정 시그널일 때, 관련 concern을 간접 대응으로 추정
+# weight: bridge 강도 (0.0~1.0), explicit concern signal보다 항상 낮게 설정
+# 보수적 시작: 높은 precision 매핑만 포함
+
+bee_attr_moisturizing_power:
+  concern_id: concern_dryness
+  weight: 0.8
+  label_ko: "보습력 → 건조함 대응"
+
+bee_attr_cleansing_power:
+  concern_id: concern_oiliness
+  weight: 0.6
+  label_ko: "세정력 → 번들거림 대응"
+
+bee_attr_side_effect:
+  concern_id: concern_irritation
+  weight: 0.6
+  label_ko: "부작용 → 자극 관련"
+
+bee_attr_coverage:
+  concern_id: concern_acne
+  weight: 0.5
+  label_ko: "커버력 → 여드름 커버"
+
+bee_attr_absorption:
+  concern_id: concern_dryness
+  weight: 0.5
+  label_ko: "흡수력 → 건조함 대응"

@@ -352,8 +352,16 @@ async function loadGraph() {
   const target = document.getElementById('graphTarget').value;
   if (!target) return;
   const [type, id] = target.split(':');
-  const url = type === 'product' ? `/api/graphs/product/${id}` : `/api/graphs/user/${id}`;
+  const view = document.getElementById('graphView').value || 'corpus';
+  const viewParam = type === 'product' ? `?view=${view}` : '';
+  const url = type === 'product' ? `/api/graphs/product/${id}${viewParam}` : `/api/graphs/user/${id}`;
   const data = await fetch(API + url).then(r => r.json());
+  const info = document.getElementById('graphViewInfo');
+  if (info && data.view_mode) {
+    info.textContent = data.view_mode === 'corpus'
+      ? `Corpus view: promoted 시그널만 표시 (nodes: ${data.nodes.length}, edges: ${data.edges.length})`
+      : `Evidence view: 전체 시그널 표시 (nodes: ${data.nodes.length}, edges: ${data.edges.length})`;
+  }
   renderGraph(data);
 }
 
@@ -361,7 +369,7 @@ const TYPE_COLORS = {
   product: '#6366f1', user: '#8b5cf6', bee_attr: '#f59e0b', keyword: '#eab308',
   context: '#22c55e', concern_pos: '#10b981', concern_neg: '#ef4444',
   tool: '#3b82f6', comparison: '#ec4899', coused: '#f97316',
-  brand: '#a78bfa', category: '#67e8f9', ingredient: '#34d399',
+  brand: '#a78bfa', category: '#67e8f9', ingredient: '#34d399', goal: '#4ade80',
   avoid_ingredient: '#f87171', concern: '#fbbf24', goal: '#4ade80',
 };
 
