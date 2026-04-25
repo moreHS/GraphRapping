@@ -47,14 +47,17 @@ async def replace_signals_for_review(
             INSERT INTO wrapped_signal (signal_id, review_id, user_id, target_product_id,
                 source_fact_ids, signal_family, edge_type, dst_type, dst_id, dst_ref_kind,
                 bee_attr_id, keyword_id, polarity, negated, intensity, weight,
+                evidence_kind, fact_status, source_confidence, target_linked, attribution_source,
                 registry_version, window_ts, created_at)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)
         """,
             sig.signal_id, sig.review_id, sig.user_id, sig.target_product_id,
             sig.source_fact_ids, sig.signal_family, sig.edge_type,
             sig.dst_type, sig.dst_id, sig.dst_ref_kind,
             sig.bee_attr_id, sig.keyword_id, sig.polarity,
             sig.negated, sig.intensity, sig.weight,
+            sig.evidence_kind, sig.fact_status, sig.source_confidence,
+            sig.target_linked, sig.attribution_source,
             sig.registry_version, sig.window_ts, uow.as_of_ts,
         )
 

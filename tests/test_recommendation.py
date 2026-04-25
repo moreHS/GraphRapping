@@ -115,7 +115,6 @@ class TestScorer:
             "ingredient_match": 0.08,
             "brand_match_conf_weighted": 0.07,
             "goal_fit_master": 0.05,
-            "goal_fit_review_signal": 0.05,
             "category_affinity": 0.05,
             "freshness_boost": 0.04,
             "skin_type_fit": 0.06,

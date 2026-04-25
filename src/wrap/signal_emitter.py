@@ -9,11 +9,9 @@ Evidence rows generated alongside signals.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
 
 from src.common.ids import make_signal_id, make_qualifier_fingerprint
-from src.common.enums import SignalFamily, SCORING_EXCLUDED_FAMILIES
-from src.wrap.projection_registry import ProjectionRegistry, ProjectionResult
+from src.wrap.projection_registry import ProjectionRegistry
 from src.canonical.canonical_fact_builder import CanonicalFact
 
 
@@ -41,6 +39,11 @@ class WrappedSignal:
     polarity: str | None = None
     negated: bool | None = None
     intensity: float | None = None
+    evidence_kind: str | None = None
+    fact_status: str = "CANONICAL_PROMOTED"
+    source_confidence: float | None = None
+    target_linked: bool | None = None
+    attribution_source: str | None = None
     weight: float = 1.0
     registry_version: str = ""
     window_ts: str | None = None
@@ -87,6 +90,8 @@ class SignalEmitter:
             subject_type=fact.subject_type,
             object_type=fact.object_type,
             polarity=fact.polarity or "",
+            evidence_kind=fact.evidence_kind,
+            confidence=fact.confidence,
         )
 
         if isinstance(result, str):
@@ -153,6 +158,12 @@ class SignalEmitter:
                 if fact.fact_id not in existing.source_fact_ids:
                     existing.source_fact_ids.append(fact.fact_id)
                 existing.weight = max(existing.weight, weight)
+                existing.evidence_kind = _merge_evidence_kind(
+                    existing.evidence_kind,
+                    fact.evidence_kind,
+                )
+                if existing.source_confidence is None:
+                    existing.source_confidence = fact.confidence
         else:
             # Determine dst_ref_kind based on transform
             if transform == "reverse":
@@ -177,6 +188,11 @@ class SignalEmitter:
                 polarity=fact.polarity,
                 negated=actual_negated,
                 intensity=actual_intensity,
+                evidence_kind=fact.evidence_kind,
+                fact_status=fact.fact_status,
+                source_confidence=fact.confidence,
+                target_linked=fact.target_linked,
+                attribution_source=fact.attribution_source,
                 weight=weight,
                 registry_version=result.registry_version,
                 window_ts=window_ts,
@@ -250,3 +266,11 @@ class SignalEmitter:
     @property
     def quarantined_count(self) -> int:
         return len(self._quarantined)
+
+
+def _merge_evidence_kind(existing: str | None, incoming: str | None) -> str | None:
+    if not existing:
+        return incoming
+    if not incoming or incoming == existing:
+        return existing
+    return "MIXED"

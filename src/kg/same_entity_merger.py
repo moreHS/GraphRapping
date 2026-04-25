@@ -89,7 +89,7 @@ class SameEntityMerger:
         # Placeholder members first
         placeholders = [m for m in members if m.is_placeholder and m.placeholder_type]
         if placeholders:
-            placeholders.sort(key=lambda m: _PLACEHOLDER_PRIORITY.get(m.placeholder_type, 99))
+            placeholders.sort(key=lambda m: _PLACEHOLDER_PRIORITY.get(m.placeholder_type or "", 99))
             return placeholders[0]
 
         # Most frequent word

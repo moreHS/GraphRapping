@@ -8,7 +8,7 @@ with the generic signal emitter.
 from __future__ import annotations
 
 from src.canonical.canonical_fact_builder import CanonicalFact
-from src.wrap.signal_emitter import SignalEmitter, WrappedSignal
+from src.wrap.signal_emitter import SignalEmitter
 
 
 def project_bee_keyword_signals(

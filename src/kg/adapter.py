@@ -10,13 +10,13 @@ from __future__ import annotations
 
 import logging
 
+from src.canonical.canonical_fact_builder import CanonicalFactBuilder, CanonicalEntity, FactProvenance
+from src.common.enums import ObjectRefKind, PromotionDecision
+from src.common.ids import make_concept_iri
+from src.common.text_normalize import normalize_text
 from src.kg.models import KGResult, KGEntity, KGEdge
 
 logger = logging.getLogger(__name__)
-from src.canonical.canonical_fact_builder import CanonicalFactBuilder, CanonicalEntity, FactProvenance
-from src.common.ids import make_concept_iri
-from src.common.text_normalize import normalize_text
-from src.common.enums import ObjectRefKind, PromotionDecision
 
 
 # KG entity_type → GraphRapping concept_type
@@ -83,9 +83,9 @@ def to_graphrapping_entity(kg_entity: KGEntity) -> CanonicalEntity:
 
 def _is_bee_edge(edge: KGEdge, kg_subj: KGEntity | None, kg_obj: KGEntity | None) -> bool:
     """Check if an edge involves BEE_ATTR or KEYWORD entities."""
-    return (
-        (kg_subj and kg_subj.entity_type in ("BEE_ATTR", "KEYWORD")) or
-        (kg_obj and kg_obj.entity_type in ("BEE_ATTR", "KEYWORD"))
+    return bool(
+        (kg_subj is not None and kg_subj.entity_type in ("BEE_ATTR", "KEYWORD")) or
+        (kg_obj is not None and kg_obj.entity_type in ("BEE_ATTR", "KEYWORD"))
     )
 
 

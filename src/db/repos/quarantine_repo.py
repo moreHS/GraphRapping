@@ -5,7 +5,6 @@ Quarantine repository: routes QuarantineHandler.flush() entries to DB tables.
 from __future__ import annotations
 
 import json
-from typing import Any
 
 from src.db.unit_of_work import UnitOfWork
 from src.qa.quarantine_handler import QuarantineEntry

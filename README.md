@@ -26,7 +26,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for details.
 
 - **Corpus Promotion**: Signals need review_count >= 3, confidence >= 0.6, synthetic_ratio <= 0.5
 - **Common Concept Plane**: Brand, Category, Ingredient, BEEAttr, Keyword, Concern, Goal, Tool, Context
-- **13 Scoring Features**: keyword_match, bee_attr_match, concern_fit, goal_fit_master, goal_fit_review_signal, skin_type_fit, purchase_loyalty_score, novelty_bonus, etc.
+- **19 Scoring Features**: keyword_match, residual_bee_attr_match, concern_fit, concern_bridge_fit, goal_fit_master, family ownership features, tool/co-use features, etc.
 - **Provenance**: signal_evidence table is source of truth for explanation chains
 
 ## Local Development
@@ -38,14 +38,38 @@ pip install -e ".[dev]"
 # Run tests
 python -m pytest tests/ -v
 
-# DB migration
-python -m src.db.migrate
+# Static check snapshot
+python -m ruff check src --statistics
+python -m mypy src
 
-# Run pipeline (batch mode)
-python -m src.jobs.run_daily_pipeline --kg-mode=on
+# Optional real Postgres integration checks
+GRAPHRAPPING_TEST_DATABASE_URL=postgresql://user:pass@localhost:5432/graphrapping_test \
+  python -m pytest tests/test_postgres_integration.py -q
 
-# Start web server
-python -m src.web.server
+# Optional Docker-backed Postgres integration check
+bash scripts/run_postgres_integration.sh
+
+# Start demo web server
+uvicorn src.web.server:app --reload
+```
+
+DB migration and batch pipeline are currently library entrypoints (`src.db.migrate.migrate`,
+`src.jobs.run_daily_pipeline.run_batch`) rather than CLI commands.
+
+## CI
+
+GitHub Actions quality gate runs on push/PR:
+
+```bash
+python -m ruff check src
+python -m mypy src
+python -m pytest tests/ -q
+```
+
+Docker-backed Postgres integration is a manual workflow_dispatch job and runs:
+
+```bash
+bash scripts/run_postgres_integration.sh
 ```
 
 ## Project Structure

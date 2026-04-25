@@ -6,7 +6,7 @@ Loads user data into user_master and user_summary_raw tables.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 

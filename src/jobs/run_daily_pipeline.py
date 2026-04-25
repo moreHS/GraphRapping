@@ -8,32 +8,33 @@ Supports KG mode: GRAPHRAPPING_KG_MODE=off|shadow|on
 from __future__ import annotations
 
 import logging
-import os
 from typing import Any
 
-logger = logging.getLogger(__name__)
-
+from src.canonical.canonical_fact_builder import (
+    CanonicalEntity,
+    CanonicalFactBuilder,
+    FactProvenance,
+)
+from src.common.enums import MatchStatus, ObjectRefKind
+from src.common.ids import make_concept_iri, make_product_iri
+from src.common.text_normalize import normalize_text
+from src.db.persist_bundle import ReviewPersistBundle
 from src.ingest.review_ingest import RawReviewRecord, ingest_review
 from src.link.product_matcher import ProductIndex, match_product
 from src.link.placeholder_resolver import resolve_placeholders
 from src.normalize.bee_normalizer import BEENormalizer
-from src.normalize.relation_canonicalizer import RelationCanonicalizer
 from src.normalize.date_splitter import split_date
 from src.normalize.ner_normalizer import normalize_ner_mention
+from src.normalize.relation_canonicalizer import RelationCanonicalizer
 from src.normalize.tool_concern_segment_deriver import ToolConcernSegmentDeriver
-from src.canonical.canonical_fact_builder import (
-    CanonicalFactBuilder, CanonicalEntity, FactProvenance,
-)
-from src.wrap.projection_registry import ProjectionRegistry
-from src.wrap.signal_emitter import SignalEmitter
 from src.qa.quarantine_handler import QuarantineHandler
 from src.mart.aggregate_product_signals import aggregate_product_signals
 from src.mart.aggregate_user_preferences import refresh_user_preferences
 from src.mart.build_serving_views import build_serving_product_profile, build_serving_user_profile
-from src.common.ids import make_product_iri, make_concept_iri, make_mention_iri
-from src.common.text_normalize import normalize_text
-from src.common.enums import MatchStatus, ObjectRefKind
-from src.db.persist_bundle import ReviewPersistBundle
+from src.wrap.projection_registry import ProjectionRegistry
+from src.wrap.signal_emitter import SignalEmitter
+
+logger = logging.getLogger(__name__)
 
 # NER code → canonical entity type mapping for projection registry
 _NER_TO_CANONICAL_TYPE = {
@@ -295,6 +296,9 @@ def process_review(
             continue
         if canon_result.action in ("DROP", "PREPROCESS_ONLY"):
             continue
+        predicate = canon_result.canonical_predicate
+        if predicate is None:
+            continue
         if not target_product_iri:
             continue
 
@@ -317,8 +321,6 @@ def process_review(
         else:
             # BEE object (NER-BeE source) or unmatched → derive type
             obj_text = rel_row["obj_text"]
-            predicate = canon_result.canonical_predicate
-
             # Phase 2-4: Ambiguous type derivation
             if deriver and predicate in ("used_with",):
                 derive_result = deriver.derive_used_with(obj_text)
@@ -383,7 +385,7 @@ def process_review(
         builder.add_fact(
             review_id=ingested.review_id,
             subject_iri=subj_iri,
-            predicate=canon_result.canonical_predicate,
+            predicate=predicate,
             object_iri=obj_iri,
             object_value_text=rel_row["obj_text"] if not obj_iri else None,
             object_ref_kind=obj_ref_kind,
@@ -562,7 +564,7 @@ def run_batch(
                 break
 
     # Step 3: Build user preferences (with purchase brand confidence)
-    from src.ingest.purchase_ingest import derive_brand_confidence, PurchaseEvent
+    from src.ingest.purchase_ingest import derive_brand_confidence
     from src.user.canonicalize_user_facts import canonicalize_user_facts
 
     serving_users = []
@@ -592,7 +594,12 @@ def run_batch(
         serving_products.append(profile)
 
     total_signals = sum(r.get("signal_count", 0) for r in review_results)
-    total_quarantined = quarantine.pending_count
+    all_quarantine_entries = [
+        entry
+        for bundle in all_bundles
+        for entry in bundle.quarantine_entries
+    ]
+    total_quarantined = len(all_quarantine_entries)
 
     return {
         "review_results": review_results,
@@ -601,6 +608,8 @@ def run_batch(
         "serving_users": serving_users,
         "total_signals": total_signals,
         "total_quarantined": total_quarantined,
+        "quarantine_by_table": _quarantine_counts_by_table(all_quarantine_entries),
+        "quarantine_entries": all_quarantine_entries,
     }
 
 
@@ -620,6 +629,11 @@ def _signal_to_dict(signal) -> dict:
         "source_fact_ids": signal.source_fact_ids,
         "bee_attr_id": signal.bee_attr_id,
         "keyword_id": signal.keyword_id,
+        "evidence_kind": signal.evidence_kind,
+        "fact_status": signal.fact_status,
+        "source_confidence": signal.source_confidence,
+        "target_linked": signal.target_linked,
+        "attribution_source": signal.attribution_source,
     }
 
 
@@ -633,7 +647,25 @@ def _agg_to_dict(agg) -> dict:
         "review_cnt": agg.review_cnt,
         "pos_cnt": agg.pos_cnt,
         "neg_cnt": agg.neg_cnt,
+        "neu_cnt": agg.neu_cnt,
+        "support_count": agg.support_count,
         "score": agg.score,
+        "recent_score": agg.recent_score,
+        "recent_support_count": agg.recent_support_count,
+        "window_start": agg.window_start,
+        "window_end": agg.window_end,
+        "evidence_sample": agg.evidence_sample,
+        "distinct_review_count": agg.distinct_review_count,
+        "avg_confidence": agg.avg_confidence,
+        "synthetic_ratio": agg.synthetic_ratio,
+        "corpus_weight": agg.corpus_weight,
         "is_promoted": agg.is_promoted,
         "last_seen_at": agg.last_seen_at,
     }
+
+
+def _quarantine_counts_by_table(entries) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for entry in entries:
+        counts[entry.table] = counts.get(entry.table, 0) + 1
+    return counts

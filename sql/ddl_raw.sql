@@ -164,8 +164,13 @@ create table if not exists rel_raw (
     relation_raw text not null,
     relation_canonical text,           -- 65 canonical or null
     source_type text,                  -- NER-NER|NER-BeE
+    raw_sentiment text,
+    obj_keywords jsonb,
     created_at timestamptz not null default now()
 );
+
+alter table rel_raw add column if not exists raw_sentiment text;
+alter table rel_raw add column if not exists obj_keywords jsonb;
 
 -- Layer 1: Dictionary Candidate Queue
 create table if not exists dictionary_candidate_queue (

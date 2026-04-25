@@ -6,7 +6,7 @@ All mapping failures go to explicit quarantine, never silent drop.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 from src.common.enums import QuarantineStatus

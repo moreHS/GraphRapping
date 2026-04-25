@@ -16,10 +16,10 @@ Attribution sources (in priority order):
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
-from src.common.enums import AttributionSource, ATTRIBUTION_PRIORITY
+from src.common.enums import AttributionSource
 from src.common.text_normalize import normalize_text
 
 

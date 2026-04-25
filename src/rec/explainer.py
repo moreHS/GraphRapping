@@ -8,8 +8,9 @@ NOT from a separate LLM-only narrative pass.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Protocol
+from typing import Protocol
 
+from src.common.config_loader import get_texture_surface_to_keyword
 from src.rec.scorer import ScoredProduct
 
 
@@ -46,7 +47,6 @@ _EDGE_MAP = {
     "brand": ("PREFERS_BRAND", "HAS_BRAND"),
     "category": ("PREFERS_CATEGORY", "IN_CATEGORY"),
     "goal_master": ("WANTS_GOAL", "HAS_MAIN_BENEFIT"),
-    "goal_review": ("WANTS_GOAL", "ADDRESSES_CONCERN_SIGNAL"),
     "ingredient": ("PREFERS_INGREDIENT", "HAS_INGREDIENT"),
     "tool": ("PREFERS_TOOL", "USED_WITH_TOOL_SIGNAL"),
     "coused": ("OWNS_PRODUCT", "USED_WITH_PRODUCT_SIGNAL"),
@@ -66,13 +66,6 @@ def explain(
     """
     paths: list[ExplanationPath] = []
 
-    # Sort contributions by value
-    sorted_contribs = sorted(
-        scored.feature_contributions.items(),
-        key=lambda x: x[1],
-        reverse=True,
-    )
-
     # Map back to specific concepts
     for concept_str in overlap_concepts:
         if ":" not in concept_str:
@@ -87,7 +80,7 @@ def explain(
         # Find contribution for this concept type
         feature_key = _concept_to_feature(ctype)
         contribution = scored.feature_contributions.get(feature_key, 0.0)
-        if contribution > 0:
+        if contribution != 0:
             paths.append(ExplanationPath(
                 concept_type=ctype,
                 concept_id=cid,
@@ -97,7 +90,7 @@ def explain(
             ))
 
     # Sort by contribution and take top-N
-    paths.sort(key=lambda p: p.contribution, reverse=True)
+    paths.sort(key=lambda p: abs(p.contribution), reverse=True)
     paths = paths[:top_n]
 
     # Generate summary
@@ -120,7 +113,6 @@ def _concept_to_feature(concept_type: str) -> str:
         "brand": "brand_match_conf_weighted",
         "category": "category_affinity",
         "goal_master": "goal_fit_master",
-        "goal_review": "goal_fit_review_signal",
         "ingredient": "ingredient_match",
         "tool": "tool_alignment",
         "coused": "coused_product_bonus",
@@ -128,9 +120,6 @@ def _concept_to_feature(concept_type: str) -> str:
         "repurchased_family": "repurchase_family_affinity",
     }
     return mapping.get(concept_type, "")
-
-
-from src.common.config_loader import get_texture_surface_to_keyword
 
 
 def _get_texture_keywords() -> set[str]:
@@ -175,7 +164,7 @@ def _generate_summary_ko(paths: list[ExplanationPath]) -> str:
                 parts.append("제형 축 선호와 일치")
             else:
                 parts.append(f"'{p.concept_id}' 속성 선호와 일치")
-        elif p.concept_type in ("goal_master", "goal_review"):
+        elif p.concept_type == "goal_master":
             parts.append(f"'{p.concept_id}' 케어 목표와 부합")
         elif p.concept_type == "tool":
             parts.append(f"'{p.concept_id}' 도구와 함께 사용 패턴")

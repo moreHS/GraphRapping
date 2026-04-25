@@ -7,7 +7,7 @@ from __future__ import annotations
 import csv
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import yaml
 
@@ -18,7 +18,8 @@ CONFIGS_DIR = Path(__file__).resolve().parent.parent.parent / "configs"
 def load_yaml(filename: str) -> dict[str, Any]:
     path = CONFIGS_DIR / filename
     with open(path, "r", encoding="utf-8") as f:
-        return yaml.safe_load(f) or {}
+        data = yaml.safe_load(f) or {}
+    return cast(dict[str, Any], data)
 
 
 def load_json(filename: str) -> Any:
@@ -45,10 +46,10 @@ def load_csv(filename: str) -> list[dict[str, str]]:
 # Texture taxonomy shared loader
 # ---------------------------------------------------------------------------
 
-_texture_taxonomy: dict | None = None
+_texture_taxonomy: dict[str, Any] | None = None
 
 
-def load_texture_taxonomy() -> dict:
+def load_texture_taxonomy() -> dict[str, Any]:
     """Load texture taxonomy from authoritative source (texture_keyword_map.yaml).
 
     Both user adapter and review normalizer should use this function
@@ -62,24 +63,24 @@ def load_texture_taxonomy() -> dict:
 
 def get_texture_surface_to_keyword() -> dict[str, str]:
     """Get surface -> canonical keyword mapping from texture taxonomy."""
-    return load_texture_taxonomy().get("surface_to_keyword", {})
+    return cast(dict[str, str], load_texture_taxonomy().get("surface_to_keyword", {}))
 
 
 def get_texture_axis() -> str:
     """Get the texture BEE_ATTR axis name."""
-    return load_texture_taxonomy().get("texture_axis", "Texture")
+    return str(load_texture_taxonomy().get("texture_axis", "Texture"))
 
 
 # ---------------------------------------------------------------------------
 # Concern / Goal / Bridge loaders
 # ---------------------------------------------------------------------------
 
-_concern_dict: dict | None = None
-_goal_alias_map: dict | None = None
-_concern_bee_attr_map: dict | None = None
+_concern_dict: dict[str, Any] | None = None
+_goal_alias_map: dict[str, Any] | None = None
+_concern_bee_attr_map: dict[str, Any] | None = None
 
 
-def load_concern_dict() -> dict:
+def load_concern_dict() -> dict[str, Any]:
     """Load concern dictionary (surface form → concept_id)."""
     global _concern_dict
     if _concern_dict is None:
@@ -87,7 +88,7 @@ def load_concern_dict() -> dict:
     return _concern_dict
 
 
-def load_goal_alias_map() -> dict:
+def load_goal_alias_map() -> dict[str, Any]:
     """Load goal alias map (alias → canonical goal)."""
     global _goal_alias_map
     if _goal_alias_map is None:
@@ -95,7 +96,7 @@ def load_goal_alias_map() -> dict:
     return _goal_alias_map
 
 
-def load_concern_bee_attr_map() -> dict:
+def load_concern_bee_attr_map() -> dict[str, Any]:
     """Load BEE_ATTR → Concern bridge mapping."""
     global _concern_bee_attr_map
     if _concern_bee_attr_map is None:

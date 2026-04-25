@@ -89,12 +89,12 @@ def adapt_user_profile(
                 keyword = texture_map.get(texture.replace(" ", ""), texture)
                 facts.append(_make_pref("PREFERS_KEYWORD", ConceptType.KEYWORD, keyword, user_id, "chat"))
 
-        # Hair profile
+        # Hair profile (concern/goal → canonical IDs via resolver)
         hair = chat.get("hair", {})
         for concern in hair.get("hair_concerns", []):
-            facts.append(_make_pref("HAS_CONCERN", ConceptType.CONCERN, concern, user_id, "chat"))
+            facts.append(_make_pref("HAS_CONCERN", ConceptType.CONCERN, resolve_concern_id(concern), user_id, "chat"))
         for goal in hair.get("haircare_goals", []):
-            facts.append(_make_pref("WANTS_GOAL", ConceptType.GOAL, goal, user_id, "chat"))
+            facts.append(_make_pref("WANTS_GOAL", ConceptType.GOAL, resolve_goal_id(goal), user_id, "chat"))
 
         # Scent preferences
         scent = chat.get("scent", {})
@@ -129,7 +129,7 @@ def _make_pref(
     confidence: float = 0.8,
     last_seen_at: str | None = None,
 ) -> dict[str, Any]:
-    result = {
+    result: dict[str, Any] = {
         "user_id": user_id,
         "predicate": predicate,
         "concept_type": concept_type.value,

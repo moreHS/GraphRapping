@@ -8,7 +8,6 @@ Structure: BEE phrase(raw) → BEE_ATTR(attribute axis) → KEYWORD(normalized e
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
 
 from src.common.config_loader import load_yaml
 from src.common.text_normalize import normalize_text

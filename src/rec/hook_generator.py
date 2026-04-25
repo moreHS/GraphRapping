@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from src.rec.explainer import Explanation, ExplanationPath
+from src.rec.explainer import Explanation
 
 
 @dataclass

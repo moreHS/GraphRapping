@@ -12,6 +12,8 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from src.common.enums import RecommendationMode
+from src.common.concept_resolver import resolve_concern_id, resolve_goal_id
+from src.rec.concern_bridge import compute_bridged_concerns
 
 
 @dataclass
@@ -160,7 +162,6 @@ def generate_candidates(
             overlap.append(f"ingredient:{ing}")
 
         # Concern overlap (with ID normalization for cross-source matching)
-        from src.common.concept_resolver import resolve_concern_id, resolve_goal_id
         user_concerns_norm = {resolve_concern_id(c) for c in concern_ids}
         product_concerns_raw = _extract_signal_ids(product.get("top_concern_pos_ids", []))
         product_concerns_norm = {resolve_concern_id(c) for c in product_concerns_raw}
@@ -168,7 +169,6 @@ def generate_candidates(
             overlap.append(f"concern:{c}")
 
         # BEE_ATTR → Concern bridge (discounted indirect matching)
-        from src.rec.concern_bridge import compute_bridged_concerns
         bridged = compute_bridged_concerns(product.get("top_bee_attr_ids", []))
         explicit_concerns = {c.split(":", 1)[1] for c in overlap if c.startswith("concern:")}
         for bridge_concern_id in user_concerns_norm & set(bridged.keys()):
@@ -181,9 +181,8 @@ def generate_candidates(
         product_benefits_norm = {resolve_goal_id(g) for g in product_benefits}
         for g in user_goals_norm & product_benefits_norm:
             overlap.append(f"goal_master:{g}")
-        # Goal from review signals: product concerns that match user goals
-        for g in user_goals_norm & product_concerns_norm:
-            overlap.append(f"goal_review:{g}")
+        # NOTE: Goal × concern cross-match removed — different concept planes
+        # cannot match through separate resolvers. Use concern_bridge instead.
 
         # Tool overlap (user preferred tools × product tool signals)
         preferred_tools = _extract_ids(user_profile.get("preferred_tool_ids", []))

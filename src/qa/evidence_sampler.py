@@ -7,7 +7,6 @@ Links signal → fact → raw for provenance chain.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
 
 
 @dataclass

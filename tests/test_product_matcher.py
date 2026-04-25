@@ -2,6 +2,7 @@
 
 import pytest
 from src.link.product_matcher import match_product, ProductIndex, MatchStatus
+from src.common.text_normalize import strip_brand_prefixes
 
 
 @pytest.fixture
@@ -27,6 +28,46 @@ class TestExactNormMatch:
         r = match_product("laneige", "lip sleeping mask", index)
         assert r.match_status == MatchStatus.NORM
         assert r.matched_product_id == "P001"
+
+    def test_brand_prefixed_catalog_matches_unprefixed_review_name(self):
+        products = [
+            {"product_id": "P002", "product_name": "라네즈 워터뱅크 블루 히알루로닉 세럼", "brand_name": "라네즈"},
+        ]
+        idx = ProductIndex.build(products)
+        r = match_product("라네즈", "워터뱅크 블루 히알루로닉 세럼", idx)
+        assert r.match_status == MatchStatus.NORM
+        assert r.matched_product_id == "P002"
+        assert r.match_method == "norm_brand_stripped"
+
+    def test_input_brand_prefix_matches_unprefixed_catalog_name(self):
+        products = [
+            {"product_id": "P010", "product_name": "워터뱅크 블루 히알루로닉 세럼", "brand_name": "라네즈"},
+        ]
+        idx = ProductIndex.build(products)
+        r = match_product("라네즈", "라네즈 워터뱅크 블루 히알루로닉 세럼", idx)
+        assert r.match_status == MatchStatus.NORM
+        assert r.matched_product_id == "P010"
+        assert r.match_method == "norm_input_brand_stripped"
+
+    def test_brand_stripped_key_collision_does_not_auto_match(self):
+        products = [
+            {"product_id": "P1", "product_name": "라네즈 워터뱅크 세럼", "brand_name": "라네즈"},
+            {"product_id": "P2", "product_name": "라네즈 워터뱅크 세럼", "brand_name": "라네즈"},
+        ]
+        idx = ProductIndex.build(products)
+        r = match_product("라네즈", "워터뱅크 세럼", idx)
+        assert not (r.match_status == MatchStatus.NORM and r.match_method == "norm_brand_stripped")
+
+
+class TestBrandPrefixNormalization:
+    def test_strip_brand_prefix_with_known_brand(self):
+        assert (
+            strip_brand_prefixes("라네즈 워터뱅크 블루 히알루로닉 세럼", ["라네즈"])
+            == "워터뱅크 블루 히알루로닉 세럼"
+        )
+
+    def test_strip_brand_prefix_does_not_strip_without_boundary(self):
+        assert strip_brand_prefixes("라네즈워터뱅크", ["라네즈"]) == "라네즈워터뱅크"
 
 
 class TestAliasMatch:

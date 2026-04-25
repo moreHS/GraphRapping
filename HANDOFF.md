@@ -1,4 +1,59 @@
-# HANDOFF — 후속 수정 지시서 완료 상태
+# HANDOFF — 현재 인수인계 상태
+
+## 최신 상태 — 2026-04-25 감사 후속 안정화
+
+이번 후속 작업에서 P0/P1/P2 감사 항목과 운영 검증 기반을 모두 닫았다.
+
+### 완료된 항목
+
+- P0-1 상품 매칭 / mock 데이터 계약 복구
+- P0-2 Quarantine batch/web summary 정합성 복구
+- P0-3 DB migration 순서 / incremental persistence correctness 보강
+- P1-1 Serving SQL DDL/repo contract sync
+- P1-2 rs.jsonl relation-ready contract 공식화
+- P1-3 Promotion metadata propagation
+- P2-1 Recommendation scoring/config/UI/docs consistency
+- Global ruff lint cleanup
+- Postgres integration verification scaffold
+- Docker-backed Postgres integration runner
+- Mypy type stability baseline
+- GitHub Actions CI quality gate
+
+### 현재 검증 기준
+
+```bash
+python -m ruff check src
+python -m mypy src
+python -m pytest tests/ -q
+bash scripts/run_postgres_integration.sh
+```
+
+최근 확인 결과:
+
+- `python -m ruff check src` → `All checks passed!`
+- `python -m mypy src` → `Success: no issues found in 86 source files`
+- `python -m pytest tests/ -q` → `324 passed, 3 skipped`
+- `bash scripts/run_postgres_integration.sh` → `3 passed`
+
+### 주요 신규/갱신 문서
+
+- `DECISIONS/2026-04-25_audit_priority_execution_roadmap.md`
+- `DECISIONS/2026-04-25_postgres_integration_verification_plan.md`
+- `DECISIONS/2026-04-25_docker_postgres_integration_execution_plan.md`
+- `DECISIONS/2026-04-25_mypy_type_stability_plan.md`
+- `DECISIONS/2026-04-25_ci_quality_gate_plan.md`
+- `PROJECT_OVERVIEW_KO.md`
+- `README.md`
+
+### 남은 후보
+
+- external/shared Postgres DB URL 기준 운영 환경 검증
+- GitHub Actions 원격 실행 결과 확인
+- 장기적으로 top-level `src.*` import package를 `graphrapping.*` package로 정리
+
+---
+
+# 이전 HANDOFF 기록 — 후속 수정 지시서 완료 상태
 
 ## 이번 세션 완료 항목
 

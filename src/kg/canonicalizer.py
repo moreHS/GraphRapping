@@ -11,9 +11,6 @@ from __future__ import annotations
 
 import hashlib
 import logging
-from typing import Any
-
-logger = logging.getLogger(__name__)
 
 from src.kg.config import KGConfig
 from src.kg.models import (
@@ -21,6 +18,8 @@ from src.kg.models import (
     KGEntity, KGEdge, KGResult,
 )
 from src.common.text_normalize import normalize_text
+
+logger = logging.getLogger(__name__)
 
 
 def _hash_id(*parts: str) -> str:
@@ -94,6 +93,10 @@ class Canonicalizer:
                 edge.confidence = 0.8
             else:
                 edge.confidence = 1.0
+            # Propagate BEE attribution to edge
+            if rel.target_linked is not None:
+                edge.target_linked = rel.target_linked
+                edge.attribution_source = rel.attribution_source
 
         # 3. Canonicalize keywords → KEYWORD entities + HAS_KEYWORD edges
         #    Only DICT/RULE-validated keywords get entities. CANDIDATE → skip (quarantined upstream).

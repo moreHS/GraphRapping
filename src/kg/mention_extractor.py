@@ -8,13 +8,12 @@ Key features: position-indexed dedup, NER-BeE → has_attribute, keyword extract
 from __future__ import annotations
 
 import logging
-from typing import Any
 
 from src.kg.config import KGConfig
+from src.common.text_normalize import normalize_text
+from src.kg.models import EntityMention, RelationMention, KeywordMention, SameEntityPair
 
 logger = logging.getLogger(__name__)
-from src.kg.models import EntityMention, RelationMention, KeywordMention, SameEntityPair
-from src.common.text_normalize import normalize_text
 
 
 class MentionExtractor:
@@ -53,9 +52,9 @@ class MentionExtractor:
                 source="ner",
             )
 
-        # 2. BEE mentions
+        # 2. BEE mentions (with attribution from bee_attribution enrichment)
         for bee in bee_rows:
-            self._create_or_get_mention(
+            mention = self._create_or_get_mention(
                 review_id, product_id,
                 word=bee.get("phrase_text", ""),
                 entity_group=bee.get("bee_attr_raw", ""),
@@ -64,6 +63,10 @@ class MentionExtractor:
                 sentiment=bee.get("raw_sentiment"),
                 source="bee",
             )
+            # Propagate BEE attribution from enriched bee_rows
+            if bee.get("target_linked") is not None:
+                mention.target_linked = bee["target_linked"]
+                mention.attribution_source = bee.get("attribution_source")
 
         # 3. Brand mention (meta)
         if brand_name:
@@ -93,7 +96,7 @@ class MentionExtractor:
             )
         for mention in list(self.entity_mentions):
             if mention.type == "BEE_ATTR" and mention.mention_id not in bee_mention_ids_in_rel:
-                # Synthetic HAS_ATTRIBUTE — marked as evidence-only
+                # Synthetic HAS_ATTRIBUTE — marked as evidence-only + unlinked
                 self.relation_mentions.append(RelationMention(
                     review_id=review_id, product_id=product_id,
                     subj_mention_id=rt.mention_id, obj_mention_id=mention.mention_id,
@@ -101,6 +104,8 @@ class MentionExtractor:
                     is_synthetic=True,
                     evidence_kind="BEE_SYNTHETIC",
                     promotion_eligible=False,
+                    target_linked=False,
+                    attribution_source="unlinked",
                 ))
                 # Route unmatched phrase to keyword candidate queue (no auto entity creation)
                 auto_kw = normalize_text(mention.word)[:30]
@@ -132,7 +137,7 @@ class MentionExtractor:
 
         # Check placeholder
         is_placeholder, placeholder_type = self._config.is_placeholder_word(word)
-        if is_placeholder:
+        if is_placeholder and placeholder_type is not None:
             normalized_type = self._config.get_placeholder_type(placeholder_type)
 
         # Normalize sentiment for BEE
@@ -256,7 +261,7 @@ class MentionExtractor:
             final_relation = neo4j_type
             rel_sentiment = self._config.normalize_sentiment(rel_row.get("raw_sentiment")) if rel_row.get("raw_sentiment") else "NEU"
 
-        self.relation_mentions.append(RelationMention(
+        rel = RelationMention(
             review_id=review_id,
             product_id=product_id,
             subj_mention_id=subj_mention.mention_id,
@@ -264,7 +269,12 @@ class MentionExtractor:
             relation_type=final_relation,
             sentiment=rel_sentiment,
             source_type=source_type,
-        ))
+        )
+        # Propagate BEE attribution from object mention (for NER-BEE relations)
+        if obj_mention.target_linked is not None:
+            rel.target_linked = obj_mention.target_linked
+            rel.attribution_source = obj_mention.attribution_source
+        self.relation_mentions.append(rel)
 
     def _process_keywords(
         self,

@@ -7,7 +7,6 @@ Handles diff-based fact reprocess: unchanged keep, removed close, reactivate.
 from __future__ import annotations
 
 import json
-from typing import Any
 
 from src.db.unit_of_work import UnitOfWork
 from src.canonical.canonical_fact_builder import CanonicalFact, CanonicalEntity
@@ -92,14 +91,18 @@ async def _insert_fact(uow: UnitOfWork, fact: CanonicalFact) -> None:
         INSERT INTO canonical_fact (fact_id, review_id, subject_iri, predicate,
             object_iri, object_value_text, object_value_num, object_value_json,
             object_ref_kind, subject_type, object_type, polarity, confidence,
+            negated, intensity, evidence_kind, fact_status, target_linked,
+            attribution_source,
             source_modalities, extraction_version, registry_version,
             valid_from, valid_to, created_at)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,NULL,$18)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,NULL,$24)
     """,
         fact.fact_id, fact.review_id, fact.subject_iri, fact.predicate,
         fact.object_iri, fact.object_value_text, fact.object_value_num, None,
         fact.object_ref_kind, fact.subject_type, fact.object_type,
-        fact.polarity, fact.confidence, fact.source_modalities,
+        fact.polarity, fact.confidence,
+        fact.negated, fact.intensity, fact.evidence_kind, fact.fact_status,
+        fact.target_linked, fact.attribution_source, fact.source_modalities,
         fact.extraction_version, fact.registry_version,
         uow.as_of_ts, uow.as_of_ts,
     )
@@ -113,12 +116,16 @@ async def _refresh_fact(uow: UnitOfWork, fact: CanonicalFact) -> None:
             polarity=$9, confidence=$10,
             source_modalities = (
                 SELECT ARRAY(SELECT DISTINCT unnest(source_modalities || $11))
-            )
+            ),
+            negated=$12, intensity=$13, evidence_kind=$14, fact_status=$15,
+            target_linked=$16, attribution_source=$17
         WHERE fact_id = $1
     """,
         fact.fact_id, fact.subject_iri, fact.predicate, fact.object_iri,
         fact.object_value_text, fact.object_ref_kind, fact.subject_type,
         fact.object_type, fact.polarity, fact.confidence, fact.source_modalities,
+        fact.negated, fact.intensity, fact.evidence_kind, fact.fact_status,
+        fact.target_linked, fact.attribution_source,
     )
 
 
@@ -128,13 +135,17 @@ async def _reactivate_fact(uow: UnitOfWork, fact: CanonicalFact) -> None:
             valid_from = $2, valid_to = NULL,
             subject_iri=$3, predicate=$4, object_iri=$5, object_value_text=$6,
             object_ref_kind=$7, subject_type=$8, object_type=$9,
-            polarity=$10, confidence=$11, source_modalities=$12
+            polarity=$10, confidence=$11, source_modalities=$12,
+            negated=$13, intensity=$14, evidence_kind=$15, fact_status=$16,
+            target_linked=$17, attribution_source=$18
         WHERE fact_id = $1
     """,
         fact.fact_id, uow.as_of_ts, fact.subject_iri, fact.predicate,
         fact.object_iri, fact.object_value_text, fact.object_ref_kind,
         fact.subject_type, fact.object_type, fact.polarity,
         fact.confidence, fact.source_modalities,
+        fact.negated, fact.intensity, fact.evidence_kind, fact.fact_status,
+        fact.target_linked, fact.attribution_source,
     )
 
 
@@ -143,12 +154,14 @@ async def _replace_provenance(uow: UnitOfWork, fact: CanonicalFact) -> None:
     for prov in fact.provenance:
         await uow.execute("""
             INSERT INTO fact_provenance (fact_id, raw_table, raw_row_id, review_id,
-                snippet, start_offset, end_offset, source_modality, evidence_rank)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+                snippet, start_offset, end_offset, source_modality, evidence_rank,
+                source_domain, source_kind)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
         """,
             fact.fact_id, prov.raw_table, prov.raw_row_id, prov.review_id,
             prov.snippet, prov.start_offset, prov.end_offset,
             prov.source_modality, prov.evidence_rank,
+            prov.source_domain, prov.source_kind,
         )
 
 

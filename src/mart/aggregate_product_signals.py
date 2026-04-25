@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from src.common.enums import WindowType, SCORING_EXCLUDED_FAMILIES, SignalFamily
+from src.common.enums import WindowType, SignalFamily
 
 
 @dataclass
@@ -73,7 +73,7 @@ def aggregate_product_signals(
 
     # Group by (product, edge_type, dst_id)
     GroupKey = tuple[str, str, str, str]  # product, edge_type, dst_type, dst_id
-    groups: dict[GroupKey, list[dict]] = defaultdict(list)
+    groups: dict[GroupKey, list[dict[str, Any]]] = defaultdict(list)
 
     for sig in signals:
         # Skip catalog_validation from aggregation used in scoring
@@ -104,7 +104,7 @@ def aggregate_product_signals(
             review_ids = set()
             pos = neg = neu = 0
             last_ts = None
-            evidence = []
+            evidence: list[dict[str, Any]] = []
 
             for s in window_sigs:
                 review_ids.add(s.get("review_id", ""))
@@ -132,7 +132,7 @@ def aggregate_product_signals(
 
             # Corpus promotion metrics
             distinct_review_count = len(review_ids)
-            confidences = [s.get("weight", 1.0) or 1.0 for s in window_sigs]
+            confidences = [float(s.get("weight") or 1.0) for s in window_sigs]
             avg_confidence = sum(confidences) / len(confidences) if confidences else 0.0
             synthetic_count = sum(1 for s in window_sigs if s.get("evidence_kind") == "BEE_SYNTHETIC")
             synthetic_ratio = synthetic_count / total if total > 0 else 0.0

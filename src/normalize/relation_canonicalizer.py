@@ -8,10 +8,8 @@ Unknown predicates → quarantine.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
 
 from src.common.config_loader import load_json
-from src.common.text_normalize import normalize_text
 
 
 # The 65 canonical predicates + special handling

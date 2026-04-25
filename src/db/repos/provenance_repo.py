@@ -4,8 +4,6 @@ Provenance repository: signal_evidence + fact_provenance queries for explanation
 
 from __future__ import annotations
 
-from typing import Any
-
 import asyncpg
 
 
@@ -46,8 +44,8 @@ async def get_review_snippet(pool: asyncpg.Pool, review_id: str,
         if text is None:
             return None
         if start_offset is not None and end_offset is not None:
-            return text[start_offset:end_offset]
-        return text
+            return str(text)[start_offset:end_offset]
+        return str(text)
 
 
 async def get_explanation_chain(pool: asyncpg.Pool, signal_id: str) -> list[dict]:

@@ -52,12 +52,12 @@ def test_explainer_skips_catalog_validation():
     assert "catalog_validation" not in concept_types
 
 
-def test_explainer_goal_split_recognized():
-    """Explainer must recognize goal_master and goal_review concept types."""
+def test_explainer_goal_master_recognized():
+    """Explainer must recognize goal_master and reject removed goal_review."""
     assert "goal_master" in _EDGE_MAP
-    assert "goal_review" in _EDGE_MAP
     assert _concept_to_feature("goal_master") == "goal_fit_master"
-    assert _concept_to_feature("goal_review") == "goal_fit_review_signal"
+    assert "goal_review" not in _EDGE_MAP
+    assert _concept_to_feature("goal_review") == ""
 
 
 def test_explainer_goal_master_path():

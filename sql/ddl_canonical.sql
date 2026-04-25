@@ -38,6 +38,12 @@ create table if not exists canonical_fact (
     object_type text,
     polarity text,                         -- POS|NEG|NEU|MIXED|null
     confidence real,
+    negated boolean,
+    intensity real,
+    evidence_kind text,
+    fact_status text not null default 'CANONICAL_PROMOTED',
+    target_linked boolean,
+    attribution_source text,
     source_modalities text[] not null,     -- array: NER|BEE|REL|FUSED (union on multi-modality)
     extraction_version text,
     registry_version text,
@@ -82,5 +88,11 @@ create unique index if not exists uq_fact_qualifier
     on fact_qualifier (fact_id, qualifier_key, coalesce(qualifier_iri, ''), coalesce(qualifier_value_text, ''));
 
 -- Generic provenance columns (vNext)
+ALTER TABLE canonical_fact ADD COLUMN IF NOT EXISTS negated boolean;
+ALTER TABLE canonical_fact ADD COLUMN IF NOT EXISTS intensity real;
+ALTER TABLE canonical_fact ADD COLUMN IF NOT EXISTS evidence_kind text;
+ALTER TABLE canonical_fact ADD COLUMN IF NOT EXISTS fact_status text NOT NULL DEFAULT 'CANONICAL_PROMOTED';
+ALTER TABLE canonical_fact ADD COLUMN IF NOT EXISTS target_linked boolean;
+ALTER TABLE canonical_fact ADD COLUMN IF NOT EXISTS attribution_source text;
 ALTER TABLE fact_provenance ADD COLUMN IF NOT EXISTS source_domain text NOT NULL DEFAULT 'review';
 ALTER TABLE fact_provenance ADD COLUMN IF NOT EXISTS source_kind text NOT NULL DEFAULT 'raw';

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import math
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, cast
 
 from src.common.config_loader import load_yaml
 
@@ -39,21 +39,21 @@ _DEFAULT_FREQ_CAP = 1.5
 
 
 def _source_type_weights() -> dict[str, float]:
-    return _get_config().get("source_type_weights", _DEFAULT_SOURCE_TYPE_WEIGHTS)
+    return cast(dict[str, float], _get_config().get("source_type_weights", _DEFAULT_SOURCE_TYPE_WEIGHTS))
 
 
 def _recency_lambda() -> float:
-    return _get_config().get("recency_lambda", _DEFAULT_RECENCY_LAMBDA)
+    return float(_get_config().get("recency_lambda", _DEFAULT_RECENCY_LAMBDA))
 
 
 def _freq_denominator() -> float:
-    freq = _get_config().get("frequency", {})
-    return freq.get("denominator", _DEFAULT_FREQ_DENOMINATOR)
+    freq = cast(dict[str, Any], _get_config().get("frequency", {}))
+    return float(freq.get("denominator", _DEFAULT_FREQ_DENOMINATOR))
 
 
 def _freq_cap() -> float:
-    freq = _get_config().get("frequency", {})
-    return freq.get("cap", _DEFAULT_FREQ_CAP)
+    freq = cast(dict[str, Any], _get_config().get("frequency", {}))
+    return float(freq.get("cap", _DEFAULT_FREQ_CAP))
 
 
 def refresh_user_preferences(

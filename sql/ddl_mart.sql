@@ -61,6 +61,8 @@ create table if not exists serving_product_profile (
     country_of_origin text,
     price numeric,
     price_band text,
+    variant_family_id text,
+    representative_product_name text,
     main_benefit_ids text[],
     ingredient_ids text[],
     -- concept IRI fields (for shared concept join)
@@ -105,10 +107,25 @@ create table if not exists serving_user_profile (
     preferred_bee_attr_ids jsonb,
     preferred_keyword_ids jsonb,
     preferred_context_ids jsonb,
+    recent_purchase_brand_ids jsonb,
+    repurchase_brand_ids jsonb,
+    repurchase_category_ids jsonb,
+    owned_product_ids jsonb,
+    owned_family_ids jsonb,
+    repurchased_family_ids jsonb,
     -- meta
     is_active boolean not null default true,
     updated_at timestamptz not null default now()
 );
+
+ALTER TABLE serving_product_profile ADD COLUMN IF NOT EXISTS variant_family_id text;
+ALTER TABLE serving_product_profile ADD COLUMN IF NOT EXISTS representative_product_name text;
+ALTER TABLE serving_user_profile ADD COLUMN IF NOT EXISTS recent_purchase_brand_ids jsonb;
+ALTER TABLE serving_user_profile ADD COLUMN IF NOT EXISTS repurchase_brand_ids jsonb;
+ALTER TABLE serving_user_profile ADD COLUMN IF NOT EXISTS repurchase_category_ids jsonb;
+ALTER TABLE serving_user_profile ADD COLUMN IF NOT EXISTS owned_product_ids jsonb;
+ALTER TABLE serving_user_profile ADD COLUMN IF NOT EXISTS owned_family_ids jsonb;
+ALTER TABLE serving_user_profile ADD COLUMN IF NOT EXISTS repurchased_family_ids jsonb;
 
 -- Corpus promotion columns (vNext)
 ALTER TABLE agg_product_signal ADD COLUMN IF NOT EXISTS distinct_review_count int NOT NULL DEFAULT 0;

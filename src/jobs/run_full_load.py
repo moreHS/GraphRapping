@@ -8,7 +8,6 @@ Order matters: Product first (concept seed), then User (optional), then Review (
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
 
 from src.loaders.relation_loader import load_reviews_from_json
 from src.loaders.product_loader import load_products_from_es_records, ProductLoadResult
@@ -18,7 +17,7 @@ from src.normalize.relation_canonicalizer import RelationCanonicalizer
 from src.normalize.tool_concern_segment_deriver import ToolConcernSegmentDeriver
 from src.wrap.projection_registry import ProjectionRegistry
 from src.qa.quarantine_handler import QuarantineHandler
-from src.jobs.run_daily_pipeline import run_batch, bundle_to_result_dict
+from src.jobs.run_daily_pipeline import run_batch
 
 
 @dataclass
@@ -122,7 +121,7 @@ def run_full_load(config: FullLoadConfig) -> FullLoadResult:
     result.serving_product_count = len(batch_result.get("serving_products", []))
     result.serving_user_count = len(batch_result.get("serving_users", []))
 
-    print(f"[4/4] Pipeline complete:")
+    print("[4/4] Pipeline complete:")
     print(f"  Reviews processed: {result.review_count}")
     print(f"  Signals generated: {result.signal_count}")
     print(f"  Quarantined: {result.quarantine_count}")

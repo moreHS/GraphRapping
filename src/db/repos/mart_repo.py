@@ -133,6 +133,7 @@ async def upsert_serving_product_profile(uow: UnitOfWork, row: dict[str, Any]) -
     await uow.execute("""
         INSERT INTO serving_product_profile (product_id, brand_id, brand_name,
             category_id, category_name, country_of_origin, price, price_band,
+            variant_family_id, representative_product_name,
             main_benefit_ids, ingredient_ids,
             brand_concept_ids, category_concept_ids, ingredient_concept_ids,
             main_benefit_concept_ids,
@@ -141,8 +142,19 @@ async def upsert_serving_product_profile(uow: UnitOfWork, row: dict[str, Any]) -
             top_comparison_product_ids, top_coused_product_ids,
             last_signal_at, review_count_30d, review_count_90d, review_count_all,
             updated_at)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29)
         ON CONFLICT (product_id) DO UPDATE SET
+            brand_id=EXCLUDED.brand_id,
+            brand_name=EXCLUDED.brand_name,
+            category_id=EXCLUDED.category_id,
+            category_name=EXCLUDED.category_name,
+            country_of_origin=EXCLUDED.country_of_origin,
+            price=EXCLUDED.price,
+            price_band=EXCLUDED.price_band,
+            variant_family_id=EXCLUDED.variant_family_id,
+            representative_product_name=EXCLUDED.representative_product_name,
+            main_benefit_ids=EXCLUDED.main_benefit_ids,
+            ingredient_ids=EXCLUDED.ingredient_ids,
             top_bee_attr_ids=EXCLUDED.top_bee_attr_ids,
             top_keyword_ids=EXCLUDED.top_keyword_ids,
             top_context_ids=EXCLUDED.top_context_ids,
@@ -164,6 +176,7 @@ async def upsert_serving_product_profile(uow: UnitOfWork, row: dict[str, Any]) -
         row["product_id"], row.get("brand_id"), row.get("brand_name"),
         row.get("category_id"), row.get("category_name"),
         row.get("country_of_origin"), row.get("price"), row.get("price_band"),
+        row.get("variant_family_id"), row.get("representative_product_name"),
         row.get("main_benefit_ids", []), row.get("ingredient_ids", []),
         json.dumps(row.get("brand_concept_ids", [])),
         json.dumps(row.get("category_concept_ids", [])),
@@ -189,9 +202,15 @@ async def upsert_serving_user_profile(uow: UnitOfWork, row: dict[str, Any]) -> N
             preferred_brand_ids, preferred_category_ids, preferred_ingredient_ids,
             avoided_ingredient_ids, concern_ids, goal_ids,
             preferred_bee_attr_ids, preferred_keyword_ids, preferred_context_ids,
+            recent_purchase_brand_ids, repurchase_brand_ids, repurchase_category_ids,
+            owned_product_ids, owned_family_ids, repurchased_family_ids,
             updated_at)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
         ON CONFLICT (user_id) DO UPDATE SET
+            age_band=EXCLUDED.age_band,
+            gender=EXCLUDED.gender,
+            skin_type=EXCLUDED.skin_type,
+            skin_tone=EXCLUDED.skin_tone,
             preferred_brand_ids=EXCLUDED.preferred_brand_ids,
             preferred_category_ids=EXCLUDED.preferred_category_ids,
             preferred_ingredient_ids=EXCLUDED.preferred_ingredient_ids,
@@ -200,6 +219,12 @@ async def upsert_serving_user_profile(uow: UnitOfWork, row: dict[str, Any]) -> N
             preferred_bee_attr_ids=EXCLUDED.preferred_bee_attr_ids,
             preferred_keyword_ids=EXCLUDED.preferred_keyword_ids,
             preferred_context_ids=EXCLUDED.preferred_context_ids,
+            recent_purchase_brand_ids=EXCLUDED.recent_purchase_brand_ids,
+            repurchase_brand_ids=EXCLUDED.repurchase_brand_ids,
+            repurchase_category_ids=EXCLUDED.repurchase_category_ids,
+            owned_product_ids=EXCLUDED.owned_product_ids,
+            owned_family_ids=EXCLUDED.owned_family_ids,
+            repurchased_family_ids=EXCLUDED.repurchased_family_ids,
             updated_at=EXCLUDED.updated_at
     """,
         row["user_id"], row.get("age_band"), row.get("gender"),
@@ -213,6 +238,12 @@ async def upsert_serving_user_profile(uow: UnitOfWork, row: dict[str, Any]) -> N
         json.dumps(row.get("preferred_bee_attr_ids", [])),
         json.dumps(row.get("preferred_keyword_ids", [])),
         json.dumps(row.get("preferred_context_ids", [])),
+        json.dumps(row.get("recent_purchase_brand_ids", [])),
+        json.dumps(row.get("repurchase_brand_ids", [])),
+        json.dumps(row.get("repurchase_category_ids", [])),
+        json.dumps(row.get("owned_product_ids", [])),
+        json.dumps(row.get("owned_family_ids", [])),
+        json.dumps(row.get("repurchased_family_ids", [])),
         uow.as_of_ts,
     )
 

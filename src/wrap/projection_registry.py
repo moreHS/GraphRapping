@@ -10,7 +10,6 @@ Registry loaded from configs/projection_registry.csv (14-column format).
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
 
 from src.common.config_loader import load_csv
 
@@ -142,6 +141,8 @@ class ProjectionRegistry:
         subject_type: str,
         object_type: str,
         polarity: str = "",
+        evidence_kind: str | None = None,
+        confidence: float | None = None,
     ) -> ProjectionResult | str:
         """Project a canonical fact to a serving signal.
 
@@ -157,6 +158,15 @@ class ProjectionRegistry:
         if action in ("DROP", "QUARANTINE", "KEEP_CANONICAL_ONLY"):
             if not rule.output_signal_family:
                 return action
+
+        fallback_action = action if action in ("DROP", "QUARANTINE", "KEEP_CANONICAL_ONLY") else "QUARANTINE"
+        if rule.allowed_evidence_kind:
+            allowed = {item.strip() for item in rule.allowed_evidence_kind.split(",") if item.strip()}
+            if evidence_kind not in allowed:
+                return fallback_action
+
+        if rule.min_confidence and (confidence or 0.0) < rule.min_confidence:
+            return fallback_action
 
         return ProjectionResult(
             signal_family=rule.output_signal_family,

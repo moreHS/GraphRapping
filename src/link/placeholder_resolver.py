@@ -6,7 +6,7 @@ Uses Union-Find for same_entity merging within a single review.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 from src.common.ids import make_mention_iri

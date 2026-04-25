@@ -32,10 +32,10 @@ def build_serving_product_profile(
     links = concept_links or []
 
     # Extract concept_ids by link_type (concept_id is the canonical join key)
-    brand_concepts = [l["concept_id"] for l in links if l.get("link_type") == "HAS_BRAND"]
-    category_concepts = [l["concept_id"] for l in links if l.get("link_type") == "IN_CATEGORY"]
-    ingredient_concepts = [l["concept_id"] for l in links if l.get("link_type") == "HAS_INGREDIENT"]
-    benefit_concepts = [l["concept_id"] for l in links if l.get("link_type") == "HAS_MAIN_BENEFIT"]
+    brand_concepts = [link["concept_id"] for link in links if link.get("link_type") == "HAS_BRAND"]
+    category_concepts = [link["concept_id"] for link in links if link.get("link_type") == "IN_CATEGORY"]
+    ingredient_concepts = [link["concept_id"] for link in links if link.get("link_type") == "HAS_INGREDIENT"]
+    benefit_concepts = [link["concept_id"] for link in links if link.get("link_type") == "HAS_MAIN_BENEFIT"]
 
     # Filter signals for requested window
     window_signals = [s for s in agg_signals if s.get("window_type") == window_type]
@@ -68,7 +68,7 @@ def build_serving_product_profile(
     review_count_all = sum(s.get("review_cnt", 0) for s in window_signals)
 
     # Last signal timestamp
-    last_seen_values = [s.get("last_seen_at") for s in agg_signals if s.get("last_seen_at")]
+    last_seen_values = [str(s["last_seen_at"]) for s in agg_signals if s.get("last_seen_at")]
     last_signal_at = max(last_seen_values) if last_seen_values else None
 
     return {

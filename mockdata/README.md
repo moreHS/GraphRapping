@@ -7,9 +7,9 @@ GraphRapping 프로젝트의 3대 데이터 소스(유저/상품/리뷰트리플
 | 파일 | 형식 | 레코드 수 | 용도 |
 |------|------|----------|------|
 | `shared_entities.json` | JSON | 브랜드 6, 상품 10, 유저 3 | 교차 참조 앵커 (ID 일관성 보장) |
-| `product_catalog_es.json` | JSON array | 12개 (판매중 10 + 중지 2) | `load_products_from_json()` 입력 |
-| `user_profiles_raw.json` | JSON dict | 3명 | personal-agent 원본 7-column 형식 |
-| `user_profiles_normalized.json` | JSON dict | 3명 | `load_users_from_profiles()` 입력 |
+| `product_catalog_es.json` | JSON array | 47개 | `load_products_from_json()` 입력 |
+| `user_profiles_raw.json` | JSON dict | 50명 | personal-agent 원본 7-column 형식 |
+| `user_profiles_normalized.json` | JSON dict | 50명 | `load_users_from_profiles()` 입력 |
 | `review_triples_raw.json` | JSON array | 15개 리뷰 | `load_reviews_from_json()` 입력 |
 | `review_kg_output.json` | JSON object | entities ~44, edges ~51 | KG 파이프라인 출력 참조 |
 | `review_rs_samples.json` | JSON array | 20개 (own 10 + extn 6 + glb 4) | **실제 S3 rs.jsonl 형식** 참조 데이터 |
@@ -86,7 +86,7 @@ KGEntity + KGEdge 형식. evidence_kind별 confidence 범위:
 
 1. user_profiles 상품 코드 ⊂ product_catalog `ONLINE_PROD_SERIAL_NUMBER`
 2. 브랜드명 일치: user_profiles ↔ product_catalog ↔ review_triples
-3. review_triples `prod_nm` ≈ product_catalog `prd_nm` (퍼지매칭)
+3. review_triples `prod_nm` ≈ product_catalog `prd_nm` (brand-aware normalized matching)
 4. review_kg_output edges의 entity_id ⊂ entities
 5. user_profiles 카테고리 ⊂ product_catalog `CTGR_SS_NAME`
 
@@ -114,10 +114,22 @@ reviews = load_reviews_from_json("mockdata/review_triples_raw.json")
 
 | Loader | 입력 형식 | 전제조건 | 사용처 |
 |--------|----------|----------|--------|
-| `relation_loader.load_reviews_from_json()` | Relation project JSON | relation[]이 65개 canonical predicates로 이미 추출됨 | 기본 파이프라인 |
-| `rs_jsonl_loader.load_reviews_from_rs_jsonl()` | S3 rs.jsonl | NER/BEE spans 존재, NER 라벨/감성 매핑은 loader가 수행 | 운영 원본 소스 |
+| `relation_loader.load_reviews_from_json()` | Relation project JSON | relation[]이 65개 canonical predicates로 이미 추출됨 | 기본/레거시 중간 산출물 |
+| `rs_jsonl_loader.load_reviews_from_rs_jsonl()` | S3 rs.jsonl | NER/BEE spans 존재, relation model 서빙 후 relation[] 포함 예정 | 운영 원본 소스 |
 
 두 loader 모두 `RawReviewRecord`를 출력합니다.
+
+일반적인 pipeline run은 두 loader를 동시에 쓰지 않고 입력 포맷에 맞는 loader 하나를 선택합니다. 여러 소스 형식을 의도적으로 합치는 batch에서만 각 loader 결과를 `RawReviewRecord`로 변환한 뒤 합칩니다.
+
+### Product matching 계약
+
+카탈로그 `prd_nm`에는 브랜드 prefix가 포함될 수 있고, 리뷰 `prod_nm`에는 같은 prefix가 빠져 있을 수 있습니다.
+
+예:
+- catalog: `라네즈 워터뱅크 블루 히알루로닉 세럼`
+- review: `워터뱅크 블루 히알루로닉 세럼`
+
+Product matcher는 같은 브랜드 안에서 brand-stripped normalized key가 단일 후보일 때 fuzzy 이전에 deterministic match로 처리합니다.
 
 **rs_jsonl 사용 예시:**
 ```python

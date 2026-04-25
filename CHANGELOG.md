@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-04-25 — Audit Follow-up Stabilization
+- P0/P1/P2 audit execution roadmap completed and documented under `DECISIONS/`
+- Product match/mock data contract restored with regression coverage
+- Quarantine batch/web summary path aligned
+- DB migration order, snapshot replay, and incremental persistence correctness hardened
+- Serving SQL/repo contract synced for family, purchase, promotion, and provenance metadata
+- rs.jsonl relation-ready contract documented and tested
+- Promotion metadata propagated from canonical facts through wrapped signals into aggregates
+- Recommendation scoring/config/UI/docs consistency restored
+- Repo-wide `ruff check src` baseline reduced to zero
+- `python -m mypy src` baseline reduced to zero
+- Real Postgres integration tests added behind `GRAPHRAPPING_TEST_DATABASE_URL`
+- Docker-backed Postgres integration runner added: `scripts/run_postgres_integration.sh`
+- GitHub Actions quality gate added for ruff, mypy, pytest, and manual Docker-backed Postgres integration
+
 ## Phase 1 — Review Meaning Preservation + KG Cleanup
 - Negation/intensity preserved through full pipeline (BEE → CanonicalFact → WrappedSignal)
 - BEE_ATTR sentiment split removed (single entity, polarity on edge)

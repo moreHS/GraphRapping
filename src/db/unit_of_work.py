@@ -11,6 +11,7 @@ Usage:
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import Any
 
 import asyncpg
 
@@ -32,27 +33,36 @@ class UnitOfWork:
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
+        txn = self._txn
+        conn = self._conn
+        if txn is None or conn is None:
+            return
         try:
             if exc_type is None:
-                await self._txn.commit()
+                await txn.commit()
             else:
-                await self._txn.rollback()
+                await txn.rollback()
         finally:
-            await self._pool.release(self._conn)
+            await self._pool.release(conn)
             self._conn = None
             self._txn = None
 
     async def execute(self, query: str, *args) -> str:
-        return await self._conn.execute(query, *args)
+        return str(await self._require_conn().execute(query, *args))
 
     async def executemany(self, query: str, args: list) -> None:
-        await self._conn.executemany(query, args)
+        await self._require_conn().executemany(query, args)
 
     async def fetch(self, query: str, *args) -> list:
-        return await self._conn.fetch(query, *args)
+        return list(await self._require_conn().fetch(query, *args))
 
     async def fetchval(self, query: str, *args):
-        return await self._conn.fetchval(query, *args)
+        return await self._require_conn().fetchval(query, *args)
 
     async def fetchrow(self, query: str, *args):
-        return await self._conn.fetchrow(query, *args)
+        return await self._require_conn().fetchrow(query, *args)
+
+    def _require_conn(self) -> Any:
+        if self._conn is None:
+            raise RuntimeError("UnitOfWork connection is not active.")
+        return self._conn

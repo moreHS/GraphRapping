@@ -17,7 +17,6 @@ Resolves NER mentions to canonical entities by type:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
 
 from src.common.ids import make_concept_iri, make_mention_iri
 from src.common.text_normalize import normalize_text
@@ -57,10 +56,14 @@ def normalize_ner_mention(
     DATE mentions are split into sub-types via split_date().
     """
     ner_type = entity_group.upper()
+    try:
+        ner_type_enum = NERType(ner_type)
+    except ValueError:
+        ner_type_enum = None
     text_norm = normalize_text(mention_text)
 
     # DATE → 4-way split
-    if ner_type == NERType.DATE:
+    if ner_type_enum == NERType.DATE:
         date_result = split_date(mention_text)
         concept_type = date_result.kind.value
         concept_id = make_concept_iri(concept_type, text_norm)
@@ -78,7 +81,7 @@ def normalize_ner_mention(
         )
 
     # Known NER types → concept
-    mapping = _NER_TO_CANONICAL.get(ner_type)
+    mapping = _NER_TO_CANONICAL.get(ner_type_enum) if ner_type_enum else None
     if mapping:
         entity_type, concept_type_enum = mapping
         if concept_type_enum:

@@ -10,8 +10,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from src.db.persist_bundle import ReviewPersistBundle
-
 
 @dataclass
 class DemoState:
@@ -25,7 +23,7 @@ class DemoState:
     user_count: int = 0
 
     # Per-review bundles (keyed by review_id)
-    bundles: dict[str, ReviewPersistBundle] = field(default_factory=dict)
+    bundles: dict[str, dict[str, Any]] = field(default_factory=dict)
 
     # Batch results
     batch_result: dict[str, Any] = field(default_factory=dict)
@@ -37,12 +35,13 @@ class DemoState:
     # Product masters + concept links (for recommendation)
     product_masters: dict[str, dict] = field(default_factory=dict)
     concept_links: dict[str, list[dict]] = field(default_factory=dict)
-    user_adapted_facts: dict[str, dict] = field(default_factory=dict)
+    user_adapted_facts: dict[str, list[dict]] = field(default_factory=dict)
 
     # Aggregated stats
     signal_family_counts: dict[str, int] = field(default_factory=dict)
     relation_type_counts: dict[str, int] = field(default_factory=dict)
     bee_attr_counts: dict[str, int] = field(default_factory=dict)
+    input_contract_stats: dict[str, int] = field(default_factory=dict)
     quarantine_stats: dict[str, int] = field(default_factory=dict)
 
     # All quarantine entries
@@ -50,6 +49,11 @@ class DemoState:
 
     # Per-product signal index (for graph API hierarchy)
     product_signals: dict[str, list[dict]] = field(default_factory=dict)
+
+    def reset(self) -> None:
+        fresh = DemoState()
+        self.__dict__.clear()
+        self.__dict__.update(fresh.__dict__)
 
 
 # Global singleton
@@ -66,7 +70,7 @@ def load_demo_data(
 ) -> DemoState:
     """Load data and run pipeline, populating demo_state."""
     from src.loaders.relation_loader import load_reviews_from_json
-    from src.loaders.rs_jsonl_loader import load_reviews_from_rs_jsonl
+    from src.loaders.rs_jsonl_loader import load_reviews_from_rs_jsonl_with_report
     from src.loaders.product_loader import load_products_from_es_records
     from src.loaders.user_loader import load_users_from_profiles
     from src.normalize.bee_normalizer import BEENormalizer
@@ -74,12 +78,12 @@ def load_demo_data(
     from src.normalize.tool_concern_segment_deriver import ToolConcernSegmentDeriver
     from src.wrap.projection_registry import ProjectionRegistry
     from src.qa.quarantine_handler import QuarantineHandler
-    from src.jobs.run_daily_pipeline import process_review, bundle_to_result_dict, run_batch
+    from src.jobs.run_daily_pipeline import run_batch
     from src.common.text_normalize import normalize_text
 
     global demo_state
     # Reset by clearing attributes (not replacing object — preserves import references)
-    demo_state.__init__()
+    demo_state.reset()
     demo_state.source = source
 
     # Load products
@@ -102,7 +106,11 @@ def load_demo_data(
 
     # Load reviews
     if review_format == "rs_jsonl":
-        reviews = load_reviews_from_rs_jsonl(review_json_path, max_count=max_reviews)
+        reviews, input_contract_stats = load_reviews_from_rs_jsonl_with_report(
+            review_json_path,
+            max_count=max_reviews,
+        )
+        demo_state.input_contract_stats = input_contract_stats
     else:
         reviews = load_reviews_from_json(review_json_path, max_count=max_reviews)
     demo_state.review_count = len(reviews)
@@ -134,6 +142,8 @@ def load_demo_data(
     )
 
     demo_state.batch_result = batch_result
+    if demo_state.input_contract_stats:
+        demo_state.batch_result["input_contract_stats"] = demo_state.input_contract_stats
     demo_state.serving_products = batch_result.get("serving_products", [])
     demo_state.serving_users = batch_result.get("serving_users", [])
 
@@ -164,10 +174,12 @@ def load_demo_data(
             ba = bee.get("entity_group", "")
             demo_state.bee_attr_counts[ba] = demo_state.bee_attr_counts.get(ba, 0) + 1
 
-    # Quarantine
-    demo_state.quarantine_stats = quarantine.pending_by_table()
+    # Quarantine: process_review flushes per-review entries into bundles, so
+    # batch_result is the source of truth after run_batch().
+    batch_quarantine_entries = batch_result.get("quarantine_entries", [])
+    demo_state.quarantine_stats = batch_result.get("quarantine_by_table", {})
     demo_state.quarantine_entries = [
-        {"table": e.table, **e.data} for e in quarantine.flush()
+        {"table": e.table, **e.data} for e in batch_quarantine_entries
     ]
 
     demo_state.loaded = True

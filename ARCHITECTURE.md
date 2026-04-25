@@ -84,14 +84,16 @@ reach the serving graph. `promoted_only=True` is the default in `build_serving_p
 ```
 serving_user_profile + serving_product_profiles
   → generate_candidates (hard filter + concept overlap)
-  → scorer (13 features + evidence shrinkage)
+  → scorer (19 features + evidence shrinkage)
   → reranker (diversity bonus)
   → explainer (score-faithful paths + provenance)
   → hook_generator + next_question
 ```
 
-## Scoring Features (13)
+## Scoring Features (19)
 
 keyword_match, residual_bee_attr_match, context_match, concern_fit,
-ingredient_match, brand_match_conf_weighted, goal_fit_master, goal_fit_review_signal,
-category_affinity, freshness_boost, skin_type_fit, purchase_loyalty_score, novelty_bonus
+concern_bridge_fit, ingredient_match, brand_match_conf_weighted, goal_fit_master,
+category_affinity, freshness_boost, skin_type_fit, purchase_loyalty_score, novelty_bonus,
+exact_owned_penalty, owned_family_penalty, same_family_explore_bonus,
+repurchase_family_affinity, tool_alignment, coused_product_bonus

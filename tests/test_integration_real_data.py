@@ -341,7 +341,7 @@ class TestRecommendation:
             "keyword_match": 0.22, "residual_bee_attr_match": 0.10,
             "context_match": 0.12, "concern_fit": 0.12,
             "ingredient_match": 0.08, "brand_match_conf_weighted": 0.07,
-            "goal_fit_master": 0.05, "goal_fit_review_signal": 0.05,
+            "goal_fit_master": 0.05,
             "category_affinity": 0.05, "freshness_boost": 0.04,
             "skin_type_fit": 0.06, "purchase_loyalty_score": 0.04, "novelty_bonus": 0.02,
         })

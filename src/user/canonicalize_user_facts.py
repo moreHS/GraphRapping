@@ -18,7 +18,7 @@ from typing import Any
 
 from src.common.ids import make_fact_id
 from src.common.enums import (
-    ObjectRefKind, USER_PREFERENCE_EDGE_TYPES,
+    ObjectRefKind,
     USER_STATE_EDGE_TYPES, USER_CONCERN_EDGE_TYPES,
     USER_GOAL_EDGE_TYPES, USER_CONTEXT_EDGE_TYPES,
     USER_BEHAVIOR_EDGE_TYPES,

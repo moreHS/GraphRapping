@@ -5,8 +5,11 @@ description = "Beauty product semantic signal graph: review NER/BEE/REL → cano
 requires-python = ">=3.11"
 dependencies = [
     "asyncpg>=0.29",
+    "fastapi>=0.110",
+    "pydantic>=2.0",
     "pyyaml>=6.0",
     "python-dotenv>=1.0",
+    "uvicorn>=0.29",
 ]
 
 [project.optional-dependencies]
@@ -16,11 +19,15 @@ dev = [
     "pytest-cov>=5.0",
     "ruff>=0.4",
     "mypy>=1.10",
+    "types-PyYAML>=6.0",
 ]
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -35,3 +42,7 @@ target-version = "py311"
 python_version = "3.11"
 warn_return_any = true
 warn_unused_configs = true
+
+[[tool.mypy.overrides]]
+module = "asyncpg"
+ignore_missing_imports = true

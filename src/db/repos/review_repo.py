@@ -7,6 +7,7 @@ L1 child rows are append-only with review_version.
 
 from __future__ import annotations
 
+import json
 from datetime import datetime
 from typing import Any
 
@@ -39,7 +40,7 @@ async def upsert_review_raw(uow: UnitOfWork, review: dict[str, Any]) -> int:
             review.get("reviewer_proxy_id"), review.get("identity_stability", "REVIEW_LOCAL"),
             review.get("event_time_utc"), review.get("event_time_raw_text"),
             review.get("event_tz"), review.get("event_time_source", "PROCESSING_TIME"),
-            review.get("raw_payload", {}), uow.as_of_ts,
+            _jsonb_or_default(review.get("raw_payload"), {}), uow.as_of_ts,
         )
         await _append_history(uow, review["review_id"], 1, "INSERT", review, uow.as_of_ts)
         return 1
@@ -47,9 +48,9 @@ async def upsert_review_raw(uow: UnitOfWork, review: dict[str, Any]) -> int:
     # Check if content changed
     if (existing["review_text"] == review["review_text"]
             and existing["is_active"] == review.get("is_active", True)):
-        return existing["review_version"]  # idempotent
+        return int(existing["review_version"])  # idempotent
 
-    new_version = existing["review_version"] + 1
+    new_version = int(existing["review_version"]) + 1
     version_op = "UPDATE"
     if not review.get("is_active", True):
         version_op = "TOMBSTONE"
@@ -64,7 +65,7 @@ async def upsert_review_raw(uow: UnitOfWork, review: dict[str, Any]) -> int:
         WHERE review_id = $1
     """,
         review["review_id"], review["review_text"],
-        review.get("raw_payload", {}), new_version,
+        _jsonb_or_default(review.get("raw_payload"), {}), new_version,
         review.get("is_active", True), uow.as_of_ts,
         review.get("event_time_utc"), review.get("event_time_raw_text"),
         review.get("event_time_source", "PROCESSING_TIME"),
@@ -145,14 +146,15 @@ async def batch_insert_rel_raw(uow: UnitOfWork, rows: list[dict], review_version
         await uow.execute("""
             INSERT INTO rel_raw (review_id, review_version, subj_text, subj_group,
                 subj_start, subj_end, obj_text, obj_group, obj_start, obj_end,
-                relation_raw, relation_canonical, source_type)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+                relation_raw, relation_canonical, source_type, raw_sentiment, obj_keywords)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
         """,
             row["review_id"], review_version, row["subj_text"], row["subj_group"],
             row.get("subj_start"), row.get("subj_end"),
             row["obj_text"], row["obj_group"],
             row.get("obj_start"), row.get("obj_end"),
             row["relation_raw"], row.get("relation_canonical"), row.get("source_type"),
+            row.get("raw_sentiment"), _jsonb_or_none(row.get("obj_keywords")),
         )
 
 
@@ -227,44 +229,9 @@ async def load_full_review_snapshot(
     has_child_rows = bool(ner_rows or bee_rows or rel_rows)
 
     # Transform DB rows → RawReviewRecord-compatible format
-    ner_for_record = [
-        {
-            "mention_text": r.get("mention_text", ""),
-            "entity_group": r.get("entity_group", ""),
-            "start_offset": r.get("start_offset"),
-            "end_offset": r.get("end_offset"),
-            "raw_sentiment": r.get("raw_sentiment"),
-        }
-        for r in ner_rows
-    ]
-    bee_for_record = [
-        {
-            "phrase_text": r.get("phrase_text", ""),
-            "bee_attr_raw": r.get("bee_attr_raw", ""),
-            "start_offset": r.get("start_offset"),
-            "end_offset": r.get("end_offset"),
-            "raw_sentiment": r.get("raw_sentiment"),
-        }
-        for r in bee_rows
-    ]
-    rel_for_record = [
-        {
-            "subj_text": r.get("subj_text", ""),
-            "subj_group": r.get("subj_group", ""),
-            "subj_start": r.get("subj_start"),
-            "subj_end": r.get("subj_end"),
-            "obj_text": r.get("obj_text", ""),
-            "obj_group": r.get("obj_group", ""),
-            "obj_start": r.get("obj_start"),
-            "obj_end": r.get("obj_end"),
-            "relation_raw": r.get("relation_raw", ""),
-            "relation_canonical": r.get("relation_canonical"),
-            "source_type": r.get("source_type"),
-            "raw_sentiment": r.get("raw_sentiment"),
-            "obj_keywords": r.get("obj_keywords"),
-        }
-        for r in rel_rows
-    ]
+    ner_for_record = [_db_ner_to_record_item(r) for r in ner_rows]
+    bee_for_record = [_db_bee_to_record_item(r) for r in bee_rows]
+    rel_for_record = [_db_rel_to_record_item(r) for r in rel_rows]
 
     return {
         "brnd_nm": review_raw.get("brand_name_raw", ""),
@@ -275,13 +242,98 @@ async def load_full_review_snapshot(
         "bee": bee_for_record,
         "relation": rel_for_record,
         "source_review_key": review_raw.get("source_review_key"),
-        "author_key": review_raw.get("author_key"),
-        "created_at": review_raw.get("source_created_at"),
-        "collected_at": review_raw.get("collected_at"),
+        "author_key": None,
+        "created_at": _event_time_text(review_raw),
+        "collected_at": _event_time_text(review_raw),
         "review_id": review_id,
         "reviewer_proxy_id": raw.get("reviewer_proxy_id", ""),
         "review_version": raw.get("review_version", 1),
     }, has_child_rows
+
+
+def _db_ner_to_record_item(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "word": row.get("mention_text", ""),
+        "entity_group": row.get("entity_group", ""),
+        "start": row.get("start_offset"),
+        "end": row.get("end_offset"),
+        "sentiment": row.get("raw_sentiment"),
+    }
+
+
+def _db_bee_to_record_item(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "word": row.get("phrase_text", ""),
+        "entity_group": row.get("bee_attr_raw", ""),
+        "start": row.get("start_offset"),
+        "end": row.get("end_offset"),
+        "sentiment": row.get("raw_sentiment"),
+    }
+
+
+def _db_rel_to_record_item(row: dict[str, Any]) -> dict[str, Any]:
+    obj_keywords = _json_list(row.get("obj_keywords"))
+    subject = {
+        "word": row.get("subj_text", ""),
+        "entity_group": row.get("subj_group", ""),
+        "start": row.get("subj_start"),
+        "end": row.get("subj_end"),
+    }
+    obj = {
+        "word": row.get("obj_text", ""),
+        "entity_group": row.get("obj_group", ""),
+        "start": row.get("obj_start"),
+        "end": row.get("obj_end"),
+    }
+    if row.get("raw_sentiment") is not None:
+        obj["sentiment"] = row.get("raw_sentiment")
+    if obj_keywords:
+        obj["keywords"] = obj_keywords
+    return {
+        "subject": subject,
+        "object": obj,
+        "relation": row.get("relation_raw", ""),
+        "source_type": row.get("source_type"),
+    }
+
+
+def _jsonb_or_none(value: Any) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return value
+    return json.dumps(value, ensure_ascii=False)
+
+
+def _jsonb_or_default(value: Any, default: Any) -> str:
+    encoded = _jsonb_or_none(default if value is None else value)
+    return encoded or json.dumps(default, ensure_ascii=False)
+
+
+def _json_list(value: Any) -> list[Any]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return value
+    if isinstance(value, tuple):
+        return list(value)
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+        except json.JSONDecodeError:
+            return []
+        return parsed if isinstance(parsed, list) else []
+    return []
+
+
+def _event_time_text(review_raw: dict[str, Any]) -> str | None:
+    raw_text = review_raw.get("event_time_raw_text")
+    if raw_text:
+        return str(raw_text)
+    event_time = review_raw.get("event_time_utc")
+    if isinstance(event_time, datetime):
+        return event_time.isoformat()
+    return str(event_time) if event_time is not None else None
 
 
 async def _append_history(
@@ -302,6 +354,6 @@ async def _append_history(
         review.get("reviewer_proxy_id"), review.get("identity_stability", "REVIEW_LOCAL"),
         review.get("event_time_utc"), review.get("event_time_raw_text"),
         review.get("event_tz"), review.get("event_time_source", "PROCESSING_TIME"),
-        review.get("raw_payload", {}), review.get("is_active", True),
+        _jsonb_or_default(review.get("raw_payload"), {}), review.get("is_active", True),
         version_op, as_of_ts, as_of_ts,
     )

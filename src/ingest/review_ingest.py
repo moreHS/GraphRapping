@@ -175,6 +175,7 @@ def ingest_review(record: RawReviewRecord, source: str = "unknown") -> IngestedR
             "relation_raw": rel.get("relation", ""),
             "relation_canonical": None,  # filled by relation_canonicalizer
             "source_type": rel.get("source_type"),
+            "raw_sentiment": rel.get("sentiment") or obj.get("sentiment"),
             "obj_keywords": obj.get("keywords", []),  # NER-BeE keyword extraction source
         })
 

@@ -52,7 +52,7 @@ def _parse_price(value: Any) -> float | None:
 class ProductLoadResult:
     """All product-side artifacts needed by run_batch()."""
     product_masters: dict[str, dict] = field(default_factory=dict)
-    product_index: ProductIndex | None = None
+    product_index: ProductIndex = field(default_factory=lambda: ProductIndex.build([]))
     concept_links: dict[str, list[dict]] = field(default_factory=dict)
     concept_seeds: list[dict] = field(default_factory=list)
     canonical_entities: list[dict] = field(default_factory=list)

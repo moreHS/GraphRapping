@@ -7,29 +7,27 @@ Handles: new reviews, modified reviews (version bump), tombstones.
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 from typing import Any
 
 import asyncpg
 
-import logging
-
-from src.db.unit_of_work import UnitOfWork
-from src.db.persist import persist_review_bundle, persist_aggregates
-from src.db.persist_bundle import ReviewPersistBundle
+from src.db.persist import persist_review_bundle
 from src.db.repos.review_repo import load_full_review_snapshot
-from src.ingest.review_ingest import RawReviewRecord, ingest_review
+from src.db.unit_of_work import UnitOfWork
+from src.ingest.review_ingest import RawReviewRecord
 from src.jobs.run_daily_pipeline import process_review
-
-logger = logging.getLogger(__name__)
 from src.link.product_matcher import ProductIndex
+from src.mart.aggregate_product_signals import aggregate_product_signals
+from src.mart.build_serving_views import build_serving_product_profile
 from src.normalize.bee_normalizer import BEENormalizer
 from src.normalize.relation_canonicalizer import RelationCanonicalizer
 from src.normalize.tool_concern_segment_deriver import ToolConcernSegmentDeriver
-from src.wrap.projection_registry import ProjectionRegistry
 from src.qa.quarantine_handler import QuarantineHandler
-from src.mart.aggregate_product_signals import aggregate_product_signals
-from src.mart.build_serving_views import build_serving_product_profile
+from src.wrap.projection_registry import ProjectionRegistry
+
+logger = logging.getLogger(__name__)
 
 
 async def get_last_watermark(pool: asyncpg.Pool) -> tuple[datetime | None, str | None]:
@@ -115,11 +113,12 @@ async def handle_tombstone(
 async def start_pipeline_run(pool: asyncpg.Pool, run_type: str = "INCREMENTAL") -> int:
     """Create a pipeline_run record. Returns run_id."""
     async with pool.acquire() as conn:
-        return await conn.fetchval("""
+        run_id = await conn.fetchval("""
             INSERT INTO pipeline_run (run_type, started_at, status)
             VALUES ($1, $2, 'RUNNING')
             RETURNING run_id
         """, run_type, datetime.now(timezone.utc))
+        return int(run_id)
 
 
 async def complete_pipeline_run(
@@ -191,6 +190,7 @@ async def run_incremental(
                     review_row.get("matched_product_id"),
                 )
                 all_dirty_products.update(dirty)
+                last_processed_review = review_row
                 continue
 
             # Load full raw snapshot (ner/bee/rel child rows) from DB
@@ -220,7 +220,7 @@ async def run_incremental(
             )
 
             # Process review with full raw data
-            result = process_review(
+            bundle = process_review(
                 record=record,
                 source=review_row.get("source", ""),
                 product_index=product_index,
@@ -232,22 +232,26 @@ async def run_incremental(
                 predicate_contracts=predicate_contracts,
             )
 
-            total_signals += len(result.wrapped_signals)
-            total_quarantined += quarantine.pending_count
-            last_processed_review = review_row  # Track for watermark
-
-            if result.matched_product_id:
-                all_dirty_products.add(result.matched_product_id)
-            all_dirty_products.update(result.dirty_product_ids)
-
             # Check for previous match (relink case)
             async with pool.acquire() as conn:
                 prev_link = await conn.fetchrow(
                     "SELECT matched_product_id FROM review_catalog_link WHERE review_id = $1",
                     review_row["review_id"],
                 )
-                if prev_link and prev_link["matched_product_id"]:
-                    all_dirty_products.add(prev_link["matched_product_id"])
+
+            persist_stats = await persist_review_bundle(pool, bundle)
+
+            total_signals += persist_stats.get("signal_count", len(bundle.wrapped_signals))
+            total_quarantined += persist_stats.get("quarantine_count", len(bundle.quarantine_entries))
+            last_processed_review = review_row  # Track for watermark only after successful persistence.
+
+            if bundle.matched_product_id:
+                all_dirty_products.add(bundle.matched_product_id)
+            all_dirty_products.update(bundle.dirty_product_ids)
+            all_dirty_products.update(persist_stats.get("dirty_product_ids", []))
+
+            if prev_link and prev_link["matched_product_id"]:
+                all_dirty_products.add(prev_link["matched_product_id"])
 
         # Re-aggregate dirty products
         for pid in all_dirty_products:
@@ -308,8 +312,18 @@ def _agg_to_dict(agg) -> dict:
         "review_cnt": agg.review_cnt,
         "pos_cnt": agg.pos_cnt,
         "neg_cnt": agg.neg_cnt,
+        "neu_cnt": agg.neu_cnt,
         "score": agg.score,
         "support_count": agg.support_count,
+        "recent_score": agg.recent_score,
+        "recent_support_count": agg.recent_support_count,
+        "window_start": agg.window_start,
+        "window_end": agg.window_end,
+        "evidence_sample": agg.evidence_sample,
+        "distinct_review_count": agg.distinct_review_count,
+        "avg_confidence": agg.avg_confidence,
+        "synthetic_ratio": agg.synthetic_ratio,
+        "corpus_weight": agg.corpus_weight,
         "last_seen_at": agg.last_seen_at,
         "is_promoted": agg.is_promoted,
     }

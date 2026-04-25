@@ -6,8 +6,6 @@ Ported from Relation project's ConfigLoader, simplified for GraphRapping.
 
 from __future__ import annotations
 
-from typing import Any
-
 import logging
 
 from src.common.config_loader import load_json

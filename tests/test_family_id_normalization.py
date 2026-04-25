@@ -129,8 +129,8 @@ def test_scorer_family_features_fire_with_adapter_ids():
     # Product in owned family — penalty should fire
     result_owned = scorer.score(user, _product("P002", "FAM001"))
     penalty = result_owned.feature_contributions.get("owned_family_penalty", 0)
-    # owned_family_penalty returns negative, so it won't be in feature_contributions (v > 0 filter)
-    # but raw_score should be affected
+    assert penalty < 0, \
+        f"owned_family_penalty should be retained. Got contributions: {result_owned.feature_contributions}"
     result_no_family = scorer.score(user, _product("P099", "FAM999"))
     assert result_owned.raw_score != result_no_family.raw_score, \
         "Family features should affect raw_score"

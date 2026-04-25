@@ -14,13 +14,13 @@ SQL_DIR = Path(__file__).resolve().parent.parent.parent / "sql"
 
 # DDL execution order (dependency-safe)
 DDL_ORDER = [
+    "ddl_ops.sql",
     "ddl_raw.sql",
     "ddl_concept.sql",
     "ddl_canonical.sql",
     "ddl_signal.sql",
     "ddl_mart.sql",
     "ddl_quarantine.sql",
-    "ddl_ops.sql",
     "indexes.sql",
 ]
 

@@ -26,6 +26,11 @@ create table if not exists wrapped_signal (
     polarity text,                         -- POS|NEG|NEU|MIXED|null
     negated boolean,
     intensity real,
+    evidence_kind text,
+    fact_status text not null default 'CANONICAL_PROMOTED',
+    source_confidence real,
+    target_linked boolean,
+    attribution_source text,
     weight real not null default 1.0,
     registry_version text not null,
     window_ts timestamptz,                 -- event_time basis for windowed aggregation
@@ -37,6 +42,12 @@ create index if not exists idx_ws_family on wrapped_signal(signal_family);
 create index if not exists idx_ws_edge_type on wrapped_signal(edge_type);
 create index if not exists idx_ws_product_edge on wrapped_signal(target_product_id, edge_type);
 create index if not exists idx_ws_review on wrapped_signal(review_id);
+
+alter table wrapped_signal add column if not exists evidence_kind text;
+alter table wrapped_signal add column if not exists fact_status text not null default 'CANONICAL_PROMOTED';
+alter table wrapped_signal add column if not exists source_confidence real;
+alter table wrapped_signal add column if not exists target_linked boolean;
+alter table wrapped_signal add column if not exists attribution_source text;
 
 -- Signal Evidence (signal → contributing facts for explanation)
 create table if not exists signal_evidence (

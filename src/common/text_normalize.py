@@ -16,7 +16,14 @@ def normalize_text(text: str) -> str:
     return text
 
 
-def strip_brand_prefixes(name: str) -> str:
-    """Remove common brand prefixes/suffixes for fuzzy matching."""
-    name = re.sub(r"\s*\(.*?\)\s*", " ", name)
-    return normalize_text(name)
+def strip_brand_prefixes(name: str, brand_names: list[str] | tuple[str, ...] | set[str] | None = None) -> str:
+    """Normalize a product name and remove a known brand prefix when it is separated by whitespace."""
+    name_norm = normalize_text(re.sub(r"\s*\(.*?\)\s*", " ", name))
+    if not brand_names:
+        return name_norm
+
+    for brand in brand_names:
+        brand_norm = normalize_text(brand)
+        if brand_norm and name_norm.startswith(f"{brand_norm} "):
+            return name_norm[len(brand_norm):].strip()
+    return name_norm

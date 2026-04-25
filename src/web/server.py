@@ -4,17 +4,15 @@ FastAPI server for GraphRapping demo UI.
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
-from typing import Any
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from src.web.state import demo_state, load_demo_data
-from src.rec.candidate_generator import generate_candidates, generate_candidates_prefiltered
+from src.rec.candidate_generator import generate_candidates_prefiltered
 from src.rec.scorer import Scorer
 from src.rec.reranker import rerank
 from src.rec.explainer import explain
@@ -249,22 +247,22 @@ async def recommend(req: RecommendRequest):
 
     results = []
     for r in reranked:
-        c = next((c for c, s in scored if s.product_id == r.product_id), None)
-        s = next((s for _, s in scored if s.product_id == r.product_id), None)
-        if c and s:
-            exp = explain(s, c.overlap_concepts, top_n=5)
+        candidate = next((candidate for candidate, scored_product in scored if scored_product.product_id == r.product_id), None)
+        scored_product = next((scored_product for _, scored_product in scored if scored_product.product_id == r.product_id), None)
+        if candidate is not None and scored_product is not None:
+            exp = explain(scored_product, candidate.overlap_concepts, top_n=5)
             hooks = generate_hooks(exp)
             results.append({
                 "rank": r.final_rank + 1,
                 "product_id": r.product_id,
                 "product": product_map.get(r.product_id, {}),
-                "overlap_concepts": c.overlap_concepts,
-                "raw_score": s.raw_score,
-                "shrinked_score": s.shrinked_score,
+                "overlap_concepts": candidate.overlap_concepts,
+                "raw_score": scored_product.raw_score,
+                "shrinked_score": scored_product.shrinked_score,
                 "final_score": r.final_score,
                 "diversity_bonus": r.diversity_bonus,
-                "support_count": s.support_count,
-                "feature_contributions": s.feature_contributions,
+                "support_count": scored_product.support_count,
+                "feature_contributions": scored_product.feature_contributions,
                 "explanation": exp.summary_ko,
                 "explanation_paths": [{"type": p.concept_type, "id": p.concept_id,
                                        "user_edge": p.user_edge, "product_edge": p.product_edge,

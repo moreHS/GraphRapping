@@ -12,10 +12,9 @@ Responsibilities:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
 
 from src.common.ids import make_fact_id, make_qualifier_fingerprint, make_concept_iri
-from src.common.enums import ObjectRefKind, Polarity
+from src.common.enums import ObjectRefKind
 
 
 @dataclass
