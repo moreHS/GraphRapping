@@ -7,11 +7,26 @@ Beauty product semantic signal graph recommendation system.
 ```
 Layer 0  Product/User Master Truth (immutable source)
 Layer 1  Raw Evidence (ner_raw, bee_raw, rel_raw)
-Layer 2  Canonical Fact (65 relations, deterministic ID)
+Layer 2  Canonical Fact (68 relations, deterministic ID)
 Layer 2.5 Wrapped Signal (projection registry → serving signals)
 Layer 3  Aggregate/Serving (windowed aggregation, corpus promotion)
 Layer 4  Recommendation (candidate → score → rerank → explain)
 ```
+
+## Current Data Baseline
+
+The active local baseline is fixed to the final 906-review source-grounded
+fixture:
+
+- 906 raw reviews.
+- 517 product master rows.
+- 516 clean source review stats rows.
+- 516 clean review-summary sidecar rows.
+- 1 `SOURCE_KEY_COLLISION` product excluded from clean source-summary matching.
+
+Clean source joins use `source_channel + source_key_type + source_product_id`.
+`product_id` is the downstream compatibility key, not a complete source
+identity by itself.
 
 ## Common Concept Layer
 
@@ -53,18 +68,32 @@ reach the serving graph. `promoted_only=True` is the default in `build_serving_p
 - `shadow`: Both legacy and KG pipelines run; KG writes to separate builder for comparison
 - `on`: KG pipeline is sole fact source; legacy processing skipped
 
+### kg_mode Resolution (P0-3)
+
+All entry points resolve kg_mode through `src.common.config_loader.get_kg_mode()`:
+1. **Explicit function argument** (highest priority)
+2. **Environment variable** `GRAPHRAPPING_KG_MODE` (`off|shadow|on`; empty string is invalid)
+3. **Caller-specific default**:
+   - `run_full_load` / `run_incremental` / `run_batch` / `process_review` / `build_review_persist_bundle`: `"off"`
+   - `load_demo_data` (demo UI): `"on"` (KG visualization is the demo's intent)
+
+Invalid values (e.g. `"On"`, `"true"`) raise `ValueError` immediately — fail-closed.
+
 ## Promotion Architecture (3 layers)
 
 1. **Adapter** (per-edge): synthetic/auto → evidence-only, standard → promote
 2. **SignalEmitter** (per-fact): projection_registry promotion_mode (IMMEDIATE/CORPUS_THRESHOLD/NEVER)
-3. **Aggregator** (corpus): review_count >= 3, confidence >= 0.6, synthetic_ratio <= 0.5
+3. **Aggregator** (corpus): distinct_review_count >= 2 (30d) / >= 3 (90d, all), avg_confidence >= 0.6, synthetic_ratio <= 0.5
 
 ## Key Invariants
 
 - Layer 2 canonical fact semantics are never broken
-- 65 canonical relations preserved
+- 68 canonical relations preserved
 - Layer 3 signals ONLY through projection registry
 - Product master truth is never overwritten by review signals
+- Product/brand canonical labels from product master are truth nodes/links, not
+  review-derived evidence counts
+- Review-summary text is a mart sidecar, not graph evidence
 - Reviewer proxy and real user are never merged
 - Signal provenance source of truth: `signal_evidence` table
 - `source_fact_ids` on `wrapped_signal` is cache only

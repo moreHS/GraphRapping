@@ -1,70 +1,42 @@
 # Changelog
 
-## 2026-04-25 — Audit Follow-up Stabilization
-- P0/P1/P2 audit execution roadmap completed and documented under `DECISIONS/`
-- Product match/mock data contract restored with regression coverage
-- Quarantine batch/web summary path aligned
-- DB migration order, snapshot replay, and incremental persistence correctness hardened
-- Serving SQL/repo contract synced for family, purchase, promotion, and provenance metadata
-- rs.jsonl relation-ready contract documented and tested
-- Promotion metadata propagated from canonical facts through wrapped signals into aggregates
-- Recommendation scoring/config/UI/docs consistency restored
-- Repo-wide `ruff check src` baseline reduced to zero
-- `python -m mypy src` baseline reduced to zero
-- Real Postgres integration tests added behind `GRAPHRAPPING_TEST_DATABASE_URL`
-- Docker-backed Postgres integration runner added: `scripts/run_postgres_integration.sh`
-- GitHub Actions quality gate added for ruff, mypy, pytest, and manual Docker-backed Postgres integration
+## 2026-06-17 — Final 906-Review Source-Grounded Baseline
 
-## Phase 1 — Review Meaning Preservation + KG Cleanup
-- Negation/intensity preserved through full pipeline (BEE → CanonicalFact → WrappedSignal)
-- BEE_ATTR sentiment split removed (single entity, polarity on edge)
-- Auto keywords routed to quarantine (no auto entity creation)
-- Promotion gate in adapter (PROMOTE/KEEP_EVIDENCE_ONLY/DROP/QUARANTINE)
-- Signal dedup key extended with negated + qualifier_fingerprint
-- New enums: EvidenceKind, PromotionDecision, KeywordSource, FactStatus
+GraphRapping's active local baseline is now the source-grounded 906-review
+fixture connected to the refreshed product master, source review stats, graph
+outputs, and review-summary sidecar.
 
-## Phase 2 — User Layer Enhancement
-- 5 fact family builders (state/concern/goal/context/behavior)
-- Purchase features: owned_product_ids, repurchased_brand_ids
-- 4 new scoring features: skin_type_fit, goal_fit_master, goal_fit_review_signal, purchase_loyalty_score, novelty_bonus
-- User serving profile behavior section
+### Data Baseline
 
-## Phase 3 — Incremental Pipeline Stabilization
-- P0 fix: empty child row reprocessing banned → load_full_review_snapshot
-- Watermark only advances past successfully processed reviews
-- Dirty product includes comparison/co-use targets
+- `mockdata/review_triples_raw.json`: 906 reviews.
+- `mockdata/product_catalog_es.json`: 517 products.
+- `mockdata/shared_entities.json`: 38 brands, 517 products, 50 users.
+- Local DB: 517 active `product_master` rows, 906 `review_raw` rows, 906 exact
+  `review_catalog_link` rows.
+- `product_review_stats`: 516 rows.
+- `review_summary_sidecar`: 516 clean rows, with `SOURCE_KEY_COLLISION` product
+  excluded from clean summary matching.
 
-## Phase 4 — Corpus KG Aggregation
-- Promotion threshold: review_count >= 3, confidence >= 0.6, synthetic_ratio <= 0.5
-- corpus_weight, distinct_review_count, avg_confidence fields on aggregation
-- Graph API ?view=corpus|evidence parameter
+### Final Output Contract
 
-## vNext — Serving Enforcement + Structure Hardening
+- Product/source identity is carried as `source_channel + source_key_type +
+  source_product_id`.
+- Review-derived graph evidence remains separate from product master truth.
+- Review summaries are materialized as a mart sidecar, not promoted into graph
+  evidence.
+- Source review counts/ratings are exposed through `product_review_stats` and
+  `serving_product_profile.source_review_*`.
 
-### P0: Core Consistency
-- Corpus promotion enforced in serving: `promoted_only=True` default in `build_serving_product_profile()`
-- projection_registry.csv malformed rows fixed + strict column count validation in `load_csv()`
-- signal_evidence provenance unified: `evidence_sample` uses `signal_id` (not `source_fact_ids`)
+### Cleanup
 
-### P1: Structural Improvements
-- concept_id terminology unified (removed "concept IRI" from serving/runtime comments)
-- catalog_validation defense-in-depth: guards in build_serving_views + explainer
-- Explainer goal split: `goal_master`/`goal_review` recognized (was broken referencing deleted `goal_fit`)
-- Generic provenance: DDL `source_domain`/`source_kind` on `fact_provenance`, user facts include provenance
-- User aggregation weighting: recency × frequency × source_type composite (was max-confidence only)
-- Evidence/serving graph boundary documented in ARCHITECTURE.md
-- SQL-first candidate prefilter: `sql_prefilter_candidates()` + `generate_candidates_prefiltered()`
-- Shadow comparison logic extracted to `_run_shadow_comparison()` function
+- Generated cache residue removed: `.pytest_cache`, `.ruff_cache`,
+  `.mypy_cache`, and `__pycache__`.
+- Active documentation was reduced to the final 906-review baseline surface.
+- Old wave plans, future/brief docs, and pre-baseline decision logs were removed
+  from the active repository surface.
 
-### P2: Documentation
-- README.md created
-- ARCHITECTURE.md: evidence vs serving graph section, kg_mode contract, promoted-only invariant
-- mart_repo: corpus promotion columns in upsert (distinct_review_count, avg_confidence, etc.)
+## Earlier History
 
-## Follow-up Fixes
-- recommended_to UserSegment qualifier_required=N
-- reverse transform dst_ref_kind uses subject_ref_kind (not hardcoded ENTITY)
-- signal_evidence as provenance source of truth (source_fact_ids demoted to cache)
-- FactProvenance extended with source_domain/source_kind for generic provenance
-- Batch SQL aggregate path for dirty products
-- catalog_validation fully excluded from recommendation path
+Earlier March-May wave plans and implementation notes were superseded by the
+2026-06-17 final baseline docs. Current code behavior is guarded by tests and by
+the active contract documents under `DECISIONS/` and `docs/architecture/`.

@@ -1,0 +1,114 @@
+{
+  "cleanup_notes": [
+    "Data tables were truncated and reloaded from mockdata/review_triples_raw.json, mockdata/product_catalog_es.json, and mockdata/user_profiles_normalized.json.",
+    "mockdata/product_catalog_es.json is now a 2026-06-16 real product-master compatibility snapshot.",
+    "source_product_id 35119 is marked SOURCE_KEY_COLLISION because 031 and 036 refer to different products."
+  ],
+  "database": "postgresql://postgres:<redacted>@localhost:5432/graphrapping",
+  "generated_at": "2026-06-16T09:03:21.827602+00:00",
+  "pipeline_run": {
+    "completed_at": "2026-06-16 08:57:11.402656+00:00",
+    "quarantine_count": 9255,
+    "review_count": 906,
+    "run_id": 1,
+    "run_type": "FULL",
+    "signal_count": 2801,
+    "started_at": "2026-06-16 08:56:50.753521+00:00",
+    "status": "COMPLETED",
+    "watermark_rid": "review:글로우픽:REV-V260605-001399",
+    "watermark_ts": "2026-06-16 08:57:09.659965+00:00"
+  },
+  "product_id_samples": [
+    {
+      "brand_name": "이니스프리",
+      "price": null,
+      "product_id": "101057",
+      "product_name": "겔 마스크 (비타민C/레티놀/PDRN)",
+      "source_channel": "036",
+      "source_key_type": "chn_prd_cd",
+      "source_review_count": 11880,
+      "source_review_score": "4.837",
+      "source_truth_quality": "SOURCE_GROUNDED"
+    },
+    {
+      "brand_name": null,
+      "price": null,
+      "product_id": "35119",
+      "product_name": "SOURCE_KEY_COLLISION: 031 세라마이드 아토 버블워시 앤 샴푸 | 036 스페셜 케어 마스크 [풋]",
+      "source_channel": "031,036",
+      "source_key_type": "source_key_collision",
+      "source_review_count": null,
+      "source_review_score": null,
+      "source_truth_quality": "SOURCE_KEY_COLLISION"
+    },
+    {
+      "brand_name": "헤라",
+      "price": "74000",
+      "product_id": "61289",
+      "product_name": "【LIVE/59,940원+7,000P】블랙쿠션 듀오 SPF34/PA++ (9컬러)",
+      "source_channel": "031",
+      "source_key_type": "ecp_onln_prd_srno",
+      "source_review_count": 4919,
+      "source_review_score": "4.945",
+      "source_truth_quality": "SOURCE_GROUNDED"
+    },
+    {
+      "brand_name": "에스쁘아",
+      "price": null,
+      "product_id": "P0000000000000063981",
+      "product_name": "퍼펙트 디파이닝 아이라이너",
+      "source_channel": "048",
+      "source_key_type": "chn_prd_cd",
+      "source_review_count": 31,
+      "source_review_score": "4.871",
+      "source_truth_quality": "SOURCE_GROUNDED"
+    }
+  ],
+  "product_truth_quality": {
+    "benefits_present": 90,
+    "brand_present": 516,
+    "ingredients_present": 203,
+    "price_present": 353,
+    "source_grounded": 516,
+    "source_key_collision": 1
+  },
+  "promoted_signals_by_window": {
+    "30d": 237,
+    "90d": 70,
+    "all": 70
+  },
+  "review_catalog_link_quality": {
+    "collision_links": 2,
+    "exact_source_product_id_links": 906,
+    "source_product_id_matches": 906,
+    "source_product_id_present": 906,
+    "total_links": 906
+  },
+  "serving_source_review_stats": {
+    "all_count_present": 516,
+    "all_rating_present": 516,
+    "product_review_stats_rows": 516
+  },
+  "table_counts": {
+    "agg_product_signal": 6849,
+    "agg_user_preference": 658,
+    "canonical_entity": 1183,
+    "canonical_fact": 3873,
+    "concept_registry": 407,
+    "entity_concept_link": 3899,
+    "pipeline_run": 1,
+    "product_master": 517,
+    "product_review_stats": 516,
+    "quarantine_placeholder": 2303,
+    "quarantine_projection_miss": 4475,
+    "quarantine_unknown_keyword": 2477,
+    "review_catalog_link": 906,
+    "review_raw": 906,
+    "schema_migrations": 8,
+    "serving_product_profile": 517,
+    "serving_user_profile": 50,
+    "signal_evidence": 2839,
+    "user_master": 50,
+    "wrapped_signal": 2801
+  }
+}
