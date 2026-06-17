@@ -1,6 +1,8 @@
 """Tests: SQL-first candidate prefilter path."""
-from src.rec.candidate_generator import generate_candidates_prefiltered, CandidateProduct
-from src.common.enums import RecommendationMode
+from src.rec.candidate_generator import (
+    generate_candidates,
+    generate_candidates_prefiltered,
+)
 
 
 def test_prefiltered_uses_only_given_ids():
@@ -53,3 +55,23 @@ def test_prefiltered_missing_id_skipped():
     pids = {c.product_id for c in results}
     assert "p1" in pids
     assert "p_missing" not in pids
+
+
+def test_avoided_raw_ingredient_checked_when_concept_ids_present():
+    """Avoided raw ingredient IDs should still match when concept IDs exist."""
+    user_profile = {
+        "avoided_ingredient_ids": [{"id": "badx"}],
+        "preferred_category_ids": [],
+        "owned_product_ids": [],
+    }
+    product_profiles = [
+        {
+            "product_id": "P_mixed",
+            "ingredient_ids": ["badx"],
+            "ingredient_concept_ids": ["concept:Ingredient:other"],
+        }
+    ]
+
+    results = generate_candidates(user_profile, product_profiles)
+
+    assert results == []

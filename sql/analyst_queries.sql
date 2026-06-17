@@ -15,6 +15,7 @@ JOIN product_master pm ON aps.target_product_id = pm.product_id
 LEFT JOIN concept_registry cr ON aps.dst_node_id = cr.concept_id
 WHERE aps.canonical_edge_type = 'HAS_BEE_ATTR_SIGNAL'
   AND aps.window_type = 'all'
+  AND aps.is_active = true  -- P3-8: skip soft-deleted rows
 GROUP BY pm.category_name, aps.dst_node_id, cr.canonical_name
 ORDER BY pm.category_name, total_reviews DESC;
 
@@ -29,6 +30,7 @@ SELECT
 FROM agg_user_preference aup
 LEFT JOIN concept_registry cr ON aup.dst_node_id = cr.concept_id
 WHERE aup.preference_edge_type = 'HAS_CONCERN'
+  AND aup.is_active = true  -- P3-8: skip soft-deleted rows
 GROUP BY aup.dst_node_id, cr.canonical_name
 ORDER BY user_count DESC;
 
@@ -47,6 +49,7 @@ JOIN product_master pm_a ON aps.target_product_id = pm_a.product_id
 LEFT JOIN product_master pm_b ON aps.dst_node_id = pm_b.product_id
 WHERE aps.canonical_edge_type = 'COMPARED_WITH_SIGNAL'
   AND aps.window_type = 'all'
+  AND aps.is_active = true  -- P3-8: skip soft-deleted rows
 ORDER BY aps.review_cnt DESC
 LIMIT 50;
 
@@ -120,5 +123,6 @@ JOIN product_master pm_a ON aps.target_product_id = pm_a.product_id
 LEFT JOIN product_master pm_b ON aps.dst_node_id = pm_b.product_id
 WHERE aps.canonical_edge_type = 'USED_WITH_PRODUCT_SIGNAL'
   AND aps.window_type = 'all'
+  AND aps.is_active = true  -- P3-8: skip soft-deleted rows
 ORDER BY aps.review_cnt DESC
 LIMIT 50;

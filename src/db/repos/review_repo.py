@@ -21,7 +21,12 @@ async def upsert_review_raw(uow: UnitOfWork, review: dict[str, Any]) -> int:
     If same content → idempotent (no change).
     """
     existing = await uow.fetchrow(
-        "SELECT review_version, review_text, raw_payload, is_active FROM review_raw WHERE review_id = $1",
+        """
+        SELECT review_version, review_text, raw_payload, is_active,
+            source_product_id, source_channel, source_key_type, source_rating
+        FROM review_raw
+        WHERE review_id = $1
+        """,
         review["review_id"],
     )
 
@@ -29,13 +34,16 @@ async def upsert_review_raw(uow: UnitOfWork, review: dict[str, Any]) -> int:
         # First insert
         await uow.execute("""
             INSERT INTO review_raw (review_id, source, source_review_key, source_site,
+                source_product_id, source_channel, source_key_type, source_rating,
                 brand_name_raw, product_name_raw, review_text, reviewer_proxy_id,
                 identity_stability, event_time_utc, event_time_raw_text, event_tz,
                 event_time_source, raw_payload, review_version, is_active, created_at, updated_at)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,1,true,$15,$15)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,1,true,$19,$19)
         """,
             review["review_id"], review.get("source"), review.get("source_review_key"),
-            review.get("source_site"), review.get("brand_name_raw"),
+            review.get("source_site"), review.get("source_product_id"),
+            review.get("source_channel"), review.get("source_key_type"),
+            review.get("source_rating"), review.get("brand_name_raw"),
             review.get("product_name_raw"), review["review_text"],
             review.get("reviewer_proxy_id"), review.get("identity_stability", "REVIEW_LOCAL"),
             review.get("event_time_utc"), review.get("event_time_raw_text"),
@@ -46,8 +54,15 @@ async def upsert_review_raw(uow: UnitOfWork, review: dict[str, Any]) -> int:
         return 1
 
     # Check if content changed
+    source_changed = (
+        existing["source_product_id"] != review.get("source_product_id")
+        or existing["source_channel"] != review.get("source_channel")
+        or existing["source_key_type"] != review.get("source_key_type")
+        or _nullable_float(existing["source_rating"]) != _nullable_float(review.get("source_rating"))
+    )
     if (existing["review_text"] == review["review_text"]
-            and existing["is_active"] == review.get("is_active", True)):
+            and existing["is_active"] == review.get("is_active", True)
+            and not source_changed):
         return int(existing["review_version"])  # idempotent
 
     new_version = int(existing["review_version"]) + 1
@@ -61,7 +76,9 @@ async def upsert_review_raw(uow: UnitOfWork, review: dict[str, Any]) -> int:
         UPDATE review_raw SET
             review_text = $2, raw_payload = $3, review_version = $4,
             is_active = $5, updated_at = $6,
-            event_time_utc = $7, event_time_raw_text = $8, event_time_source = $9
+            event_time_utc = $7, event_time_raw_text = $8, event_time_source = $9,
+            source_product_id = $10, source_channel = $11,
+            source_key_type = $12, source_rating = $13
         WHERE review_id = $1
     """,
         review["review_id"], review["review_text"],
@@ -69,6 +86,8 @@ async def upsert_review_raw(uow: UnitOfWork, review: dict[str, Any]) -> int:
         review.get("is_active", True), uow.as_of_ts,
         review.get("event_time_utc"), review.get("event_time_raw_text"),
         review.get("event_time_source", "PROCESSING_TIME"),
+        review.get("source_product_id"), review.get("source_channel"),
+        review.get("source_key_type"), review.get("source_rating"),
     )
     await _append_history(uow, review["review_id"], new_version, version_op, review, uow.as_of_ts)
     return new_version
@@ -77,15 +96,22 @@ async def upsert_review_raw(uow: UnitOfWork, review: dict[str, Any]) -> int:
 async def upsert_review_catalog_link(uow: UnitOfWork, link: dict[str, Any]) -> None:
     await uow.execute("""
         INSERT INTO review_catalog_link (review_id, source_brand, source_product_name,
+            source_product_id, source_channel, source_key_type,
             matched_product_id, match_status, match_score, match_method, created_at)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
         ON CONFLICT (review_id) DO UPDATE SET
+            source_brand = EXCLUDED.source_brand,
+            source_product_name = EXCLUDED.source_product_name,
+            source_product_id = EXCLUDED.source_product_id,
+            source_channel = EXCLUDED.source_channel,
+            source_key_type = EXCLUDED.source_key_type,
             matched_product_id = EXCLUDED.matched_product_id,
             match_status = EXCLUDED.match_status,
             match_score = EXCLUDED.match_score,
             match_method = EXCLUDED.match_method
     """,
         link["review_id"], link.get("source_brand"), link.get("source_product_name"),
+        link.get("source_product_id"), link.get("source_channel"), link.get("source_key_type"),
         link.get("matched_product_id"), link["match_status"],
         link.get("match_score"), link.get("match_method"), uow.as_of_ts,
     )
@@ -242,6 +268,10 @@ async def load_full_review_snapshot(
         "bee": bee_for_record,
         "relation": rel_for_record,
         "source_review_key": review_raw.get("source_review_key"),
+        "source_product_id": review_raw.get("source_product_id"),
+        "source_channel": review_raw.get("source_channel"),
+        "source_key_type": review_raw.get("source_key_type"),
+        "source_rating": _nullable_float(review_raw.get("source_rating")),
         "author_key": None,
         "created_at": _event_time_text(review_raw),
         "collected_at": _event_time_text(review_raw),
@@ -342,13 +372,16 @@ async def _append_history(
 ) -> None:
     await uow.execute("""
         INSERT INTO review_raw_history (review_id, review_version, source, source_review_key,
+            source_product_id, source_channel, source_key_type, source_rating,
             source_site, brand_name_raw, product_name_raw, review_text, reviewer_proxy_id,
             identity_stability, event_time_utc, event_time_raw_text, event_tz,
             event_time_source, raw_payload, is_active, version_op,
             review_created_at, version_created_at)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)
     """,
         review_id, version, review.get("source"), review.get("source_review_key"),
+        review.get("source_product_id"), review.get("source_channel"),
+        review.get("source_key_type"), review.get("source_rating"),
         review.get("source_site"), review.get("brand_name_raw"),
         review.get("product_name_raw"), review.get("review_text", ""),
         review.get("reviewer_proxy_id"), review.get("identity_stability", "REVIEW_LOCAL"),
@@ -357,3 +390,12 @@ async def _append_history(
         _jsonb_or_default(review.get("raw_payload"), {}), review.get("is_active", True),
         version_op, as_of_ts, as_of_ts,
     )
+
+
+def _nullable_float(value: Any) -> float | None:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None

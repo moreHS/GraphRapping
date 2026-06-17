@@ -1,6 +1,5 @@
 """Tests for reviewer proxy isolation: proxy IRI ≠ real user IRI."""
 
-import pytest
 from src.common.ids import make_reviewer_proxy_id
 from src.user.adapters.personal_agent_adapter import adapt_user_profile
 

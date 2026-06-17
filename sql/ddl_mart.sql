@@ -53,6 +53,10 @@ create index if not exists idx_aup_user on agg_user_preference(user_id);
 -- Serving Product Profile (table-based mart — NOT just a view)
 create table if not exists serving_product_profile (
     product_id text primary key,
+    -- source identity fields (explicit source contract)
+    source_product_id text,
+    source_channel text,
+    source_key_type text,
     -- truth columns (from product_master)
     brand_id text,
     brand_name text,
@@ -84,6 +88,18 @@ create table if not exists serving_product_profile (
     review_count_30d int default 0,
     review_count_90d int default 0,
     review_count_all int default 0,
+    -- source review volume/rating fields (raw source stats, not graph support)
+    source_review_count_6m int,
+    source_review_score_count_6m int,
+    source_avg_rating_6m numeric(5, 3),
+    source_review_min_date_6m date,
+    source_review_max_date_6m date,
+    source_review_count_all int,
+    source_review_score_count_all int,
+    source_avg_rating_all numeric(5, 3),
+    source_review_min_date_all date,
+    source_review_max_date_all date,
+    source_review_stats_source text,
     -- meta
     is_active boolean not null default true,
     updated_at timestamptz not null default now()
@@ -118,6 +134,56 @@ create table if not exists serving_user_profile (
     updated_at timestamptz not null default now()
 );
 
+-- Review summary sidecar (source ES review-summary text, not graph evidence).
+-- This table is keyed by GraphRapping product_id, but retains source identity
+-- and raw ES docs so downstream consumers do not lose high-quality source fields.
+create table if not exists review_summary_sidecar (
+    product_id text primary key references product_master(product_id),
+    source_product_id text not null,
+    source_channel text,
+    source_key_type text,
+    review_source text,
+    review_channel text,
+    review_summary_category text,
+    match_status text not null,
+    long_doc_id text,
+    short_doc_id text,
+    long_doc jsonb,
+    short_doc jsonb,
+    candidate_metadata jsonb,
+    normalized_summary jsonb,
+    an_date text,
+    source text not null default 'es8_summary_review',
+    updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_review_summary_sidecar_source_identity
+    on review_summary_sidecar(source_channel, source_key_type, source_product_id);
+create index if not exists idx_review_summary_sidecar_status
+    on review_summary_sidecar(match_status);
+
+create table if not exists review_summary_manifest (
+    manifest_id bigserial primary key,
+    source text not null default 'es8_summary_review',
+    long_alias text,
+    short_alias text,
+    an_date text,
+    product_count int not null default 0,
+    clean_lookup_product_count int not null default 0,
+    fetched_long_docs int not null default 0,
+    fetched_short_docs int not null default 0,
+    matched int not null default 0,
+    exact_category int not null default 0,
+    source_unique int not null default 0,
+    product_id_unique int not null default 0,
+    ambiguous_skipped int not null default 0,
+    not_found int not null default 0,
+    collision_excluded int not null default 0,
+    errors int not null default 0,
+    payload jsonb,
+    created_at timestamptz not null default now()
+);
+
 ALTER TABLE serving_product_profile ADD COLUMN IF NOT EXISTS variant_family_id text;
 ALTER TABLE serving_product_profile ADD COLUMN IF NOT EXISTS representative_product_name text;
 ALTER TABLE serving_user_profile ADD COLUMN IF NOT EXISTS recent_purchase_brand_ids jsonb;
@@ -133,3 +199,45 @@ ALTER TABLE agg_product_signal ADD COLUMN IF NOT EXISTS avg_confidence real NOT 
 ALTER TABLE agg_product_signal ADD COLUMN IF NOT EXISTS synthetic_ratio real NOT NULL DEFAULT 0.0;
 ALTER TABLE agg_product_signal ADD COLUMN IF NOT EXISTS corpus_weight real NOT NULL DEFAULT 0.0;
 ALTER TABLE agg_product_signal ADD COLUMN IF NOT EXISTS is_promoted boolean NOT NULL DEFAULT false;
+
+-- P3-7 (Wave 2.9): signal_support_count_all is the sum-of-review_cnt across
+-- (edge, dst) signal rows for the product. Distinct from `review_count_all`
+-- which now stores product-level distinct review_id count.
+ALTER TABLE serving_product_profile ADD COLUMN IF NOT EXISTS signal_support_count_all int NOT NULL DEFAULT 0;
+
+-- Source-grounded serving contract (2026-06-15): keep source stats explicit
+-- and separate from graph support review_count_* fields.
+ALTER TABLE serving_product_profile ADD COLUMN IF NOT EXISTS source_product_id text;
+ALTER TABLE serving_product_profile ADD COLUMN IF NOT EXISTS source_channel text;
+ALTER TABLE serving_product_profile ADD COLUMN IF NOT EXISTS source_key_type text;
+ALTER TABLE serving_product_profile ADD COLUMN IF NOT EXISTS source_review_count_6m int;
+ALTER TABLE serving_product_profile ADD COLUMN IF NOT EXISTS source_review_score_count_6m int;
+ALTER TABLE serving_product_profile ADD COLUMN IF NOT EXISTS source_avg_rating_6m numeric(5, 3);
+ALTER TABLE serving_product_profile ADD COLUMN IF NOT EXISTS source_review_min_date_6m date;
+ALTER TABLE serving_product_profile ADD COLUMN IF NOT EXISTS source_review_max_date_6m date;
+ALTER TABLE serving_product_profile ADD COLUMN IF NOT EXISTS source_review_count_all int;
+ALTER TABLE serving_product_profile ADD COLUMN IF NOT EXISTS source_review_score_count_all int;
+ALTER TABLE serving_product_profile ADD COLUMN IF NOT EXISTS source_avg_rating_all numeric(5, 3);
+ALTER TABLE serving_product_profile ADD COLUMN IF NOT EXISTS source_review_min_date_all date;
+ALTER TABLE serving_product_profile ADD COLUMN IF NOT EXISTS source_review_max_date_all date;
+ALTER TABLE serving_product_profile ADD COLUMN IF NOT EXISTS source_review_stats_source text;
+ALTER TABLE serving_product_profile ALTER COLUMN source_review_count_6m DROP NOT NULL;
+ALTER TABLE serving_product_profile ALTER COLUMN source_review_count_6m DROP DEFAULT;
+ALTER TABLE serving_product_profile ALTER COLUMN source_review_score_count_6m DROP NOT NULL;
+ALTER TABLE serving_product_profile ALTER COLUMN source_review_score_count_6m DROP DEFAULT;
+ALTER TABLE serving_product_profile ALTER COLUMN source_review_count_all DROP NOT NULL;
+ALTER TABLE serving_product_profile ALTER COLUMN source_review_count_all DROP DEFAULT;
+ALTER TABLE serving_product_profile ALTER COLUMN source_review_score_count_all DROP NOT NULL;
+ALTER TABLE serving_product_profile ALTER COLUMN source_review_score_count_all DROP DEFAULT;
+
+-- P3-8 (Wave 2.10): soft-delete marker for aggregate rows whose last_seen_at
+-- has fallen outside the freshness window. Re-upsert (EXCLUDED) reactivates.
+ALTER TABLE agg_product_signal ADD COLUMN IF NOT EXISTS is_active boolean NOT NULL DEFAULT true;
+ALTER TABLE agg_user_preference ADD COLUMN IF NOT EXISTS is_active boolean NOT NULL DEFAULT true;
+
+-- P3-8 (Wave 3.8): partial indexes targeted at the cleanup query shape —
+-- `WHERE is_active = true AND <ts> < cutoff`. Skip dead rows entirely.
+CREATE INDEX IF NOT EXISTS idx_aps_active_lastseen
+    ON agg_product_signal (last_seen_at) WHERE is_active = true;
+CREATE INDEX IF NOT EXISTS idx_aup_active_updated
+    ON agg_user_preference (updated_at) WHERE is_active = true;

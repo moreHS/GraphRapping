@@ -67,19 +67,31 @@ def load_demo_data(
     max_reviews: int = 100,
     source: str = "demo",
     review_format: str = "relation",
+    *,
+    purchase_events_by_user: dict[str, list] | None = None,
+    kg_mode: str | None = None,
 ) -> DemoState:
-    """Load data and run pipeline, populating demo_state."""
+    """Load data and run pipeline, populating demo_state.
+
+    P0-1 (audit fix): optional purchase_events_by_user is forwarded to both
+    load_users_from_profiles() (user-fact build) and run_batch() (brand confidence).
+
+    P0-3 (audit fix): kg_mode resolves arg → env GRAPHRAPPING_KG_MODE → "on"
+    (demo-specific default — KG-on path is the demo's intended visualization).
+    """
+    from src.common.config_loader import get_kg_mode, load_predicate_contracts
+    from src.common.text_normalize import normalize_text
+    from src.ingest.purchase_ingest import build_product_lookups_from_masters
+    from src.jobs.run_daily_pipeline import run_batch
+    from src.loaders.product_loader import load_products_from_es_records
     from src.loaders.relation_loader import load_reviews_from_json
     from src.loaders.rs_jsonl_loader import load_reviews_from_rs_jsonl_with_report
-    from src.loaders.product_loader import load_products_from_es_records
     from src.loaders.user_loader import load_users_from_profiles
     from src.normalize.bee_normalizer import BEENormalizer
     from src.normalize.relation_canonicalizer import RelationCanonicalizer
     from src.normalize.tool_concern_segment_deriver import ToolConcernSegmentDeriver
-    from src.wrap.projection_registry import ProjectionRegistry
     from src.qa.quarantine_handler import QuarantineHandler
-    from src.jobs.run_daily_pipeline import run_batch
-    from src.common.text_normalize import normalize_text
+    from src.wrap.projection_registry import ProjectionRegistry
 
     global demo_state
     # Reset by clearing attributes (not replacing object — preserves import references)
@@ -91,7 +103,7 @@ def load_demo_data(
     # Add aliases for prod_nm = product_id matching (current data format)
     for record in product_es_records:
         pid = record["ONLINE_PROD_SERIAL_NUMBER"]
-        brand = record.get("BRAND_NAME", "")
+        brand = record.get("BRAND_NAME") or ""
         alias_key = f"{normalize_text(brand)}|{normalize_text(pid)}"
         product_result.product_index.add_alias(alias_key, pid)
 
@@ -99,8 +111,19 @@ def load_demo_data(
     demo_state.concept_links = product_result.concept_links
     demo_state.product_count = product_result.product_count
 
-    # Load users
-    user_result = load_users_from_profiles(user_profiles)
+    # Product-id lookups for purchase feature derivation (raw normalized ids).
+    brand_lookup, category_lookup, family_lookup = build_product_lookups_from_masters(
+        product_result.product_masters
+    )
+
+    # Load users with optional purchase events for user-fact build.
+    user_result = load_users_from_profiles(
+        user_profiles,
+        purchase_events_by_user=purchase_events_by_user,
+        brand_lookup=brand_lookup,
+        category_lookup=category_lookup,
+        family_lookup=family_lookup,
+    )
     demo_state.user_count = user_result.user_count
     demo_state.user_adapted_facts = user_result.user_adapted_facts
 
@@ -127,7 +150,14 @@ def load_demo_data(
 
     quarantine = QuarantineHandler()
 
-    # Run batch
+    # Load predicate contracts for operational validation (P0-2).
+    predicate_contracts = load_predicate_contracts()
+
+    # Resolve kg_mode (P0-3): arg → env → "on" (demo-specific default).
+    kg_mode_resolved = get_kg_mode(kg_mode, default="on")
+
+    # Run batch — forward purchase_events_by_user to run_batch for brand-confidence
+    # weighting (separate contract from user-fact build above).
     batch_result = run_batch(
         reviews=reviews, source=source,
         product_index=product_result.product_index,
@@ -138,7 +168,9 @@ def load_demo_data(
         bee_normalizer=bee_norm, relation_canonicalizer=rel_canon,
         projection_registry=proj_registry, quarantine=quarantine,
         deriver=deriver,
-        kg_mode="on",  # Use KG pipeline for BEE/REL processing
+        predicate_contracts=predicate_contracts,
+        purchase_events_by_user=purchase_events_by_user,
+        kg_mode=kg_mode_resolved,
     )
 
     demo_state.batch_result = batch_result

@@ -17,9 +17,49 @@ create table if not exists product_master (
     volume text,
     shade text,
     variant_family_id text,
+    source_product_id text,
+    source_channel text,
+    source_key_type text,
+    representative_product_name text,
+    source_truth_source text,
+    source_truth_quality text,
+    source_truth_updated_at timestamptz,
+    source_review_count int,
+    source_review_score numeric(5, 3),
     is_active boolean not null default true,
     created_at timestamptz not null default now(),
     updated_at timestamptz not null default now()
+);
+
+-- Source-grounded product truth columns. Required for existing DBs created
+-- before the 2026-06-15 product contract.
+alter table product_master add column if not exists source_product_id text;
+alter table product_master add column if not exists source_channel text;
+alter table product_master add column if not exists source_key_type text;
+alter table product_master add column if not exists representative_product_name text;
+alter table product_master add column if not exists source_truth_source text;
+alter table product_master add column if not exists source_truth_quality text;
+alter table product_master add column if not exists source_truth_updated_at timestamptz;
+alter table product_master add column if not exists source_review_count int;
+alter table product_master add column if not exists source_review_score numeric(5, 3);
+
+create table if not exists product_review_stats (
+    product_id text not null references product_master(product_id),
+    source_channel text not null default 'unknown',
+    source_key_type text not null default 'unknown',
+    source_review_count_6m int not null default 0,
+    source_review_score_count_6m int not null default 0,
+    source_avg_rating_6m numeric(5, 3),
+    source_review_min_date_6m date,
+    source_review_max_date_6m date,
+    source_review_count_all int not null default 0,
+    source_review_score_count_all int not null default 0,
+    source_avg_rating_all numeric(5, 3),
+    source_review_min_date_all date,
+    source_review_max_date_all date,
+    source text not null default 'snowflake:f_prd_rv_hist',
+    updated_at timestamptz not null default now(),
+    primary key (product_id, source_channel, source_key_type)
 );
 
 -- Layer 0: User Master
@@ -67,6 +107,10 @@ create table if not exists review_raw (
     review_id text primary key,
     source text not null,
     source_review_key text,
+    source_product_id text,
+    source_channel text,
+    source_key_type text,
+    source_rating numeric(5, 3),
     source_site text,
     brand_name_raw text,
     product_name_raw text,
@@ -90,6 +134,10 @@ create table if not exists review_raw_history (
     review_version int not null check (review_version >= 1),
     source text not null,
     source_review_key text,
+    source_product_id text,
+    source_channel text,
+    source_key_type text,
+    source_rating numeric(5, 3),
     source_site text,
     brand_name_raw text,
     product_name_raw text,
@@ -113,12 +161,27 @@ create table if not exists review_catalog_link (
     review_id text primary key references review_raw(review_id),
     source_brand text,
     source_product_name text,
+    source_product_id text,
+    source_channel text,
+    source_key_type text,
     matched_product_id text,           -- NULL if unresolved
     match_status text not null,        -- EXACT|NORM|ALIAS|FUZZY|QUARANTINE
     match_score real,
     match_method text,
     created_at timestamptz not null default now()
 );
+
+alter table review_raw add column if not exists source_product_id text;
+alter table review_raw add column if not exists source_channel text;
+alter table review_raw add column if not exists source_key_type text;
+alter table review_raw add column if not exists source_rating numeric(5, 3);
+alter table review_raw_history add column if not exists source_product_id text;
+alter table review_raw_history add column if not exists source_channel text;
+alter table review_raw_history add column if not exists source_key_type text;
+alter table review_raw_history add column if not exists source_rating numeric(5, 3);
+alter table review_catalog_link add column if not exists source_product_id text;
+alter table review_catalog_link add column if not exists source_channel text;
+alter table review_catalog_link add column if not exists source_key_type text;
 
 -- Layer 1: NER Raw
 create table if not exists ner_raw (

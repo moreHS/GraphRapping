@@ -91,8 +91,9 @@ def generate_candidates(
 
         # --- Hard filters (zero-out) ---
 
-        # 1. Ingredient conflict (via concept_id)
-        product_ingredients = set(product.get("ingredient_concept_ids") or product.get("ingredient_ids") or [])
+        # 1. Ingredient conflict (raw IDs + concept IDs, matching SQL prefilter)
+        product_ingredients = set(product.get("ingredient_concept_ids") or [])
+        product_ingredients.update(product.get("ingredient_ids") or [])
         if avoided_ingredients & product_ingredients:
             candidate.hard_filtered = True
             candidate.filter_reason = "AVOIDED_INGREDIENT_CONFLICT"

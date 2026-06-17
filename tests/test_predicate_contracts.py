@@ -11,7 +11,10 @@ class TestPredicateContracts:
         rows = load_csv("predicate_contracts.csv")
         return {r["predicate"]: r for r in rows}
 
-    def test_all_65_predicates_have_contracts(self, contracts):
+    def test_all_canonical_predicates_have_contracts(self, contracts):
+        """Every entry in CANONICAL_PREDICATES (currently 68) must have a
+        contract row in predicate_contracts.csv. Function name no longer ties
+        to a specific count so the assertion does not lie when the set grows."""
         from src.normalize.relation_canonicalizer import CANONICAL_PREDICATES
         for pred in CANONICAL_PREDICATES:
             assert pred in contracts, f"Predicate '{pred}' missing from predicate_contracts.csv"

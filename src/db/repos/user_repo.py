@@ -11,18 +11,30 @@ from src.db.unit_of_work import UnitOfWork
 
 
 async def upsert_user_master(uow: UnitOfWork, user: dict[str, Any]) -> None:
+    """Upsert a user_master row.
+
+    Wave 4 Task 5: conflict update refreshes `raw_payload` and `is_active`
+    too. Before this fix, a user that was deactivated upstream would still
+    appear active in serving until the row was deleted and re-inserted.
+    """
     await uow.execute("""
         INSERT INTO user_master (user_id, age, age_band, gender, skin_type, skin_tone,
-            raw_payload, updated_at)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+            raw_payload, is_active, updated_at)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
         ON CONFLICT (user_id) DO UPDATE SET
-            age=EXCLUDED.age, age_band=EXCLUDED.age_band,
-            gender=EXCLUDED.gender, skin_type=EXCLUDED.skin_type,
-            skin_tone=EXCLUDED.skin_tone, updated_at=EXCLUDED.updated_at
+            age=EXCLUDED.age,
+            age_band=EXCLUDED.age_band,
+            gender=EXCLUDED.gender,
+            skin_type=EXCLUDED.skin_type,
+            skin_tone=EXCLUDED.skin_tone,
+            raw_payload=EXCLUDED.raw_payload,
+            is_active=EXCLUDED.is_active,
+            updated_at=EXCLUDED.updated_at
     """,
         user["user_id"], user.get("age"), user.get("age_band"),
         user.get("gender"), user.get("skin_type"), user.get("skin_tone"),
         json.dumps(user.get("raw_payload")) if user.get("raw_payload") else None,
+        user.get("is_active", True),
         uow.as_of_ts,
     )
 

@@ -17,6 +17,7 @@ def build_serving_product_profile(
     window_type: str = "all",
     concept_links: list[dict] | None = None,
     promoted_only: bool = True,
+    source_review_stats: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build a single serving_product_profile row.
 
@@ -27,9 +28,13 @@ def build_serving_product_profile(
         concept_links: entity_concept_link rows for this product
         promoted_only: If True (default), only include signals where
             is_promoted is True.  Set to False for debug/exploration.
+        source_review_stats: Optional source-grounded review volume/rating
+            stats. These are emitted as explicit source_* fields and never
+            redefine review_count_* graph support fields.
     """
     pid = product_master["product_id"]
     links = concept_links or []
+    stats = source_review_stats or {}
 
     # Extract concept_ids by link_type (concept_id is the canonical join key)
     brand_concepts = [link["concept_id"] for link in links if link.get("link_type") == "HAS_BRAND"]
@@ -37,8 +42,13 @@ def build_serving_product_profile(
     ingredient_concepts = [link["concept_id"] for link in links if link.get("link_type") == "HAS_INGREDIENT"]
     benefit_concepts = [link["concept_id"] for link in links if link.get("link_type") == "HAS_MAIN_BENEFIT"]
 
+    # P3-8 (Wave 2.10): exclude soft-deleted aggregate rows. Default True
+    # so in-memory callers (no is_active field) behave unchanged; DB readers
+    # honor the soft-delete contract.
+    active_signals = [s for s in agg_signals if s.get("is_active", True)]
+
     # Filter signals for requested window
-    window_signals = [s for s in agg_signals if s.get("window_type") == window_type]
+    window_signals = [s for s in active_signals if s.get("window_type") == window_type]
     if promoted_only:
         window_signals = [s for s in window_signals if s.get("is_promoted", False)]
 
@@ -58,21 +68,61 @@ def build_serving_product_profile(
         items.sort(key=lambda x: x.get("score", 0), reverse=True)
         return [{"id": i["dst_node_id"], "score": i["score"], "review_cnt": i["review_cnt"]} for i in items[:n]]
 
-    # Freshness: get windowed counts
-    signals_30d = [s for s in agg_signals if s.get("window_type") == "30d"
+    # Freshness: get windowed counts. Reuse `active_signals` so soft-deleted
+    # rows (P3-8) don't inflate freshness counts.
+    signals_30d = [s for s in active_signals if s.get("window_type") == "30d"
                    and (not promoted_only or s.get("is_promoted", False))]
-    signals_90d = [s for s in agg_signals if s.get("window_type") == "90d"
+    signals_90d = [s for s in active_signals if s.get("window_type") == "90d"
                    and (not promoted_only or s.get("is_promoted", False))]
-    review_count_30d = sum(s.get("review_cnt", 0) for s in signals_30d)
-    review_count_90d = sum(s.get("review_cnt", 0) for s in signals_90d)
-    review_count_all = sum(s.get("review_cnt", 0) for s in window_signals)
+
+    def _distinct_reviews(rows: list[dict]) -> int:
+        """Product-level distinct review_id count via union across signal rows.
+
+        P3-7: prior implementation summed each row's `review_cnt`, which
+        double-counts a review that contributes to multiple (edge, dst)
+        groups. Now we union review_ids carried transiently on each row.
+        """
+        union: set[str] = set()
+        for row in rows:
+            union.update(rid for rid in row.get("review_ids", []) if rid)
+        return len(union)
+
+    review_count_30d = _distinct_reviews(signals_30d)
+    review_count_90d = _distinct_reviews(signals_90d)
+    review_count_all = _distinct_reviews(window_signals)
+    # P3-7: signal_support_count_all is the prior inflated sum, exposed
+    # explicitly as "signal lines × occurrences" so downstream code that
+    # genuinely needs that quantity (e.g. UI badges) can still get it.
+    signal_support_count_all = sum(s.get("review_cnt", 0) for s in window_signals)
 
     # Last signal timestamp
-    last_seen_values = [str(s["last_seen_at"]) for s in agg_signals if s.get("last_seen_at")]
-    last_signal_at = max(last_seen_values) if last_seen_values else None
+    # P3-8: derive freshness from active rows only — inactive (soft-deleted)
+    # aggregates must not surface as the product's "last signal" timestamp.
+    # Wave 4 Task 4: keep native datetime when present (asyncpg timestamptz
+    # binding requires a date/datetime, not a string).
+    last_seen_values = [s["last_seen_at"] for s in active_signals if s.get("last_seen_at")]
+    last_signal_at = max(last_seen_values, key=str) if last_seen_values else None
+
+    def _source_stat(name: str, fallback_name: str | None = None, default: Any = None) -> Any:
+        value = stats.get(name)
+        if value is None and fallback_name is not None:
+            value = stats.get(fallback_name)
+        return default if value is None else value
+
+    representative_product_name = (
+        product_master.get("representative_product_name")
+        or product_master.get("_es_meta", {}).get("REPRESENTATIVE_PROD_NAME")
+    )
 
     return {
         "product_id": pid,
+        "source_product_id": (
+            _source_stat("source_product_id")
+            or product_master.get("source_product_id")
+            or pid
+        ),
+        "source_channel": _source_stat("source_channel") or product_master.get("source_channel"),
+        "source_key_type": _source_stat("source_key_type") or product_master.get("source_key_type"),
         # Truth columns (raw)
         "brand_id": product_master.get("brand_id"),
         "brand_name": product_master.get("brand_name"),
@@ -80,8 +130,12 @@ def build_serving_product_profile(
         "category_name": product_master.get("category_name"),
         "country_of_origin": product_master.get("country_of_origin"),
         "price": product_master.get("price"),
+        # price_band: category-derived band ("low"/"mid"/"premium") — not yet
+        # populated by any rule; column kept for forward compatibility.
+        "price_band": product_master.get("price_band"),
         "variant_family_id": product_master.get("variant_family_id"),
-        "representative_product_name": product_master.get("_es_meta", {}).get("REPRESENTATIVE_PROD_NAME"),
+        "representative_product_name": representative_product_name,
+        "main_benefit_ids": product_master.get("main_benefits", []),
         "ingredient_ids": product_master.get("ingredients", []),
         # Concept ID fields (canonical join keys — concept_id, not raw IRI)
         "brand_concept_ids": brand_concepts,
@@ -98,10 +152,34 @@ def build_serving_product_profile(
         "top_comparison_product_ids": _top_n("COMPARED_WITH_SIGNAL"),
         "top_coused_product_ids": _top_n("USED_WITH_PRODUCT_SIGNAL"),
         # Freshness
+        "last_signal_at": last_signal_at,
         "review_count_30d": review_count_30d,
         "review_count_90d": review_count_90d,
         "review_count_all": review_count_all,
-        "last_signal_at": last_signal_at,
+        "signal_support_count_all": signal_support_count_all,
+        "source_review_count_6m": _source_stat("source_review_count_6m", "review_count_6m"),
+        "source_review_score_count_6m": _source_stat(
+            "source_review_score_count_6m", "score_count_6m",
+        ),
+        "source_avg_rating_6m": _source_stat("source_avg_rating_6m", "avg_rating_6m"),
+        "source_review_min_date_6m": _source_stat(
+            "source_review_min_date_6m", "review_min_date_6m",
+        ),
+        "source_review_max_date_6m": _source_stat(
+            "source_review_max_date_6m", "review_max_date_6m",
+        ),
+        "source_review_count_all": _source_stat("source_review_count_all", "review_count_all"),
+        "source_review_score_count_all": _source_stat(
+            "source_review_score_count_all", "score_count_all",
+        ),
+        "source_avg_rating_all": _source_stat("source_avg_rating_all", "avg_rating_all"),
+        "source_review_min_date_all": _source_stat(
+            "source_review_min_date_all", "review_min_date_all",
+        ),
+        "source_review_max_date_all": _source_stat(
+            "source_review_max_date_all", "review_max_date_all",
+        ),
+        "source_review_stats_source": _source_stat("source_review_stats_source", "source"),
     }
 
 
@@ -112,8 +190,12 @@ def build_serving_user_profile(
     """Build a single serving_user_profile row."""
     uid = user_master["user_id"]
 
+    # P3-8 (Wave 2.10): exclude soft-deleted user-preference rows. Default
+    # True so in-memory callers (no is_active field) behave unchanged.
+    active_preferences = [p for p in preferences if p.get("is_active", True)]
+
     def _collect(edge_type: str) -> list[dict]:
-        items = [p for p in preferences if p.get("preference_edge_type") == edge_type]
+        items = [p for p in active_preferences if p.get("preference_edge_type") == edge_type]
         items.sort(key=lambda x: x.get("weight", 0), reverse=True)
         return [{"id": i["dst_node_id"], "weight": i["weight"]} for i in items[:20]]
 

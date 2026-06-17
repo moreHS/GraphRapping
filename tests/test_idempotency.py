@@ -1,6 +1,5 @@
 """Tests for idempotency: same review processed twice → no duplicates."""
 
-import pytest
 from src.canonical.canonical_fact_builder import CanonicalFactBuilder, FactProvenance
 from src.common.ids import make_product_iri
 

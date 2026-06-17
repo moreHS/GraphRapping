@@ -15,12 +15,13 @@ from src.canonical.canonical_fact_builder import (
     CanonicalFactBuilder,
     FactProvenance,
 )
+from src.common.config_loader import get_kg_mode, load_predicate_contracts
 from src.common.enums import MatchStatus, ObjectRefKind
 from src.common.ids import make_concept_iri, make_product_iri
 from src.common.text_normalize import normalize_text
 from src.db.persist_bundle import ReviewPersistBundle
 from src.ingest.review_ingest import RawReviewRecord, ingest_review
-from src.link.product_matcher import ProductIndex, match_product
+from src.link.product_matcher import MatchResult, ProductIndex, match_product
 from src.link.placeholder_resolver import resolve_placeholders
 from src.normalize.bee_normalizer import BEENormalizer
 from src.normalize.date_splitter import split_date
@@ -68,6 +69,21 @@ def _canonical_type(ner_code: str) -> str:
     return _NER_TO_CANONICAL_TYPE.get(ner_code, ner_code)
 
 
+def _match_product_by_source_id(source_product_id: str | None, index: ProductIndex) -> MatchResult | None:
+    """Match by source product id before falling back to brand/name heuristics."""
+    if source_product_id is None:
+        return None
+    product_id = str(source_product_id).strip()
+    if not product_id or product_id not in index.exact:
+        return None
+    return MatchResult(
+        matched_product_id=product_id,
+        match_status=MatchStatus.EXACT,
+        match_score=1.0,
+        match_method="source_product_id",
+    )
+
+
 def process_review(
     record: RawReviewRecord,
     source: str,
@@ -78,19 +94,29 @@ def process_review(
     quarantine: QuarantineHandler,
     deriver: ToolConcernSegmentDeriver | None = None,
     predicate_contracts: dict | None = None,
-    kg_mode: str = "off",
+    kg_mode: str | None = None,
     kg_pipeline_instance: Any = None,
 ) -> ReviewPersistBundle:
     """Process a single review through the full pipeline.
 
-    kg_mode: "off" (legacy), "shadow" (dual-run), "on" (KG only)
+    kg_mode: "off" (legacy), "shadow" (dual-run), "on" (KG only).
+        Resolution (P0-3): arg → env GRAPHRAPPING_KG_MODE → "off".
     kg_pipeline_instance: reusable KGPipeline (avoids per-review config reload)
+
+    P0-2: predicate_contracts default-loads from configs/predicate_contracts.csv
+    when caller passes None. Pass empty dict {} to explicitly disable validation.
     """
+    if predicate_contracts is None:
+        predicate_contracts = load_predicate_contracts()
+    kg_mode = get_kg_mode(kg_mode)
+
     # 1. Ingest
     ingested = ingest_review(record, source=source)
 
     # 2. Product match
-    match = match_product(record.brnd_nm, record.prod_nm, product_index)
+    match = _match_product_by_source_id(record.source_product_id, product_index)
+    if match is None:
+        match = match_product(record.brnd_nm, record.prod_nm, product_index)
     target_product_iri = None
     target_product_id = None
     if match.match_status != MatchStatus.QUARANTINE and match.matched_product_id:
@@ -135,6 +161,7 @@ def process_review(
 
     # 4. Build canonical facts
     builder = CanonicalFactBuilder(predicate_contracts=predicate_contracts)
+    shadow_builder: CanonicalFactBuilder | None = None
 
     # 4-a. Register resolved entities (Phase 2-1)
     for idx, rm in resolution.resolved_mentions.items():
@@ -205,16 +232,6 @@ def process_review(
             if target_product_iri:
                 kg_result_to_facts(kg_result, ingested.review_id, target_product_iri, shadow_builder,
                                    reviewer_proxy_iri=ingested.reviewer_proxy_id)
-            comparison = _run_shadow_comparison(
-                shadow_builder_facts=shadow_builder.facts,
-                production_builder_facts=builder.facts,
-                review_id=ingested.review_id,
-            )
-            logger.info("Shadow KG: entities=%d facts=%d signals_pending (review %s) | "
-                        "shadow_facts=%d prod_facts=%d new_in_shadow=%d missing_in_shadow=%d",
-                        len(shadow_builder.entities), len(shadow_builder.facts), ingested.review_id,
-                        comparison["shadow_fact_count"], comparison["production_fact_count"],
-                        comparison["new_in_shadow"], comparison["missing_in_shadow"])
             # Shadow mode also quarantines keyword candidates (for comparison completeness)
             for candidate in getattr(kg_result, "keyword_candidates", []):
                 quarantine.quarantine_unknown_keyword(
@@ -395,19 +412,33 @@ def process_review(
             provenance=provenance,
         )
 
+    if kg_mode == "shadow" and shadow_builder is not None:
+        comparison = _run_shadow_comparison(
+            shadow_builder_facts=shadow_builder.facts,
+            production_builder_facts=builder.facts,
+            review_id=ingested.review_id,
+        )
+        logger.info("Shadow KG: entities=%d facts=%d signals_pending (review %s) | "
+                    "shadow_facts=%d prod_facts=%d new_in_shadow=%d missing_in_shadow=%d",
+                    len(shadow_builder.entities), len(shadow_builder.facts), ingested.review_id,
+                    comparison["shadow_fact_count"], comparison["production_fact_count"],
+                    comparison["new_in_shadow"], comparison["missing_in_shadow"])
+
     # Quarantine invalid facts (predicate contract violations)
     for inv in builder.invalid_facts:
         quarantine.quarantine_invalid_fact(inv)
 
     # 5. Emit signals with window_ts
+    # Wave 4 Task 4: keep the native datetime (review_ingest already parsed
+    # it via `_parse_to_utc`). Stringifying here broke asyncpg's timestamptz
+    # bind in `signal_repo.replace_signals_for_review`.
     window_ts = ingested.review_raw.get("event_time_utc")
-    window_ts_str = str(window_ts) if window_ts else None
 
     emitter = SignalEmitter(projection_registry)
     emit_result = emitter.emit_from_facts(
         facts=builder.facts,
         target_product_id=target_product_id,
-        window_ts=window_ts_str,
+        window_ts=window_ts,
     )
 
     # Quarantine projection misses with actual predicate info
@@ -429,6 +460,9 @@ def process_review(
             "review_id": ingested.review_id,
             "source_brand": ingested.review_raw.get("brand_name_raw"),
             "source_product_name": ingested.review_raw.get("product_name_raw"),
+            "source_product_id": ingested.review_raw.get("source_product_id"),
+            "source_channel": ingested.review_raw.get("source_channel"),
+            "source_key_type": ingested.review_raw.get("source_key_type"),
             "matched_product_id": target_product_id,
             "match_status": match.match_status.value,
             "match_score": match.match_score,
@@ -460,13 +494,19 @@ def build_review_persist_bundle(
     projection_registry: ProjectionRegistry,
     deriver: ToolConcernSegmentDeriver | None = None,
     predicate_contracts: dict | None = None,
-    kg_mode: str = "off",
+    kg_mode: str | None = None,
     kg_pipeline_instance: Any = None,
 ) -> ReviewPersistBundle:
     """Build a ReviewPersistBundle from a raw review record.
 
     Convenience wrapper: creates a fresh quarantine handler internally.
+
+    P0-2: predicate_contracts default-loads when caller passes None.
+    P0-3: kg_mode default-resolves via arg → env GRAPHRAPPING_KG_MODE → "off".
     """
+    if predicate_contracts is None:
+        predicate_contracts = load_predicate_contracts()
+    kg_mode = get_kg_mode(kg_mode)
     quarantine = QuarantineHandler()
     bundle = process_review(
         record=record, source=source,
@@ -517,12 +557,21 @@ def run_batch(
     deriver: ToolConcernSegmentDeriver | None = None,
     predicate_contracts: dict | None = None,
     purchase_events_by_user: dict[str, list] | None = None,
-    kg_mode: str = "off",
+    kg_mode: str | None = None,
+    source_review_stats_by_product: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Full batch pipeline: reviews → signals → aggregate → serving.
 
-    kg_mode: "off" (legacy), "shadow" (dual-run), "on" (KG only)
+    kg_mode: "off" (legacy), "shadow" (dual-run), "on" (KG only).
+        Resolution (P0-3): arg → env GRAPHRAPPING_KG_MODE → "off".
+
+    P0-2: predicate_contracts default-loads from configs/predicate_contracts.csv
+    when caller passes None. Pass empty dict {} to explicitly disable validation.
     """
+    if predicate_contracts is None:
+        predicate_contracts = load_predicate_contracts()
+    kg_mode = get_kg_mode(kg_mode)
+
     # Create KGPipeline once for entire batch (avoid per-review config reload)
     kg_pipeline_instance = None
     if kg_mode in ("on", "shadow"):
@@ -568,6 +617,7 @@ def run_batch(
     from src.user.canonicalize_user_facts import canonicalize_user_facts
 
     serving_users = []
+    user_pref_rows: list[dict] = []  # Wave 4 Task 4: collected for DB persist
     for user_id, facts in user_adapted_facts.items():
         # Canonicalize user facts first
         canonical_facts = canonicalize_user_facts(user_id, facts)
@@ -580,17 +630,24 @@ def run_batch(
             )
 
         user_prefs = refresh_user_preferences(user_id, canonical_facts, purchase_conf)
+        user_pref_rows.extend(user_prefs)
         if user_id in user_masters:
             profile = build_serving_user_profile(user_masters[user_id], user_prefs)
             serving_users.append(profile)
 
     # Step 4: Build serving product profiles
     serving_products = []
+    source_review_stats_by_product = source_review_stats_by_product or {}
     for pid, master in product_masters.items():
         pid_signals = [s for s in agg_signals if s.target_product_id == pid]
         pid_signals_dicts = [_agg_to_dict(s) for s in pid_signals]
         links = concept_links.get(make_product_iri(pid), [])
-        profile = build_serving_product_profile(master, pid_signals_dicts, concept_links=links)
+        profile = build_serving_product_profile(
+            master,
+            pid_signals_dicts,
+            concept_links=links,
+            source_review_stats=source_review_stats_by_product.get(pid),
+        )
         serving_products.append(profile)
 
     total_signals = sum(r.get("signal_count", 0) for r in review_results)
@@ -610,6 +667,15 @@ def run_batch(
         "total_quarantined": total_quarantined,
         "quarantine_by_table": _quarantine_counts_by_table(all_quarantine_entries),
         "quarantine_entries": all_quarantine_entries,
+        # Wave 4 Task 4: expose layered artifacts so `run_full_load_to_db`
+        # can persist each layer without re-deriving them.
+        "product_masters": product_masters,
+        "concept_links": concept_links,
+        "user_masters": user_masters,
+        "all_bundles": all_bundles,
+        "agg_signals": agg_signals,
+        "user_pref_rows": user_pref_rows,
+        "source_review_stats_by_product": source_review_stats_by_product,
     }
 
 
@@ -661,6 +727,9 @@ def _agg_to_dict(agg) -> dict:
         "corpus_weight": agg.corpus_weight,
         "is_promoted": agg.is_promoted,
         "last_seen_at": agg.last_seen_at,
+        # P3-7: transient — needed by build_serving for product-level
+        # distinct review union. NOT persisted to agg_product_signal.
+        "review_ids": agg.review_ids,
     }
 
 

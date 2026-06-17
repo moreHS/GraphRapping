@@ -139,10 +139,21 @@ class QuarantineHandler:
         self,
         fact_payload: dict,
     ) -> None:
-        """Quarantine a fact that violated predicate contract."""
+        """Quarantine a fact that violated predicate contract.
+
+        Wave 5.2: propagates `review_id` (and `fact_id` if present) from the
+        payload so the DB row is keyed for per-review idempotent replace.
+        Producers without review context should pass an explicit empty string;
+        do NOT silently drop the field.
+        """
         self._buffer.append(QuarantineEntry(
             table="quarantine_projection_miss",
             data={
+                # `or ""` instead of `default=""` so ad-hoc producers passing
+                # explicit None still land as empty strings, keeping the DB
+                # row keyed (or at minimum non-NULL string) for delete-by-key.
+                "fact_id": fact_payload.get("fact_id") or "",
+                "review_id": fact_payload.get("review_id") or "",
                 "predicate": fact_payload.get("predicate", ""),
                 "subject_type": fact_payload.get("subject_type", ""),
                 "object_type": fact_payload.get("object_type", ""),

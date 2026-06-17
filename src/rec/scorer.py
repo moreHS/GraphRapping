@@ -64,6 +64,15 @@ class Scorer:
         self._weights = weights
         self._shrinkage_k = shrinkage_k
 
+    @property
+    def weights(self) -> dict[str, float]:
+        """Read-only view of the current feature weight mapping.
+
+        P1-3: prefer this over reading the private `_weights` attribute.
+        Returns a copy so external code cannot mutate the scorer state.
+        """
+        return dict(self._weights)
+
     def score(
         self,
         user_profile: dict[str, Any],
@@ -176,23 +185,54 @@ def _freshness_score(product: dict) -> float:
     return 0.0
 
 
-# Skin type → concern mapping for scoring (uses concern_dict stable keys)
-_SKIN_TYPE_CONCERN_MAP = {
-    "건성": {"boost": ["concern_dryness"], "penalty": ["concern_oiliness"]},
-    "지성": {"boost": ["concern_oiliness"], "penalty": []},
-    "복합성": {"boost": ["concern_oiliness", "concern_dryness"], "penalty": []},
-    "민감성": {"boost": ["concern_sensitivity", "concern_irritation"], "penalty": []},
-    "수부지": {"boost": ["concern_dryness", "concern_oiliness"], "penalty": []},
-}
+# P4-4 (Wave 3.4): skin_type → concern boost/penalty map loaded from
+# configs/skin_type_concern_map.yaml. Cached on first use. `normalize_text`
+# applied to both canonical names and aliases so 한국어 / 영문 / normalized
+# inputs all match consistently.
+_SKIN_TYPE_CONCERN_MAP_CACHE: dict[str, dict] | None = None
+
+
+def _load_skin_type_concern_map() -> dict[str, dict]:
+    """Build a normalized lookup: normalize_text(name) → {boost, penalty}.
+
+    Both canonical names and aliases populate the same row.
+    """
+    from src.common.text_normalize import normalize_text
+
+    data = load_yaml("skin_type_concern_map.yaml") or {}
+    entries = data.get("skin_types") or []
+    lookup: dict[str, dict] = {}
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        names: list[str] = [entry["canonical"]] + list(entry.get("aliases") or [])
+        row = {
+            "boost": list(entry.get("boost") or []),
+            "penalty": list(entry.get("penalty") or []),
+        }
+        for name in names:
+            key = normalize_text(name)
+            if key:
+                lookup[key] = row
+    return lookup
+
+
+def _get_skin_type_concern_map() -> dict[str, dict]:
+    global _SKIN_TYPE_CONCERN_MAP_CACHE
+    if _SKIN_TYPE_CONCERN_MAP_CACHE is None:
+        _SKIN_TYPE_CONCERN_MAP_CACHE = _load_skin_type_concern_map()
+    return _SKIN_TYPE_CONCERN_MAP_CACHE
 
 
 def _skin_type_fit(user_profile: dict, product_profile: dict) -> float:
     """Score skin type fit: user skin_type × product concern signals."""
+    from src.common.text_normalize import normalize_text
+
     skin_type = user_profile.get("skin_type")
     if not skin_type:
         return 0.0
 
-    mapping = _SKIN_TYPE_CONCERN_MAP.get(skin_type, {})
+    mapping = _get_skin_type_concern_map().get(normalize_text(skin_type), {})
     if not mapping:
         return 0.0
 

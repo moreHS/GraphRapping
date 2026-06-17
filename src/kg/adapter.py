@@ -94,28 +94,28 @@ def _classify_promotion(edge: KGEdge, kg_subj: KGEntity | None, kg_obj: KGEntity
 
     Returns PromotionDecision value.
 
-    BEE attribution gate (§원칙2): BEE signal 승격은 relation-gated.
-    Unlinked BEE → KEEP_EVIDENCE_ONLY regardless of other conditions.
+    P3-4 priority order — terminal/strict decisions first, then weaker gates:
+      DROP → QUARANTINE → KEEP_EVIDENCE_ONLY → PROMOTE
+    This makes corpus-quality protection (low confidence, auto-candidates)
+    win over downstream markers (BEE unlinked, BEE_SYNTHETIC). A
+    low-confidence BEE_SYNTHETIC edge is dropped rather than retained as
+    evidence-only.
     """
-    # BEE target attribution gate: unlinked BEE → evidence only
-    if _is_bee_edge(edge, kg_subj, kg_obj):
-        if edge.target_linked is False:
-            return PromotionDecision.KEEP_EVIDENCE_ONLY
-
-    # Synthetic BEE relations → evidence only
-    if edge.evidence_kind == "BEE_SYNTHETIC":
-        return PromotionDecision.KEEP_EVIDENCE_ONLY
-
-    # Auto-generated keyword candidate edges → quarantine
-    if edge.evidence_kind == "AUTO_KEYWORD":
-        return PromotionDecision.QUARANTINE
-
-    # Low-confidence edges
+    # DROP: low confidence — terminal, never promoted
     if edge.confidence is not None and edge.confidence < 0.2:
         return PromotionDecision.DROP
 
-    # evidence_kind=None is acceptable — means standard relation without special marking
-    # Standard NER-NER and NER-BeE relations have None evidence_kind and should promote
+    # QUARANTINE: auto-generated keyword candidates need review
+    if edge.evidence_kind == "AUTO_KEYWORD":
+        return PromotionDecision.QUARANTINE
+
+    # KEEP_EVIDENCE_ONLY: BEE-related markers preserved for trace but not signaled
+    if _is_bee_edge(edge, kg_subj, kg_obj) and edge.target_linked is False:
+        return PromotionDecision.KEEP_EVIDENCE_ONLY
+    if edge.evidence_kind == "BEE_SYNTHETIC":
+        return PromotionDecision.KEEP_EVIDENCE_ONLY
+
+    # PROMOTE: standard relations (evidence_kind=None, NER-NER, NER-BeE)
     return PromotionDecision.PROMOTE
 
 

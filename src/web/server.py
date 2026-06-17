@@ -4,9 +4,10 @@ FastAPI server for GraphRapping demo UI.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, Header, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
@@ -41,7 +42,14 @@ async def index():
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 _MOCKDATA_DIR = _PROJECT_ROOT / "mockdata"
-_DEFAULT_REVIEW_PATH = "/Users/amore/Jupyter_workplace/Relation/source_data/hab_rel_sample_ko_withPRD_listkeyword.json"
+
+# P1-2 (audit fix): demo review path is resolved via environment variable
+# (GRAPHRAPPING_DEMO_REVIEW_PATH) with mockdata as the default. Previously this
+# was a hardcoded absolute path tied to a single developer's machine.
+_DEFAULT_REVIEW_PATH = os.environ.get(
+    "GRAPHRAPPING_DEMO_REVIEW_PATH",
+    str(_MOCKDATA_DIR / "review_triples_raw.json"),
+)
 
 
 class PipelineRunRequest(BaseModel):
@@ -51,10 +59,50 @@ class PipelineRunRequest(BaseModel):
     review_format: str = "relation"
 
 
+def _check_pipeline_run_allowed(provided_token: str | None) -> None:
+    """P4-2 (Wave 3.2): guard `/api/pipeline/run` from anonymous external calls.
+
+    The endpoint can run an expensive local pipeline load, so an unprotected
+    POST is unsafe outside explicit operator control. Two-layer policy:
+
+    1. `GRAPHRAPPING_ENABLE_PIPELINE_RUN=1` must be set explicitly to opt in.
+    2. If `GRAPHRAPPING_PIPELINE_RUN_TOKEN` is also set, the request must
+       include `Authorization: Bearer <token>` (or `X-Pipeline-Token: <token>`).
+
+    Operator can run with just the enable flag (loopback dev) or pair both for
+    Internet-facing deployments.
+    """
+    if os.environ.get("GRAPHRAPPING_ENABLE_PIPELINE_RUN") != "1":
+        raise HTTPException(
+            403,
+            "pipeline run is disabled. Set GRAPHRAPPING_ENABLE_PIPELINE_RUN=1 to enable.",
+        )
+    expected_token = os.environ.get("GRAPHRAPPING_PIPELINE_RUN_TOKEN", "")
+    if expected_token:
+        if not provided_token:
+            raise HTTPException(403, "missing pipeline-run token")
+        # Constant-time compare to avoid leaking length / prefix info.
+        import hmac
+        if not hmac.compare_digest(provided_token, expected_token):
+            raise HTTPException(403, "invalid pipeline-run token")
+
+
+def _extract_pipeline_token(authorization: str | None, x_pipeline_token: str | None) -> str | None:
+    if x_pipeline_token:
+        return x_pipeline_token
+    if authorization and authorization.startswith("Bearer "):
+        return authorization[len("Bearer "):]
+    return None
+
+
 @app.post("/api/pipeline/run")
-async def pipeline_run(req: PipelineRunRequest):
+async def pipeline_run(
+    req: PipelineRunRequest,
+    authorization: str | None = Header(default=None),
+    x_pipeline_token: str | None = Header(default=None),
+):
+    _check_pipeline_run_allowed(_extract_pipeline_token(authorization, x_pipeline_token))
     import json as _json
-    import random as _random
 
     # --- 1. Load products from mock catalog ---
     mock_products = _json.loads((_MOCKDATA_DIR / "product_catalog_es.json").read_text(encoding="utf-8"))
@@ -62,37 +110,18 @@ async def pipeline_run(req: PipelineRunRequest):
     # --- 2. Load users from mock profiles ---
     mock_users = _json.loads((_MOCKDATA_DIR / "user_profiles_normalized.json").read_text(encoding="utf-8"))
 
-    # --- 3. Prepare product assignment pool (active products only) ---
-    active_products = [p for p in mock_products if p.get("SALE_STATUS") == "판매중"]
-    product_pairs = [
-        (p["prd_nm"], p["BRAND_NAME"]) for p in active_products
-    ]
-
-    # --- 4. Remap external review data to mock product IDs ---
+    # --- 3. Prepare review path ---
     review_path = Path(req.review_json_path)
-    remapped_path = _PROJECT_ROOT / "mockdata" / "_remapped_reviews.json"
+    mock_review_path = _MOCKDATA_DIR / "review_triples_raw.json"
+    selected_review_path = review_path if review_path.exists() else mock_review_path
 
-    if review_path.exists():
-        raw_data = _json.loads(review_path.read_text(encoding="utf-8"))
-        _random.seed(42)  # deterministic
-        for record in raw_data:
-            prd_nm, brnd_nm = _random.choice(product_pairs)
-            record["prod_nm"] = prd_nm
-            record["brnd_nm"] = brnd_nm
-
-        # --- 5. Append mock 15 reviews (cross-referenced) ---
-        mock_review_path = _MOCKDATA_DIR / "review_triples_raw.json"
-        if mock_review_path.exists():
-            mock_reviews = _json.loads(mock_review_path.read_text(encoding="utf-8"))
-            raw_data.extend(mock_reviews)
-
-        remapped_path.write_text(_json.dumps(raw_data, ensure_ascii=False), encoding="utf-8")
-    else:
-        # Fallback: use mock reviews only
-        remapped_path = _MOCKDATA_DIR / "review_triples_raw.json"
-
+    # The active fixture is the final 906-review source-grounded baseline,
+    # synthesized from upstream NER-NER / NER-BeE annotation files + rs_own
+    # metadata sample. External review files are loaded as-is; the endpoint must
+    # not rewrite prod_nm/brnd_nm because those fields are part of the review's
+    # product identity contract.
     load_demo_data(
-        review_json_path=str(remapped_path),
+        review_json_path=str(selected_review_path),
         product_es_records=mock_products,
         user_profiles=mock_users,
         max_reviews=req.max_reviews,
@@ -231,7 +260,7 @@ async def recommend(req: RecommendRequest):
         scorer.load_from_dict(req.weights, shrinkage_k=req.shrinkage_k)
     else:
         scorer.load_config()
-    weights = scorer._weights
+    weights = scorer.weights
 
     scored = []
     for c in candidates:
@@ -270,7 +299,9 @@ async def recommend(req: RecommendRequest):
                 "hooks": {"discovery": hooks.discovery, "consideration": hooks.consideration, "conversion": hooks.conversion},
             })
 
-    nq = generate_next_question(user)
+    # P4-3 (Wave 3.3): pass scored products so axis selection can use score
+    # histograms instead of falling back to data-absence ordering only.
+    nq = generate_next_question(user, scored_products=results)
     return {
         "user_id": req.user_id,
         "mode": req.mode,
@@ -468,9 +499,29 @@ async def quarantine_summary():
     return {"by_table": demo_state.quarantine_stats, "total": sum(demo_state.quarantine_stats.values())}
 
 
+# P4-1 (Wave 3.1): `table` query param whitelist mirrors the names emitted by
+# `src/qa/quarantine_handler.py`. Unknown values are rejected at the boundary.
+_ALLOWED_QUARANTINE_TABLES = frozenset({
+    "quarantine_product_match",
+    "quarantine_placeholder",
+    "quarantine_unknown_keyword",
+    "quarantine_projection_miss",
+    "quarantine_untyped_entity",
+})
+
+
 @app.get("/api/quarantine/entries")
 async def quarantine_entries(table: str = "", page: int = 1, size: int = 20):
     _check_loaded()
+    if table and table not in _ALLOWED_QUARANTINE_TABLES:
+        raise HTTPException(
+            400,
+            f"Invalid table '{table}'. Allowed: {sorted(_ALLOWED_QUARANTINE_TABLES)}.",
+        )
+    if page < 1:
+        raise HTTPException(400, "page must be >= 1")
+    if size < 1 or size > 200:
+        raise HTTPException(400, "size must be in [1, 200]")
     items = demo_state.quarantine_entries
     if table:
         items = [e for e in items if e.get("table") == table]

@@ -157,6 +157,9 @@ def refresh_user_preferences(
         last_seen = row.pop("last_seen_at")
 
         row["weight"] = weight
+        # Wave 4 Task 4 + Codex review: expose max_confidence as the
+        # consumer-facing `confidence` column on agg_user_preference.
+        row["confidence"] = round(row.get("max_confidence", 0.0), 4)
         row["support_count"] = row.pop("count")
         row["last_seen_at"] = last_seen.isoformat() if last_seen else None
         row["source_types"] = sorted(sources)

@@ -10,12 +10,10 @@ from src.link.product_matcher import ProductIndex, match_product
 from src.link.placeholder_resolver import resolve_placeholders
 from src.normalize.bee_normalizer import BEENormalizer
 from src.normalize.relation_canonicalizer import RelationCanonicalizer
-from src.normalize.date_splitter import split_date
-from src.canonical.canonical_fact_builder import CanonicalFactBuilder, CanonicalEntity, FactProvenance
+from src.canonical.canonical_fact_builder import CanonicalFactBuilder
 from src.wrap.projection_registry import ProjectionRegistry
 from src.wrap.signal_emitter import SignalEmitter
 from src.common.ids import make_product_iri
-from src.common.enums import ObjectRefKind, DateSubType
 
 
 # Sample Korean beauty review (from PLAN docs)
@@ -178,7 +176,7 @@ class TestEndToEnd:
         assert bee_result.bee_attr_id  # BEE_ATTR preserved
         assert bee_result.polarity == "POS"
 
-        # AC5: relation 65 canonical preservation
+        # AC5: relation canonical preservation (currently 68 predicates)
         for rel in ingested.rel_rows:
             result = relation_canon.canonicalize(rel["relation_raw"])
             assert result.action in ("KEEP", "PREPROCESS_ONLY", "DROP")

@@ -4,7 +4,7 @@ Elasticsearch product index → ProductRecord[] + ProductIndex + concept_links l
 Reads from ES 'amore-prod-mstr' index and builds all product-side inputs
 required by run_batch(): product_masters, product_index, concept_links.
 
-Field mapping uses mock product truth fields from the ES index
+Field mapping uses source-grounded product truth fields from the ES-compatible index
 (SALE_PRICE, MAIN_EFFECT, MAIN_INGREDIENT, REPRESENTATIVE_PROD_CODE, etc.).
 """
 
@@ -13,10 +13,11 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from src.common.ids import make_product_iri
+from src.common.text_normalize import normalize_text
 from src.ingest.product_ingest import ProductRecord, ingest_product
 from src.link.product_matcher import ProductIndex
-from src.common.text_normalize import normalize_text
-from src.common.ids import make_product_iri
+from src.loaders.product_truth_merge import merge_product_truth
 
 
 # ---------------------------------------------------------------------------
@@ -48,6 +49,32 @@ def _parse_price(value: Any) -> float | None:
         return None
 
 
+def _parse_optional_int(value: Any) -> int | None:
+    """Convert value to int, returning None for missing/unparseable values."""
+    if value is None:
+        return None
+    if isinstance(value, str) and (not value.strip() or value == "None"):
+        return None
+    try:
+        parsed = int(float(value))
+    except (ValueError, TypeError):
+        return None
+    return parsed if parsed >= 0 else None
+
+
+def _parse_review_score(value: Any) -> float | None:
+    """Convert source review score to float; zero/blank means missing catalog score."""
+    if value is None:
+        return None
+    if isinstance(value, str) and (not value.strip() or value == "None"):
+        return None
+    try:
+        parsed = float(value)
+    except (ValueError, TypeError):
+        return None
+    return parsed if parsed > 0 else None
+
+
 @dataclass
 class ProductLoadResult:
     """All product-side artifacts needed by run_batch()."""
@@ -61,20 +88,22 @@ class ProductLoadResult:
 
 def load_products_from_es_records(
     es_records: list[dict[str, Any]],
-    sale_status_filter: str = "판매중",
+    sale_status_filter: str | None = None,
 ) -> ProductLoadResult:
     """Convert ES product records to GraphRapping product artifacts.
 
     Args:
         es_records: List of ES _source dicts from amore-prod-mstr index
-        sale_status_filter: Only include products with this SALE_STATUS
+        sale_status_filter: Only include products with this SALE_STATUS when set.
+            The final source-grounded fixture keeps all source products by
+            default because non-selling products can still be review targets.
 
     Field mapping (ES field → ProductRecord field):
       ONLINE_PROD_SERIAL_NUMBER → product_id
       prd_nm → product_name
       BRAND_NAME → brand_name, brand_id=normalize(BRAND_NAME)
       CTGR_SS_NAME → category_name, category_id=normalize(CTGR_SS_NAME)
-      SALE_STATUS → filter (판매중 only)
+      SALE_STATUS → optional caller filter (default: keep all source products)
       SALE_PRICE → price (float, None on failure)
       MAIN_INGREDIENT → ingredients (comma-split list)
       MAIN_EFFECT → main_benefits (comma-split list)
@@ -89,12 +118,26 @@ def load_products_from_es_records(
         if sale_status_filter and record.get("SALE_STATUS") != sale_status_filter:
             continue
 
-        product_id = record.get("ONLINE_PROD_SERIAL_NUMBER", "")
-        if not product_id:
+        product_id_raw = record.get("ONLINE_PROD_SERIAL_NUMBER")
+        if product_id_raw is None or str(product_id_raw).strip() == "":
             continue
+        product_id = str(product_id_raw)
 
-        brand_name = record.get("BRAND_NAME", "")
+        raw_brand_name = record.get("BRAND_NAME", "")
         category_name = record.get("CTGR_SS_NAME", "")
+        source_truth = merge_product_truth({
+            "product_id": product_id,
+            "product_name": record.get("prd_nm", ""),
+            "brand_name": raw_brand_name,
+            "brand_id": normalize_text(raw_brand_name) if raw_brand_name else None,
+            "source_product_id": product_id,
+            "source_channel": record.get("SOURCE_CHANNEL") or record.get("channel"),
+            "source_key_type": record.get("SOURCE_KEY_TYPE") or "ecp_onln_prd_srno",
+            "representative_product_name": record.get("REPRESENTATIVE_PROD_NAME"),
+            "source_truth_source": record.get("SOURCE_TRUTH_SOURCE") or "product_catalog_es",
+            "source_truth_quality": record.get("SOURCE_TRUTH_QUALITY"),
+        })
+        brand_name = source_truth.get("brand_name")
 
         pr = ProductRecord(
             product_id=product_id,
@@ -115,6 +158,16 @@ def load_products_from_es_records(
 
         product_iri = make_product_iri(product_id)
         master = ingest_result["product_master"]
+        master.update({
+            "source_product_id": source_truth.get("source_product_id"),
+            "source_channel": source_truth.get("source_channel"),
+            "source_key_type": source_truth.get("source_key_type"),
+            "representative_product_name": source_truth.get("representative_product_name"),
+            "source_truth_source": source_truth.get("source_truth_source"),
+            "source_truth_quality": source_truth.get("source_truth_quality"),
+            "source_review_count": _parse_optional_int(record.get("REVIEW_COUNT")),
+            "source_review_score": _parse_review_score(record.get("REVIEW_SCORE")),
+        })
         master["_es_meta"] = {
             "REPRESENTATIVE_PROD_NAME": record.get("REPRESENTATIVE_PROD_NAME"),
             "REVIEW_COUNT": record.get("REVIEW_COUNT"),
@@ -122,6 +175,7 @@ def load_products_from_es_records(
             "SAP_CODE": record.get("SAP_CODE"),
             "ONLINE_PROD_CODE": record.get("ONLINE_PROD_CODE"),
         }
+        master = merge_product_truth(master)
         result.product_masters[product_id] = master
         result.concept_links[product_iri] = [
             {"concept_id": link.concept_id, "link_type": link.link_type,
@@ -139,7 +193,7 @@ def load_products_from_es_records(
         index_data.append({
             "product_id": product_id,
             "product_name": pr.product_name,
-            "brand_name": brand_name,
+            "brand_name": brand_name or "",
         })
 
     result.product_index = ProductIndex.build(index_data)
@@ -149,7 +203,7 @@ def load_products_from_es_records(
 
 def load_products_from_json(
     file_path: str,
-    sale_status_filter: str = "판매중",
+    sale_status_filter: str | None = None,
 ) -> ProductLoadResult:
     """Load products from a JSON dump of ES records (for testing without ES access)."""
     import json

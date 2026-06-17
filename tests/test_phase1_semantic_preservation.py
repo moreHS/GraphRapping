@@ -14,18 +14,18 @@ from __future__ import annotations
 
 import pytest
 
-from src.normalize.bee_normalizer import BEENormalizer, BEENormalizeResult
-from src.canonical.canonical_fact_builder import CanonicalFactBuilder, FactProvenance
+from src.normalize.bee_normalizer import BEENormalizer
+from src.canonical.canonical_fact_builder import CanonicalFactBuilder
 from src.wrap.signal_emitter import SignalEmitter
 from src.wrap.projection_registry import ProjectionRegistry
 from src.common.ids import make_signal_id
 from src.kg.models import (
-    EntityMention, RelationMention, KeywordMention,
-    KGEntity, KGEdge, KGResult,
+    EntityMention, KeywordMention,
+    KGEdge,
 )
 from src.kg.mention_extractor import MentionExtractor
 from src.kg.canonicalizer import Canonicalizer
-from src.kg.adapter import kg_result_to_facts, _classify_promotion
+from src.kg.adapter import _classify_promotion
 from src.common.enums import PromotionDecision
 
 

@@ -93,6 +93,7 @@ def test_load_demo_data_exposes_quarantine_entries_in_state(tmp_path):
         max_reviews=1,
         source="test_quarantine_state",
         review_format="relation",
+        kg_mode="on",  # P0-3: explicit arg insulates against ambient env
     )
 
     assert state.quarantine_stats.get("quarantine_product_match", 0) > 0

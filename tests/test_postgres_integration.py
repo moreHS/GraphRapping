@@ -23,10 +23,15 @@ from src.wrap.signal_emitter import WrappedSignal
 
 TEST_DATABASE_URL = os.environ.get("GRAPHRAPPING_TEST_DATABASE_URL")
 
-pytestmark = pytest.mark.skipif(
-    TEST_DATABASE_URL is None,
-    reason="Set GRAPHRAPPING_TEST_DATABASE_URL to run Postgres integration tests.",
-)
+# Wave 4 Task 2: PG-bound tests can exceed the 30s repo-wide pytest timeout
+# during schema setup / parallel migrations. Bump to 120s for this module.
+pytestmark = [
+    pytest.mark.skipif(
+        TEST_DATABASE_URL is None,
+        reason="Set GRAPHRAPPING_TEST_DATABASE_URL to run Postgres integration tests.",
+    ),
+    pytest.mark.timeout(120),
+]
 
 
 @pytest_asyncio.fixture()
@@ -85,8 +90,44 @@ async def test_migrate_creates_schema_and_records_all_ddl(pg_pool: tuple[asyncpg
     assert await _has_columns(
         pool,
         schema,
+        "product_master",
+        {
+            "source_product_id", "source_channel", "source_key_type",
+            "representative_product_name", "source_truth_source",
+            "source_truth_quality", "source_review_count", "source_review_score",
+        },
+    )
+    assert await _has_columns(
+        pool,
+        schema,
+        "review_raw",
+        {"source_product_id", "source_channel", "source_key_type", "source_rating"},
+    )
+    assert await _has_columns(
+        pool,
+        schema,
+        "review_catalog_link",
+        {"source_product_id", "source_channel", "source_key_type"},
+    )
+    assert await _has_columns(
+        pool,
+        schema,
+        "product_review_stats",
+        {
+            "source_review_count_6m", "source_review_score_count_6m",
+            "source_avg_rating_6m", "source_review_count_all",
+            "source_review_score_count_all", "source_avg_rating_all",
+        },
+    )
+    assert await _has_columns(
+        pool,
+        schema,
         "serving_product_profile",
-        {"variant_family_id", "representative_product_name"},
+        {
+            "variant_family_id", "representative_product_name",
+            "source_product_id", "source_review_count_6m",
+            "source_avg_rating_all", "source_review_stats_source",
+        },
     )
     assert await _has_columns(
         pool,
@@ -113,6 +154,10 @@ async def test_review_bundle_persist_and_snapshot_round_trip(pg_pool: tuple[asyn
 
     assert has_child_rows is True
     assert snapshot is not None
+    assert snapshot["source_product_id"] == bundle.review_raw["source_product_id"]
+    assert snapshot["source_channel"] == "031"
+    assert snapshot["source_key_type"] == "ecp_onln_prd_srno"
+    assert snapshot["source_rating"] == pytest.approx(4.5)
     assert snapshot["ner"][0]["word"] == "Review Target"
     assert snapshot["bee"][0]["word"] == "hydrating finish"
     assert snapshot["relation"][0]["object"]["sentiment"] == "positive"
@@ -171,6 +216,9 @@ async def test_serving_profiles_round_trip_new_fields(pg_pool: tuple[asyncpg.Poo
         serving_products=[
             {
                 "product_id": product_id,
+                "source_product_id": product_id,
+                "source_channel": "031",
+                "source_key_type": "ecp_onln_prd_srno",
                 "brand_id": "brand-1",
                 "brand_name": "Brand One",
                 "category_id": "cat-cream",
@@ -182,6 +230,13 @@ async def test_serving_profiles_round_trip_new_fields(pg_pool: tuple[asyncpg.Poo
                 "brand_concept_ids": ["concept:Brand:brand-1"],
                 "top_bee_attr_ids": [{"id": "concept:BEEAttr:hydration", "score": 1.0}],
                 "review_count_all": 3,
+                "source_review_count_6m": 7,
+                "source_review_score_count_6m": 6,
+                "source_avg_rating_6m": 4.5,
+                "source_review_count_all": 12,
+                "source_review_score_count_all": 10,
+                "source_avg_rating_all": 4.25,
+                "source_review_stats_source": "snowflake:f_prd_rv_hist",
             },
         ],
         serving_users=[
@@ -202,7 +257,9 @@ async def test_serving_profiles_round_trip_new_fields(pg_pool: tuple[asyncpg.Poo
     async with pool.acquire() as conn:
         product = await conn.fetchrow(
             """
-            SELECT variant_family_id, representative_product_name, top_bee_attr_ids
+            SELECT variant_family_id, representative_product_name, top_bee_attr_ids,
+                   source_product_id, source_review_count_6m, source_avg_rating_all,
+                   source_review_stats_source
             FROM serving_product_profile
             WHERE product_id=$1
             """,
@@ -220,9 +277,133 @@ async def test_serving_profiles_round_trip_new_fields(pg_pool: tuple[asyncpg.Poo
     assert product["variant_family_id"] == "family-hydration"
     assert product["representative_product_name"] == "Hydration Cream"
     assert _json_value(product["top_bee_attr_ids"])[0]["id"] == "concept:BEEAttr:hydration"
+    assert product["source_product_id"] == product_id
+    assert product["source_review_count_6m"] == 7
+    assert float(product["source_avg_rating_all"]) == pytest.approx(4.25)
+    assert product["source_review_stats_source"] == "snowflake:f_prd_rv_hist"
     assert _json_value(user["owned_product_ids"]) == [product_id]
     assert _json_value(user["owned_family_ids"]) == ["family-hydration"]
     assert _json_value(user["repurchased_family_ids"]) == ["family-hydration"]
+
+
+async def test_stale_agg_signals_marked_inactive_then_revived(
+    pg_pool: tuple[asyncpg.Pool, str],
+) -> None:
+    """P3-8: rows older than threshold flip is_active=false; re-upsert revives."""
+    from src.db.repos.mart_repo import (
+        mark_stale_agg_signals_inactive,
+        upsert_agg_product_signal,
+        upsert_agg_user_preference,
+    )
+    from src.db.unit_of_work import UnitOfWork
+
+    pool, _schema = pg_pool
+    await migrate(pool)
+    suffix = uuid.uuid4().hex
+
+    fresh_pid = f"fresh-{suffix}"
+    stale_pid = f"stale-{suffix}"
+    fresh_uid = f"fresh-user-{suffix}"
+    stale_uid = f"stale-user-{suffix}"
+
+    async with UnitOfWork(pool) as uow:
+        # Fresh agg_product_signal (last_seen_at = now)
+        await upsert_agg_product_signal(uow, {
+            "target_product_id": fresh_pid,
+            "canonical_edge_type": "HAS_BEE_ATTR_SIGNAL",
+            "dst_node_type": "BEEAttr",
+            "dst_node_id": "moisture",
+            "window_type": "all",
+            "review_cnt": 3, "pos_cnt": 3, "neg_cnt": 0, "neu_cnt": 0,
+            "support_count": 3, "score": 1.0,
+            "last_seen_at": datetime.now(timezone.utc),
+        })
+        # Stale agg_product_signal (last_seen_at = 200 days ago)
+        await upsert_agg_product_signal(uow, {
+            "target_product_id": stale_pid,
+            "canonical_edge_type": "HAS_BEE_ATTR_SIGNAL",
+            "dst_node_type": "BEEAttr",
+            "dst_node_id": "sticky",
+            "window_type": "all",
+            "review_cnt": 1, "pos_cnt": 1, "neg_cnt": 0, "neu_cnt": 0,
+            "support_count": 1, "score": 1.0,
+        })
+        # User prefs
+        await upsert_agg_user_preference(uow, {
+            "user_id": fresh_uid, "preference_edge_type": "PREFERS_BRAND",
+            "dst_node_id": "b1", "weight": 1.0,
+        })
+        await upsert_agg_user_preference(uow, {
+            "user_id": stale_uid, "preference_edge_type": "PREFERS_BRAND",
+            "dst_node_id": "b2", "weight": 1.0,
+        })
+
+    # Backdate the stale rows so they fall outside the 90-day window.
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "UPDATE agg_product_signal SET last_seen_at = now() - interval '200 days' "
+            "WHERE target_product_id = $1", stale_pid)
+        await conn.execute(
+            "UPDATE agg_user_preference SET updated_at = now() - interval '200 days' "
+            "WHERE user_id = $1", stale_uid)
+
+    async with UnitOfWork(pool) as uow:
+        counts = await mark_stale_agg_signals_inactive(uow, threshold_days=90)
+
+    assert counts["product_signals"] >= 1
+    assert counts["user_preferences"] >= 1
+
+    async with pool.acquire() as conn:
+        stale_active = await conn.fetchval(
+            "SELECT is_active FROM agg_product_signal WHERE target_product_id=$1",
+            stale_pid,
+        )
+        fresh_active = await conn.fetchval(
+            "SELECT is_active FROM agg_product_signal WHERE target_product_id=$1",
+            fresh_pid,
+        )
+        stale_user_active = await conn.fetchval(
+            "SELECT is_active FROM agg_user_preference WHERE user_id=$1",
+            stale_uid,
+        )
+        fresh_user_active = await conn.fetchval(
+            "SELECT is_active FROM agg_user_preference WHERE user_id=$1",
+            fresh_uid,
+        )
+
+    assert stale_active is False, "stale agg_product_signal should be soft-deleted"
+    assert fresh_active is True, "fresh agg_product_signal must remain active"
+    assert stale_user_active is False, "stale agg_user_preference should be soft-deleted"
+    assert fresh_user_active is True, "fresh agg_user_preference must remain active"
+
+    # Revival: re-upsert flips is_active back to true (without resetting timestamps).
+    async with UnitOfWork(pool) as uow:
+        await upsert_agg_product_signal(uow, {
+            "target_product_id": stale_pid,
+            "canonical_edge_type": "HAS_BEE_ATTR_SIGNAL",
+            "dst_node_type": "BEEAttr",
+            "dst_node_id": "sticky",
+            "window_type": "all",
+            "review_cnt": 2, "pos_cnt": 2, "neg_cnt": 0, "neu_cnt": 0,
+            "support_count": 2, "score": 1.0,
+            "last_seen_at": datetime.now(timezone.utc),
+        })
+        await upsert_agg_user_preference(uow, {
+            "user_id": stale_uid, "preference_edge_type": "PREFERS_BRAND",
+            "dst_node_id": "b2", "weight": 0.9,
+        })
+
+    async with pool.acquire() as conn:
+        revived_signal = await conn.fetchval(
+            "SELECT is_active FROM agg_product_signal WHERE target_product_id=$1",
+            stale_pid,
+        )
+        revived_user = await conn.fetchval(
+            "SELECT is_active FROM agg_user_preference WHERE user_id=$1",
+            stale_uid,
+        )
+    assert revived_signal is True, "re-upsert must reactivate stale agg_product_signal"
+    assert revived_user is True, "re-upsert must reactivate stale agg_user_preference"
 
 
 async def _has_columns(
@@ -321,6 +502,10 @@ def _make_review_bundle(suffix: str) -> ReviewPersistBundle:
             "review_id": review_id,
             "source": "postgres-integration",
             "source_review_key": suffix,
+            "source_product_id": product_id,
+            "source_channel": "031",
+            "source_key_type": "ecp_onln_prd_srno",
+            "source_rating": 4.5,
             "source_site": "local",
             "brand_name_raw": "Brand One",
             "product_name_raw": "Hydration Cream",
@@ -337,6 +522,9 @@ def _make_review_bundle(suffix: str) -> ReviewPersistBundle:
             "review_id": review_id,
             "source_brand": "Brand One",
             "source_product_name": "Hydration Cream",
+            "source_product_id": product_id,
+            "source_channel": "031",
+            "source_key_type": "ecp_onln_prd_srno",
             "matched_product_id": product_id,
             "match_status": "EXACT",
             "match_score": 1.0,

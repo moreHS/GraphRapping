@@ -6,7 +6,7 @@ and converts to GraphRapping's RawReviewRecord. Performs NER label mapping
 and sentiment normalization during conversion.
 
 Difference from relation_loader:
-  - relation_loader expects pre-canonicalized relation[] with 65 canonical predicates
+  - relation_loader expects pre-canonicalized relation[] with 68 canonical predicates
   - rs_jsonl_loader expects raw NER/BEE spans from the operational pipeline
   - Both produce the same RawReviewRecord output type
 
@@ -186,8 +186,12 @@ def _convert_rs_record(record: dict[str, Any], row_index: int) -> RawReviewRecor
         brnd_nm = record.get("rspn_sal_lcns_nm", "")
 
     # Determine collection site from channel
-    channel = record.get("channel", "")
+    channel = _optional_str(record.get("channel")) or ""
     clct_site_nm = _channel_to_site(channel)
+    source_product_id = _optional_str(record.get("product_id"))
+    source_rating = _parse_optional_float(
+        _first_present(record.get("prd_apal_scr"), record.get("source_rating"))
+    )
 
     return RawReviewRecord(
         brnd_nm=brnd_nm,
@@ -200,6 +204,10 @@ def _convert_rs_record(record: dict[str, Any], row_index: int) -> RawReviewRecor
         created_at=record.get("date"),
         collected_at=record.get("date"),
         source_review_key=record.get("id"),
+        source_product_id=source_product_id,
+        source_channel=channel or None,
+        source_key_type=_source_key_type(channel),
+        source_rating=source_rating,
         author_key=_build_author_key(record),
         source_row_num=str(row_index),
     )
@@ -229,3 +237,39 @@ def _build_author_key(record: dict) -> str | None:
     if age and sex and age != "None" and sex != "None":
         return f"demo_{sex}_{age}"
     return None
+
+
+def _source_key_type(channel: str | None) -> str | None:
+    """Return the source product key type implied by an own-source channel."""
+    if channel == "031":
+        return "ecp_onln_prd_srno"
+    if channel in {"036", "039", "048"}:
+        return "chn_prd_cd"
+    return None
+
+
+def _first_present(*values: Any) -> Any:
+    for value in values:
+        if value is not None and value != "":
+            return value
+    return None
+
+
+def _optional_str(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value)
+    if not text.strip() or text == "None":
+        return None
+    return text
+
+
+def _parse_optional_float(value: Any) -> float | None:
+    if value is None:
+        return None
+    if isinstance(value, str) and (not value.strip() or value == "None"):
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None

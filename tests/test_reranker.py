@@ -1,7 +1,7 @@
 """Tests for reranker: diversity bonus + contribution logging."""
 
 import pytest
-from src.rec.reranker import rerank, build_contribution_log_rows, RerankedProduct
+from src.rec.reranker import rerank, build_contribution_log_rows
 from src.rec.scorer import ScoredProduct
 
 

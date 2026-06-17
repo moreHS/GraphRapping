@@ -95,3 +95,8 @@ class TestQuarantine:
         r = match_product("Unknown Brand", "Nonexistent Product XYZ", index)
         assert r.match_status == MatchStatus.QUARANTINE
         assert r.matched_product_id is None
+
+    def test_missing_brand_does_not_crash(self, index):
+        r = match_product(None, "Nonexistent Product XYZ", index)
+        assert r.match_status == MatchStatus.QUARANTINE
+        assert r.matched_product_id is None

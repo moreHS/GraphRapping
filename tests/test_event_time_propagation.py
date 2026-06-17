@@ -1,6 +1,5 @@
 """Tests for event_time propagation: created_at → UTC → window_ts → aggregate."""
 
-import pytest
 from src.ingest.review_ingest import RawReviewRecord, ingest_review
 
 

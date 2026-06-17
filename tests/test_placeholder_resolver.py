@@ -1,6 +1,5 @@
 """Tests for placeholder resolver (union-find + Review Target/Reviewer)."""
 
-import pytest
 from src.link.placeholder_resolver import resolve_placeholders, UnionFind
 
 

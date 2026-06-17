@@ -3,14 +3,20 @@ P0-3: signal_evidence as provenance source of truth.
 
 Verifies that evidence_rows are the canonical provenance path,
 and source_fact_ids is kept in sync as a cache.
+
+P1-4 (audit fix): adds a test that `DBProvenanceProvider` satisfies the
+`ProvenanceProvider` Protocol — closing the "Protocol defined but no impl"
+gap. Behavioural verification of the queries lives in
+test_postgres_integration.py (separate PG harness).
 """
+
+import inspect
 
 import pytest
 
 from src.wrap.projection_registry import ProjectionRegistry
-from src.wrap.signal_emitter import SignalEmitter, WrappedSignal
-from src.canonical.canonical_fact_builder import CanonicalFact, CanonicalFactBuilder
-from src.common.enums import ObjectRefKind
+from src.wrap.signal_emitter import SignalEmitter
+from src.canonical.canonical_fact_builder import CanonicalFactBuilder
 
 
 @pytest.fixture
@@ -86,8 +92,7 @@ class TestSignalEvidenceSourceOfTruth:
 def test_explainer_works_without_source_fact_ids():
     """ExplanationService should work using signal_evidence alone, even if source_fact_ids is empty."""
     import asyncio
-    from dataclasses import dataclass, field
-    from src.rec.explainer import ExplanationService, ProvenanceProvider
+    from src.rec.explainer import ExplanationService
     from src.rec.scorer import ScoredProduct
 
     class MockProvider:
@@ -118,7 +123,7 @@ def test_explainer_works_without_source_fact_ids():
     overlap_concepts = ["keyword:moisture", "concern:dryness"]
 
     service = ExplanationService(provenance_provider=MockProvider())
-    result = asyncio.get_event_loop().run_until_complete(
+    result = asyncio.run(
         service.explain_with_provenance(
             scored=scored,
             overlap_concepts=overlap_concepts,
@@ -159,3 +164,57 @@ def test_evidence_sample_uses_signal_id_not_source_fact_ids():
             for ev in row.evidence_sample:
                 assert "signal_id" in ev, "evidence_sample must use signal_id"
                 assert "fact_id" not in ev, "evidence_sample must not use fact_id (deprecated)"
+
+
+
+def _normalize_signature(method) -> tuple[list[tuple], object]:
+    """Return (params-after-self, return_annotation) for structural comparison.
+
+    Each param tuple: (name, kind, annotation, default). Used to catch
+    Protocol↔implementation signature drift (missing/renamed parameters,
+    wrong annotations, wrong return type).
+    """
+    sig = inspect.signature(method)
+    params = [
+        (p.name, p.kind, p.annotation, p.default)
+        for p in sig.parameters.values()
+        if p.name != "self"
+    ]
+    return params, sig.return_annotation
+
+
+def test_db_provenance_provider_satisfies_protocol():
+    """P1-4: DBProvenanceProvider must satisfy the ProvenanceProvider Protocol.
+
+    Verifies three required async methods exist with matching signatures so
+    `ExplanationService(DBProvenanceProvider(pool))` is type-safe. Catches
+    signature drift (parameter name/kind/annotation, return annotation).
+    """
+    from src.db.repos.provenance_repo import DBProvenanceProvider
+    from src.rec.explainer import ProvenanceProvider
+
+    for name in ("get_signal_evidence", "get_fact_provenance", "get_review_snippet"):
+        impl = getattr(DBProvenanceProvider, name, None)
+        assert impl is not None, f"DBProvenanceProvider missing {name}"
+        assert inspect.iscoroutinefunction(impl), f"{name} must be async"
+
+        proto_method = getattr(ProvenanceProvider, name)
+        assert inspect.iscoroutinefunction(proto_method), \
+            f"Protocol method {name} must be async"
+
+        impl_params, impl_return = _normalize_signature(impl)
+        proto_params, proto_return = _normalize_signature(proto_method)
+        assert impl_params == proto_params, (
+            f"{name}: parameter drift\n"
+            f"  impl:  {impl_params}\n"
+            f"  proto: {proto_params}"
+        )
+        assert impl_return == proto_return, (
+            f"{name}: return annotation drift "
+            f"(impl={impl_return!r}, proto={proto_return!r})"
+        )
+
+    # Instantiation does not require a live pool for type-check purposes.
+    provider = DBProvenanceProvider(pool=None)  # type: ignore[arg-type]
+    for name in ("get_signal_evidence", "get_fact_provenance", "get_review_snippet"):
+        assert callable(getattr(provider, name))

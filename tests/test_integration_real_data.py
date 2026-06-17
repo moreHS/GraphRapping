@@ -8,19 +8,15 @@ and user profiles to test the full GraphRapping pipeline end-to-end.
 
 from __future__ import annotations
 
-import json
 import pytest
 from pathlib import Path
 
 from src.loaders.relation_loader import load_reviews_from_json
-from src.loaders.product_loader import load_products_from_es_records, ProductLoadResult
-from src.loaders.user_loader import load_users_from_profiles, UserLoadResult
-from src.jobs.run_full_load import run_full_load, FullLoadConfig
+from src.loaders.product_loader import load_products_from_es_records
+from src.loaders.user_loader import load_users_from_profiles
 from src.jobs.run_daily_pipeline import (
-    process_review, build_review_persist_bundle,
-    bundle_to_result_dict, run_batch,
+    process_review, bundle_to_result_dict, run_batch,
 )
-from src.link.product_matcher import ProductIndex
 from src.normalize.bee_normalizer import BEENormalizer
 from src.normalize.relation_canonicalizer import RelationCanonicalizer
 from src.normalize.tool_concern_segment_deriver import ToolConcernSegmentDeriver
@@ -264,7 +260,7 @@ class TestBatchPipeline:
             deriver=normalizers["deriver"],
         )
 
-        print(f"\n  === Batch Result (50 real reviews) ===")
+        print("\n  === Batch Result (50 real reviews) ===")
         print(f"  Total signals: {batch_result['total_signals']}")
         print(f"  Quarantined: {batch_result['total_quarantined']}")
         print(f"  Serving products: {len(batch_result['serving_products'])}")
@@ -425,6 +421,6 @@ class TestDataQuality:
                 family = sig.signal_family
                 family_counts[family] = family_counts.get(family, 0) + 1
 
-        print(f"\n  Signal family distribution (20 reviews):")
+        print("\n  Signal family distribution (20 reviews):")
         for family, count in sorted(family_counts.items(), key=lambda x: -x[1]):
             print(f"    {family}: {count}")

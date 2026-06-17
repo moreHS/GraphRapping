@@ -136,7 +136,7 @@ class TestEvidenceGeneration:
             object_ref_kind="CONCEPT", subject_type="Product", object_type="TemporalContext",
         )
         emitter.emit_from_fact(fact, target_product_id="P1")
-        result = emitter.emit_from_facts([], target_product_id="P1")
+        emitter.emit_from_facts([], target_product_id="P1")
         # Evidence should exist from the first emit
         assert len(emitter._evidence_rows) >= 1
         assert emitter._evidence_rows[0]["fact_id"] == "f5"

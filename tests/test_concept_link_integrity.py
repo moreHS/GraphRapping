@@ -1,13 +1,62 @@
 """Tests for concept IRI join integrity: user-product shared concept matching."""
 
-import pytest
 from src.ingest.product_ingest import ProductRecord, ingest_product
+from src.mart.build_serving_views import build_serving_product_profile
 from src.user.adapters.personal_agent_adapter import adapt_user_profile
-from src.rec.candidate_generator import generate_candidates, _extract_ids
-from src.common.enums import RecommendationMode
+from src.rec.candidate_generator import generate_candidates
 
 
 class TestConceptIRIJoin:
+    def test_product_master_seeds_product_entity_and_brand_link(self):
+        """Product master should seed canonical product/brand truth without NER/BEE."""
+        product = ProductRecord(
+            product_id="61289",
+            product_name="블랙쿠션 듀오 SPF34/PA++",
+            brand_id="11107",
+            brand_name="헤라",
+            category_id="face_makeup",
+            category_name="페이스메이크업",
+        )
+
+        result = ingest_product(product)
+        entity = result["canonical_entity"]
+        brand_concepts = [c for c in result["concepts"] if c.concept_type == "Brand"]
+        brand_links = [link for link in result["links"] if link.link_type == "HAS_BRAND"]
+
+        assert entity["entity_iri"] == "product:61289"
+        assert entity["canonical_name"] == "블랙쿠션 듀오 SPF34/PA++"
+        assert brand_concepts[0].canonical_name == "헤라"
+        assert brand_concepts[0].source_key == "11107"
+        assert brand_links[0].entity_iri == "product:61289"
+        assert brand_links[0].concept_id == brand_concepts[0].concept_id
+
+    def test_product_master_concept_links_do_not_inflate_graph_support(self):
+        """Master-derived concept links are facets, not review evidence."""
+        product = ProductRecord(
+            product_id="61289",
+            product_name="블랙쿠션 듀오 SPF34/PA++",
+            brand_id="11107",
+            brand_name="헤라",
+            category_name="페이스메이크업",
+        )
+        result = ingest_product(product)
+        concept_links = [
+            {"concept_id": link.concept_id, "link_type": link.link_type}
+            for link in result["links"]
+        ]
+
+        profile = build_serving_product_profile(
+            result["product_master"],
+            agg_signals=[],
+            concept_links=concept_links,
+        )
+
+        assert profile["brand_concept_ids"]
+        assert profile["category_concept_ids"]
+        assert profile["review_count_all"] == 0
+        assert profile["signal_support_count_all"] == 0
+        assert profile["source_review_count_all"] is None
+
     def test_user_product_brand_join(self):
         """User and product brand concept must use same key basis for join."""
         # When brand_id is None, product_ingest falls back to brand_name as concept key
@@ -16,7 +65,9 @@ class TestConceptIRIJoin:
             category_name="쿠션", main_benefits=["보습"], ingredients=["세라마이드"],
         )
         result = ingest_product(product)
-        brand_concepts = [l.concept_id for l in result["links"] if l.link_type == "HAS_BRAND"]
+        brand_concepts = [
+            link.concept_id for link in result["links"] if link.link_type == "HAS_BRAND"
+        ]
 
         # User side uses brand_name directly
         user_profile = {
@@ -37,7 +88,9 @@ class TestConceptIRIJoin:
             product_id="P2", product_name="Test", main_benefits=["진정", "보습"],
         )
         result = ingest_product(product)
-        benefit_concepts = [l.concept_id for l in result["links"] if l.link_type == "HAS_MAIN_BENEFIT"]
+        benefit_concepts = [
+            link.concept_id for link in result["links"] if link.link_type == "HAS_MAIN_BENEFIT"
+        ]
 
         user_profile = {
             "basic": {},

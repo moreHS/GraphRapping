@@ -2,7 +2,7 @@
 Relation project JSON → RawReviewRecord[] loader.
 
 Contract: Accepts extraction output from Relation project (NER+BEE+REL)
-with relation[] already in 65 canonical predicates. This is the
+with relation[] already in 68 canonical predicates. This is the
 intermediate format produced by the NLP extraction pipeline.
 
 Difference from rs_jsonl_loader:
@@ -69,7 +69,7 @@ def _convert_record(record: dict[str, Any], row_index: int) -> RawReviewRecord:
       drup_dt → created_at (rename)
       ner[] → ner[] (as-is)
       bee[] → bee[] (as-is)
-      relation[] → relation[] (as-is, expects 65 canonical predicates)
+      relation[] → relation[] (as-is, expects 68 canonical predicates)
       (row_index) → source_row_num
     """
     # NER: ensure required fields
@@ -116,5 +116,42 @@ def _convert_record(record: dict[str, Any], row_index: int) -> RawReviewRecord:
         collected_at=record.get("drup_dt"),      # same as backup
         source_row_num=str(row_index),
         source_review_key=record.get("source_review_key"),  # stable external review ID
+        source_product_id=_optional_str(
+            _first_present(record.get("source_product_id"), record.get("product_id"))
+        ),
+        source_channel=_optional_str(
+            _first_present(record.get("source_channel"), record.get("channel"))
+        ),
+        source_key_type=_optional_str(record.get("source_key_type")),
+        source_rating=_parse_optional_float(
+            _first_present(record.get("prd_apal_scr"), record.get("source_rating"))
+        ),
         author_key=record.get("author_key"),                # stable reviewer identity
     )
+
+
+def _first_present(*values: Any) -> Any:
+    for value in values:
+        if value is not None and value != "":
+            return value
+    return None
+
+
+def _optional_str(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value)
+    if not text.strip() or text == "None":
+        return None
+    return text
+
+
+def _parse_optional_float(value: Any) -> float | None:
+    if value is None:
+        return None
+    if isinstance(value, str) and (not value.strip() or value == "None"):
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None

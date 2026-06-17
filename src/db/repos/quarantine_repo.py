@@ -40,6 +40,36 @@ _TABLE_SQL = {
 }
 
 
+async def delete_for_review(
+    uow: UnitOfWork,
+    review_id: str,
+    fact_ids: list[str] | None = None,
+) -> None:
+    """Wave 4 Task 4: full-replace quarantine entries for a review_id so
+    re-runs don't duplicate. Targets every quarantine_* table that carries
+    a review_id column.
+
+    `quarantine_projection_miss` rows can have NULL review_id when the
+    miss is fact-scoped (no review context), so we also delete by fact_id
+    when the caller provides it.
+    """
+    for table in (
+        "quarantine_product_match",
+        "quarantine_placeholder",
+        "quarantine_unknown_keyword",
+        "quarantine_projection_miss",
+        "quarantine_untyped_entity",
+    ):
+        await uow.execute(f"DELETE FROM {table} WHERE review_id = $1", review_id)
+
+    if fact_ids:
+        # quarantine_projection_miss is the only table with fact_id.
+        await uow.execute(
+            "DELETE FROM quarantine_projection_miss WHERE fact_id = ANY($1)",
+            fact_ids,
+        )
+
+
 async def flush_quarantine(uow: UnitOfWork, entries: list[QuarantineEntry]) -> int:
     """Write all quarantine entries to their respective tables. Returns count."""
     count = 0

@@ -1,5 +1,4 @@
 """Tests for projection_registry.csv schema integrity."""
-import csv
 import tempfile
 from pathlib import Path
 

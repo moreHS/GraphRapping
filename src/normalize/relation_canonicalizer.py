@@ -1,5 +1,5 @@
 """
-Relation canonicalizer: raw relation → 65 canonical predicates.
+Relation canonicalizer: raw relation → 68 canonical predicates.
 
 Idempotent: if input is already canonical, pass through.
 Unknown predicates → quarantine.
@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from src.common.config_loader import load_json
 
 
-# The 65 canonical predicates + special handling
+# The 68 canonical predicates + special handling
 CANONICAL_PREDICATES = frozenset({
     "used_by", "applied_to", "used_for", "used_on", "used_with",
     "uses", "applied_by", "time_of_use", "duration_of_use", "frequency_of_use",
@@ -50,7 +50,7 @@ class CanonicalizeResult:
 
 
 class RelationCanonicalizer:
-    """Maps raw relation labels to 65 canonical predicates.
+    """Maps raw relation labels to 68 canonical predicates.
 
     Idempotent: already-canonical inputs pass through unchanged.
     """
@@ -60,7 +60,7 @@ class RelationCanonicalizer:
         self._mapping: dict[str, str] = {}
 
     def load(self, filename: str = "relation_canonical_map.json") -> None:
-        """Load 633→65 mapping from Relation project's canonical mapping."""
+        """Load 633→68 mapping from Relation project's canonical mapping."""
         data = load_json(filename)
         self._mapping.clear()
         label_to_canonical = data.get("label_to_canonical", {})

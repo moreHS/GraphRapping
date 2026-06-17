@@ -14,6 +14,10 @@ import asyncpg
 from src.db.unit_of_work import UnitOfWork
 from src.db.persist_bundle import ReviewPersistBundle
 from src.db.repos import review_repo, canonical_repo, signal_repo, quarantine_repo
+from src.db.repos.signal_repo import (
+    PRODUCT_DST_EDGE_TYPES,
+    normalize_dst_to_raw_product_id,
+)
 
 
 async def persist_review_bundle(pool: asyncpg.Pool, bundle: ReviewPersistBundle) -> dict[str, Any]:
@@ -44,6 +48,12 @@ async def persist_review_bundle(pool: asyncpg.Pool, bundle: ReviewPersistBundle)
             uow, bundle.review_id, bundle.canonical_facts,
         )
 
+        # P0-4: Collect OLD comparison/co-use dirty products BEFORE replace.
+        # replace_signals_for_review() returns old+new target_product_id union but
+        # not comparison/co-use dst_ids — the helper unions those via SQL.
+        old_dirty = await signal_repo.get_dirty_product_ids_for_review(uow, bundle.review_id)
+        bundle.dirty_product_ids.update(old_dirty)
+
         # L2.5: signals + evidence (full-replace per review)
         dirty_from_signals = await signal_repo.replace_signals_for_review(
             uow, bundle.review_id,
@@ -53,7 +63,27 @@ async def persist_review_bundle(pool: asyncpg.Pool, bundle: ReviewPersistBundle)
         # Track dirty products (from signals + any relink)
         bundle.dirty_product_ids.update(dirty_from_signals)
 
-        # QA: quarantine entries
+        # P0-4: NEW comparison/co-use dst_ids from this bundle — inline (no extra SQL).
+        # Uses the same normalizer + edge-type set as the helper so dirty_product_ids
+        # carries one ID domain (raw product_id).
+        for sig in bundle.wrapped_signals:
+            if sig.edge_type in PRODUCT_DST_EDGE_TYPES:
+                normalized = normalize_dst_to_raw_product_id(sig.dst_id or "")
+                if normalized is not None:
+                    bundle.dirty_product_ids.add(normalized)
+
+        # QA: quarantine entries — Wave 4 Task 4: full-replace per review_id
+        # (and per fact_id for projection_miss with NULL review_id) so
+        # re-running the same fixture does not duplicate quarantine rows.
+        fact_ids_in_bundle = [f.fact_id for f in bundle.canonical_facts if getattr(f, "fact_id", None)]
+        # quarantine_projection_miss may also carry fact_ids that never
+        # made it into canonical_facts (e.g., quarantined raw rel rows).
+        bundle_fact_ids_in_q = [
+            e.data.get("fact_id") for e in bundle.quarantine_entries
+            if e.table == "quarantine_projection_miss" and e.data.get("fact_id")
+        ]
+        all_fact_ids = list({fid for fid in fact_ids_in_bundle + bundle_fact_ids_in_q if fid})
+        await quarantine_repo.delete_for_review(uow, bundle.review_id, all_fact_ids or None)
         q_count = await quarantine_repo.flush_quarantine(uow, bundle.quarantine_entries)
 
     return {

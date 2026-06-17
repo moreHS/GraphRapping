@@ -37,6 +37,10 @@ class RawReviewRecord:
     relation: list[dict[str, Any]] = field(default_factory=list)
     # Optional source keys
     source_review_key: str | None = None
+    source_product_id: str | None = None
+    source_channel: str | None = None
+    source_key_type: str | None = None
+    source_rating: float | None = None
     author_key: str | None = None
     created_at: str | None = None
     collected_at: str | None = None
@@ -104,6 +108,10 @@ def ingest_review(record: RawReviewRecord, source: str = "unknown") -> IngestedR
         "review_id": review_id,
         "source": source_site,
         "source_review_key": record.source_review_key,
+        "source_product_id": record.source_product_id,
+        "source_channel": record.source_channel,
+        "source_key_type": record.source_key_type,
+        "source_rating": record.source_rating,
         "source_site": source_site,
         "brand_name_raw": record.brnd_nm,
         "product_name_raw": record.prod_nm,
@@ -118,6 +126,10 @@ def ingest_review(record: RawReviewRecord, source: str = "unknown") -> IngestedR
             "clct_site_nm": record.clct_site_nm,
             "prod_nm": record.prod_nm,
             "text": record.text,
+            "source_product_id": record.source_product_id,
+            "source_channel": record.source_channel,
+            "source_key_type": record.source_key_type,
+            "source_rating": record.source_rating,
         },
     }
 

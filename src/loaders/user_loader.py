@@ -4,16 +4,31 @@ personal-agent PostgreSQL → UserLoadResult loader.
 Reads user profiles from personal-agent's normalized 3-group structure
 and converts to GraphRapping's user_masters + user_adapted_facts.
 
-Includes preflight gate: verify_user_id_stability() checks encrypted user_id consistency.
-MVP: purchase events and repurchase/seasonal summaries are deferred.
+P0-1 (audit fix): purchase events can be passed through to build OWNS_*/REPURCHASES_*/
+RECENTLY_PURCHASED user facts. Contract: lookup IDs are raw normalized
+(e.g. brand_id="b1"), not concept IRIs.
+
+P1-5 (Wave 3.5): `verify_user_id_stability` removed as dead code — no
+operational entry point ever called it, and activation required an async
+DB pool/query contract `FullLoadConfig` does not expose. If reintroduced
+during personal-agent DB integration, design it against the actual pool
+plumbing then, not before.
 """
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from typing import Any
 
+from src.ingest.purchase_ingest import (
+    PurchaseEvent,
+    derive_purchase_features,
+    purchase_features_to_adapter_dict,
+)
 from src.user.adapters.personal_agent_adapter import adapt_user_profile
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -27,6 +42,11 @@ class UserLoadResult:
 
 def load_users_from_profiles(
     user_profiles: dict[str, dict[str, Any]],
+    *,
+    purchase_events_by_user: dict[str, list[PurchaseEvent]] | None = None,
+    brand_lookup: dict[str, str] | None = None,
+    category_lookup: dict[str, str] | None = None,
+    family_lookup: dict[str, str] | None = None,
 ) -> UserLoadResult:
     """Convert normalized user profiles to GraphRapping user artifacts.
 
@@ -37,11 +57,29 @@ def load_users_from_profiles(
                 "purchase_analysis": {"preferred_skincare_brand": [...], ...},
                 "chat": {"face": {...}, "ingredients": {...}, ...} or None
             }
+        purchase_events_by_user: optional per-user PurchaseEvent list, used to derive
+            OWNS_PRODUCT/OWNS_FAMILY/REPURCHASES_FAMILY/REPURCHASES_BRAND/RECENTLY_PURCHASED
+            user facts via derive_purchase_features().
+        brand_lookup: product_id → brand_id (raw normalized).
+        category_lookup: product_id → category_id (raw normalized).
+        family_lookup: product_id → variant_family_id.
 
     Returns:
         UserLoadResult with user_masters and user_adapted_facts ready for run_batch()
     """
     result = UserLoadResult()
+
+    # Surface purchase events for users absent from user_profiles — current loader
+    # contract iterates profiles only, so those purchases are silently ignored.
+    if purchase_events_by_user:
+        unmatched = sorted(set(purchase_events_by_user) - set(user_profiles))
+        if unmatched:
+            logger.warning(
+                "Purchase events provided for %d user(s) absent from user_profiles "
+                "and will be ignored: %s",
+                len(unmatched),
+                unmatched[:10],
+            )
 
     for user_id, profile in user_profiles.items():
         # Validate normalized 3-group format
@@ -68,46 +106,23 @@ def load_users_from_profiles(
             "skin_tone": basic.get("skin_tone"),
         }
 
+        # P0-1: derive purchase features when events are supplied and convert
+        # to the dict shape adapt_user_profile() consumes.
+        purchase_features_dict: dict[str, Any] | None = None
+        if purchase_events_by_user and user_id in purchase_events_by_user:
+            pf = derive_purchase_features(
+                purchase_events_by_user[user_id],
+                brand_lookup=brand_lookup,
+                category_lookup=category_lookup,
+                family_lookup=family_lookup,
+            )
+            purchase_features_dict = purchase_features_to_adapter_dict(pf)
+
         # Convert profile → adapted facts via personal_agent_adapter
-        adapted_facts = adapt_user_profile(user_id, profile)
+        adapted_facts = adapt_user_profile(
+            user_id, profile, purchase_features=purchase_features_dict
+        )
         result.user_adapted_facts[user_id] = adapted_facts
 
     result.user_count = len(result.user_masters)
     return result
-
-
-async def verify_user_id_stability(
-    pool,
-    query: str,
-    sample_size: int = 5,
-) -> bool:
-    """Preflight gate: verify encrypted user_id is stable across queries.
-
-    Queries the personal-agent DB twice for the same users and checks
-    if encrypted user_ids match. If any mismatch, returns False.
-
-    Args:
-        pool: asyncpg connection pool to personal-agent DB
-        query: SQL to fetch user_id list (e.g., "SELECT user_id FROM agent.aibe_user_context_mstr_v LIMIT $1")
-        sample_size: number of users to test
-
-    Returns:
-        True if all user_ids are stable, False if any mismatch
-    """
-    async with pool.acquire() as conn:
-        # First query
-        rows1 = await conn.fetch(query, sample_size)
-        ids1 = [r["user_id"] for r in rows1]
-
-        # Second query (same query, should return same IDs)
-        rows2 = await conn.fetch(query, sample_size)
-        ids2 = [r["user_id"] for r in rows2]
-
-    if len(ids1) != len(ids2):
-        return False
-
-    for id1, id2 in zip(sorted(ids1), sorted(ids2)):
-        if id1 != id2:
-            return False
-
-    return True

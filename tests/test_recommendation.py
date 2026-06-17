@@ -1,8 +1,8 @@
 """Tests for recommendation engine: candidate → score → explain → hook → question."""
 
 import pytest
-from src.rec.candidate_generator import generate_candidates, CandidateProduct
-from src.rec.scorer import Scorer, ScoredProduct
+from src.rec.candidate_generator import generate_candidates
+from src.rec.scorer import Scorer
 from src.rec.explainer import explain
 from src.rec.hook_generator import generate_hooks
 from src.rec.next_question import generate_next_question

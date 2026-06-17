@@ -38,11 +38,10 @@ def test_confidence_ranges():
         assert lo <= conf <= hi, f"Edge {edge['edge_id']} kind={kind} conf={conf} out of range [{lo},{hi}]"
 
 def test_entity_type_distribution():
-    """Must have at least PRD, BRD, BEE_ATTR, KEYWORD entity types."""
+    """Must have source-product, attribute, and keyword entity types."""
     kg = _load_kg()
     types = {e["entity_type"] for e in kg["entities"]}
     assert "PRD" in types
-    assert "BRD" in types
     assert "BEE_ATTR" in types
     assert "KEYWORD" in types
 

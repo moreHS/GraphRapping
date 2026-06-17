@@ -1,9 +1,6 @@
 """Tests for source data loaders."""
 
 import json
-import tempfile
-import pytest
-from pathlib import Path
 
 from src.loaders.relation_loader import load_reviews_from_json
 from src.loaders.product_loader import load_products_from_es_records
@@ -113,10 +110,17 @@ SAMPLE_ES_RECORDS = [
 
 
 class TestProductLoader:
-    def test_load_filters_sale_status(self):
+    def test_load_keeps_all_source_products_by_default(self):
         result = load_products_from_es_records(SAMPLE_ES_RECORDS)
-        assert result.product_count == 1  # only 판매중
+        assert result.product_count == 2
         assert "P001" in result.product_masters
+        assert "P002" in result.product_masters
+
+    def test_load_filters_sale_status_when_requested(self):
+        result = load_products_from_es_records(SAMPLE_ES_RECORDS, sale_status_filter="판매중")
+        assert result.product_count == 1
+        assert "P001" in result.product_masters
+        assert "P002" not in result.product_masters
 
     def test_field_mapping(self):
         result = load_products_from_es_records(SAMPLE_ES_RECORDS)
@@ -133,8 +137,8 @@ class TestProductLoader:
     def test_concept_links_created(self):
         result = load_products_from_es_records(SAMPLE_ES_RECORDS)
         links = result.concept_links.get("product:P001", [])
-        assert any(l["link_type"] == "HAS_BRAND" for l in links)
-        assert any(l["link_type"] == "IN_CATEGORY" for l in links)
+        assert any(link["link_type"] == "HAS_BRAND" for link in links)
+        assert any(link["link_type"] == "IN_CATEGORY" for link in links)
 
 
 # --- User Loader ---

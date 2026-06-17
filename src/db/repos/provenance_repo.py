@@ -48,6 +48,35 @@ async def get_review_snippet(pool: asyncpg.Pool, review_id: str,
         return str(text)
 
 
+class DBProvenanceProvider:
+    """Concrete `ProvenanceProvider` implementation backed by a Postgres pool.
+
+    Satisfies the `src.rec.explainer.ProvenanceProvider` Protocol so that
+    `ExplanationService` can be wired to real DB provenance data without
+    further glue code.
+
+    P1-4 (audit fix): previously only the Protocol existed; tests used a fake.
+    This class fills the production gap.
+    """
+
+    def __init__(self, pool: asyncpg.Pool) -> None:
+        self._pool = pool
+
+    async def get_signal_evidence(self, signal_id: str) -> list[dict]:
+        return await get_signal_evidence(self._pool, signal_id)
+
+    async def get_fact_provenance(self, fact_id: str) -> list[dict]:
+        return await get_fact_provenance(self._pool, fact_id)
+
+    async def get_review_snippet(
+        self,
+        review_id: str,
+        start: int | None,
+        end: int | None,
+    ) -> str | None:
+        return await get_review_snippet(self._pool, review_id, start, end)
+
+
 async def get_explanation_chain(pool: asyncpg.Pool, signal_id: str) -> list[dict]:
     """Full provenance chain: signal → evidence → fact → provenance → raw snippet."""
     evidence = await get_signal_evidence(pool, signal_id)

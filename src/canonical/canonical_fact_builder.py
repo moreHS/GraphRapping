@@ -151,15 +151,19 @@ class CanonicalFactBuilder:
             allowed_subj = contract.get("allowed_subject_types", "")
             allowed_obj = contract.get("allowed_object_types", "")
             if allowed_subj and subject_type and subject_type not in allowed_subj.split("|"):
+                # Wave 5.2: carry review_id so DB-side quarantine row has the
+                # key needed for idempotent per-review delete-and-reinsert.
                 self._invalid_facts.append({
                     "predicate": predicate, "subject_type": subject_type,
-                    "object_type": object_type, "reason": f"subject_type '{subject_type}' not in allowed '{allowed_subj}'",
+                    "object_type": object_type, "review_id": review_id,
+                    "reason": f"subject_type '{subject_type}' not in allowed '{allowed_subj}'",
                 })
                 return None
             if allowed_obj and object_type and object_type not in allowed_obj.split("|"):
                 self._invalid_facts.append({
                     "predicate": predicate, "subject_type": subject_type,
-                    "object_type": object_type, "reason": f"object_type '{object_type}' not in allowed '{allowed_obj}'",
+                    "object_type": object_type, "review_id": review_id,
+                    "reason": f"object_type '{object_type}' not in allowed '{allowed_obj}'",
                 })
                 return None
 

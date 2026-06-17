@@ -1,6 +1,5 @@
 """Tests for deterministic ID generation."""
 
-import pytest
 from src.common.ids import (
     make_review_id,
     make_reviewer_proxy_id,

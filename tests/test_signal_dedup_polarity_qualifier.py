@@ -12,7 +12,7 @@ import pytest
 from src.common.ids import make_signal_id, make_qualifier_fingerprint
 from src.wrap.projection_registry import ProjectionRegistry
 from src.wrap.signal_emitter import SignalEmitter
-from src.canonical.canonical_fact_builder import CanonicalFact, FactQualifier
+from src.canonical.canonical_fact_builder import CanonicalFact
 from src.common.enums import ObjectRefKind
 
 

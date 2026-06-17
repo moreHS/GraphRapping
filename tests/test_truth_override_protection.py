@@ -1,6 +1,5 @@
 """Tests for truth override protection: review signals never overwrite product master."""
 
-import pytest
 from src.common.enums import SCORING_EXCLUDED_FAMILIES, SignalFamily
 
 

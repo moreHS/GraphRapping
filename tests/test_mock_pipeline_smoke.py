@@ -13,9 +13,10 @@ def test_mock_relation_fixture_generates_at_least_one_signal():
         "mockdata/review_triples_raw.json",
         products,
         users,
-        max_reviews=15,
+        max_reviews=906,
         source="test_mock_smoke",
         review_format="relation",
+        kg_mode="on",  # P0-3: explicit arg insulates against ambient env
     )
 
     matched = [
@@ -23,8 +24,9 @@ def test_mock_relation_fixture_generates_at_least_one_signal():
         if r.get("matched_product_id")
     ]
 
-    assert state.review_count == 15
-    assert state.product_count == 47
+    assert state.review_count == 906
+    # Final baseline: 517 products from the rs_own source product universe.
+    assert state.product_count == 517
     assert state.user_count == 50
     assert len(matched) > 0
     assert state.batch_result.get("total_signals", 0) > 0

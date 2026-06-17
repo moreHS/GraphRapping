@@ -8,7 +8,7 @@ import pytest
 
 from src.wrap.projection_registry import ProjectionRegistry, ProjectionResult
 from src.wrap.signal_emitter import SignalEmitter
-from src.canonical.canonical_fact_builder import CanonicalFact, CanonicalFactBuilder, FactQualifier
+from src.canonical.canonical_fact_builder import CanonicalFact
 from src.common.enums import ObjectRefKind
 
 

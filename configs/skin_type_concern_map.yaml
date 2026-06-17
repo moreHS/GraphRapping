@@ -1,0 +1,33 @@
+# P4-4 (Wave 3.4): skin_type → concern boost/penalty mapping.
+#
+# Keys (under `skin_types`) are matched against normalize_text(user_profile.skin_type).
+# Aliases let inputs in different scripts (한국어/영문/normalized) resolve to the
+# same row. `aliases` entries themselves are also normalized before comparison.
+#
+# Add new skin types here rather than mutating src/rec/scorer.py.
+
+skin_types:
+  - canonical: 건성
+    aliases: [dry, geonseong, gunseong]
+    boost: [concern_dryness]
+    penalty: [concern_oiliness]
+
+  - canonical: 지성
+    aliases: [oily, jiseong]
+    boost: [concern_oiliness]
+    penalty: []
+
+  - canonical: 복합성
+    aliases: [combination, bokhapseong]
+    boost: [concern_oiliness, concern_dryness]
+    penalty: []
+
+  - canonical: 민감성
+    aliases: [sensitive, mingamseong]
+    boost: [concern_sensitivity, concern_irritation]
+    penalty: []
+
+  - canonical: 수부지
+    aliases: [subuji, oily-with-dehydration, dehydrated-oily]
+    boost: [concern_dryness, concern_oiliness]
+    penalty: []

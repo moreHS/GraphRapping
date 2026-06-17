@@ -65,8 +65,8 @@ class ProductIndex:
 
 
 def match_product(
-    brand_name_raw: str,
-    product_name_raw: str,
+    brand_name_raw: str | None,
+    product_name_raw: str | None,
     index: ProductIndex,
 ) -> MatchResult:
     """Match raw brand+product name to a product_id.
@@ -114,8 +114,8 @@ def match_product(
         )
 
     # 4. Fuzzy match (brand-filtered)
-    brand_norm = normalize_text(brand_name_raw)
-    product_norm = normalize_text(product_name_raw)
+    brand_norm = normalize_text(_safe_text(brand_name_raw))
+    product_norm = normalize_text(_safe_text(product_name_raw))
     best_score = 0.0
     best_pid = None
 
@@ -157,9 +157,15 @@ def match_product(
     )
 
 
-def _make_norm_key(brand: str, product: str) -> str:
-    return f"{normalize_text(brand)}|{normalize_text(product)}"
+def _safe_text(value: str | None) -> str:
+    return "" if value is None else str(value)
 
 
-def _make_stripped_norm_key(brand: str, product: str) -> str:
-    return f"{normalize_text(brand)}|{strip_brand_prefixes(product, [brand])}"
+def _make_norm_key(brand: str | None, product: str | None) -> str:
+    return f"{normalize_text(_safe_text(brand))}|{normalize_text(_safe_text(product))}"
+
+
+def _make_stripped_norm_key(brand: str | None, product: str | None) -> str:
+    brand_text = _safe_text(brand)
+    product_text = _safe_text(product)
+    return f"{normalize_text(brand_text)}|{strip_brand_prefixes(product_text, [brand_text])}"

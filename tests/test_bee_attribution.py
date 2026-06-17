@@ -7,7 +7,7 @@ Verifies the 5 attribution scenarios from the instruction document:
 4. placeholder-resolved BEE
 5. same-entity-resolved BEE
 """
-from src.link.bee_attribution import attribute_bee_rows, BeeAttribution
+from src.link.bee_attribution import attribute_bee_rows
 from src.common.enums import AttributionSource
 
 

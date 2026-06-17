@@ -1,5 +1,5 @@
 """Tests: family-level identity in recommendation pipeline."""
-from src.rec.candidate_generator import generate_candidates, CandidateProduct
+from src.rec.candidate_generator import generate_candidates
 from src.rec.scorer import Scorer
 from src.common.enums import RecommendationMode
 

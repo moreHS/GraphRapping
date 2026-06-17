@@ -6,7 +6,7 @@ import pytest
 
 from src.wrap.projection_registry import ProjectionRegistry
 from src.wrap.signal_emitter import SignalEmitter
-from src.canonical.canonical_fact_builder import CanonicalFact, CanonicalFactBuilder
+from src.canonical.canonical_fact_builder import CanonicalFactBuilder
 from src.common.enums import ObjectRefKind
 
 

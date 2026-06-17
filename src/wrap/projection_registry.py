@@ -4,7 +4,9 @@ Projection Registry: deterministic mapping from canonical facts to serving signa
 Rule: 1 input combination → 1 deterministic action.
 Unmapped combos → explicit DROP / QUARANTINE / KEEP_CANONICAL_ONLY.
 
-Registry loaded from configs/projection_registry.csv (14-column format).
+Registry loaded from configs/projection_registry.csv (17-column format —
+trailing `allowed_evidence_kind / min_confidence / promotion_mode` were
+added in Wave 2.11 to enable per-rule policy enforcement).
 """
 
 from __future__ import annotations

@@ -3,98 +3,114 @@
     {
       "entity_id": "ent_prd_p001",
       "entity_type": "PRD",
-      "normalized_value": "워터뱅크 블루 히알루로닉 세럼",
+      "normalized_value": "리스테이 카밍 샴푸",
       "word": "Review Target",
       "weight": 4,
-      "scope_key": "P001",
+      "scope_key": "100317",
       "is_placeholder": true,
       "bee_type": null,
       "polarity": null,
-      "original_phrases": ["Review Target"]
+      "original_phrases": [
+        "Review Target"
+      ]
     },
     {
       "entity_id": "ent_prd_p002",
       "entity_type": "PRD",
-      "normalized_value": "자음생크림",
+      "normalized_value": "한란 핸드 크림 (SPF 15 PA+)",
       "word": "Review Target",
       "weight": 2,
-      "scope_key": "P002",
+      "scope_key": "100389",
       "is_placeholder": true,
       "bee_type": null,
       "polarity": null,
-      "original_phrases": ["Review Target"]
+      "original_phrases": [
+        "Review Target"
+      ]
     },
     {
       "entity_id": "ent_prd_p003",
       "entity_type": "PRD",
-      "normalized_value": "그린티 씨드 세럼",
+      "normalized_value": "고급 종이 면봉",
       "word": "Review Target",
       "weight": 2,
-      "scope_key": "P003",
+      "scope_key": "100535",
       "is_placeholder": true,
       "bee_type": null,
       "polarity": null,
-      "original_phrases": ["Review Target"]
+      "original_phrases": [
+        "Review Target"
+      ]
     },
     {
       "entity_id": "ent_prd_p005",
       "entity_type": "PRD",
-      "normalized_value": "블랙쿠션",
+      "normalized_value": "마이 퍼퓸드 바디 로션",
       "word": "Review Target",
       "weight": 2,
-      "scope_key": "P005",
+      "scope_key": "100543",
       "is_placeholder": true,
       "bee_type": null,
       "polarity": null,
-      "original_phrases": ["Review Target"]
+      "original_phrases": [
+        "Review Target"
+      ]
     },
     {
       "entity_id": "ent_prd_p006",
       "entity_type": "PRD",
-      "normalized_value": "레티놀 엑스퍼트 0.1%",
+      "normalized_value": "[2세대] 그린티 히알루론산 수분 선세럼 50mL X 2개",
       "word": "Review Target",
       "weight": 1,
-      "scope_key": "P006",
+      "scope_key": "100572",
       "is_placeholder": true,
       "bee_type": null,
       "polarity": null,
-      "original_phrases": ["Review Target"]
+      "original_phrases": [
+        "Review Target"
+      ]
     },
     {
       "entity_id": "ent_prd_p008",
       "entity_type": "PRD",
-      "normalized_value": "윤조에센스",
+      "normalized_value": "비자 트러블 토너(170mL) + 비자 트러블 로션(100mL)",
       "word": "Review Target",
       "weight": 2,
-      "scope_key": "P008",
+      "scope_key": "100669",
       "is_placeholder": true,
       "bee_type": null,
       "polarity": null,
-      "original_phrases": ["Review Target"]
+      "original_phrases": [
+        "Review Target"
+      ]
     },
     {
       "entity_id": "ent_prd_p009",
       "entity_type": "PRD",
-      "normalized_value": "비자 시카밤 클렌징 폼",
+      "normalized_value": "닦아 쓰는 화장솜",
       "word": "Review Target",
       "weight": 1,
-      "scope_key": "P009",
+      "scope_key": "100730",
       "is_placeholder": true,
       "bee_type": null,
       "polarity": null,
-      "original_phrases": ["Review Target"]
+      "original_phrases": [
+        "Review Target"
+      ]
     },
     {
       "entity_id": "ent_prd_p010",
       "entity_type": "PRD",
-      "normalized_value": "센슈얼 파우더 매트 립스틱",
+      "normalized_value": "비자 트러블 토너 & 로션 2종세트",
       "word": "Review Target",
       "weight": 1,
-      "scope_key": "P010",
+      "scope_key": "100770",
       "is_placeholder": true,
       "bee_type": null,
       "polarity": null,
-      "original_phrases": ["Review Target"]
+      "original_phrases": [
+        "Review Target"
+      ]
     },
     {
       "entity_id": "ent_per_reviewer",
@@ -106,79 +122,9 @@
       "is_placeholder": true,
       "bee_type": null,
       "polarity": null,
-      "original_phrases": ["Reviewer"]
-    },
-    {
-      "entity_id": "ent_brd_laneige",
-      "entity_type": "BRD",
-      "normalized_value": "라네즈",
-      "word": "라네즈",
-      "weight": 4,
-      "scope_key": null,
-      "is_placeholder": false,
-      "bee_type": null,
-      "polarity": null,
-      "original_phrases": ["라네즈"]
-    },
-    {
-      "entity_id": "ent_brd_sulwhasoo",
-      "entity_type": "BRD",
-      "normalized_value": "설화수",
-      "word": "설화수",
-      "weight": 4,
-      "scope_key": null,
-      "is_placeholder": false,
-      "bee_type": null,
-      "polarity": null,
-      "original_phrases": ["설화수"]
-    },
-    {
-      "entity_id": "ent_brd_innisfree",
-      "entity_type": "BRD",
-      "normalized_value": "이니스프리",
-      "word": "이니스프리",
-      "weight": 3,
-      "scope_key": null,
-      "is_placeholder": false,
-      "bee_type": null,
-      "polarity": null,
-      "original_phrases": ["이니스프리"]
-    },
-    {
-      "entity_id": "ent_brd_hera",
-      "entity_type": "BRD",
-      "normalized_value": "헤라",
-      "word": "헤라",
-      "weight": 3,
-      "scope_key": null,
-      "is_placeholder": false,
-      "bee_type": null,
-      "polarity": null,
-      "original_phrases": ["헤라"]
-    },
-    {
-      "entity_id": "ent_brd_iope",
-      "entity_type": "BRD",
-      "normalized_value": "아이오페",
-      "word": "아이오페",
-      "weight": 1,
-      "scope_key": null,
-      "is_placeholder": false,
-      "bee_type": null,
-      "polarity": null,
-      "original_phrases": ["아이오페"]
-    },
-    {
-      "entity_id": "ent_brd_hanyul",
-      "entity_type": "BRD",
-      "normalized_value": "한율",
-      "word": "한율",
-      "weight": 0,
-      "scope_key": null,
-      "is_placeholder": false,
-      "bee_type": null,
-      "polarity": null,
-      "original_phrases": []
+      "original_phrases": [
+        "Reviewer"
+      ]
     },
     {
       "entity_id": "ent_ing_hyaluronic",
@@ -190,7 +136,9 @@
       "is_placeholder": false,
       "bee_type": null,
       "polarity": null,
-      "original_phrases": ["히알루론산"]
+      "original_phrases": [
+        "히알루론산"
+      ]
     },
     {
       "entity_id": "ent_ing_ceramide",
@@ -202,7 +150,9 @@
       "is_placeholder": false,
       "bee_type": null,
       "polarity": null,
-      "original_phrases": ["세라마이드"]
+      "original_phrases": [
+        "세라마이드"
+      ]
     },
     {
       "entity_id": "ent_ing_greentea",
@@ -214,7 +164,9 @@
       "is_placeholder": false,
       "bee_type": null,
       "polarity": null,
-      "original_phrases": ["녹차추출물"]
+      "original_phrases": [
+        "녹차추출물"
+      ]
     },
     {
       "entity_id": "ent_ing_ginseng",
@@ -226,7 +178,10 @@
       "is_placeholder": false,
       "bee_type": null,
       "polarity": null,
-      "original_phrases": ["인삼추출물", "인삼추출물"]
+      "original_phrases": [
+        "인삼추출물",
+        "인삼추출물"
+      ]
     },
     {
       "entity_id": "ent_ing_retinol",
@@ -238,7 +193,9 @@
       "is_placeholder": false,
       "bee_type": null,
       "polarity": null,
-      "original_phrases": ["레티놀"]
+      "original_phrases": [
+        "레티놀"
+      ]
     },
     {
       "entity_id": "ent_bee_보습력_pos",
@@ -250,7 +207,14 @@
       "is_placeholder": false,
       "bee_type": "보습력",
       "polarity": "POS",
-      "original_phrases": ["보습력이 정말 좋고", "촉촉하고", "보습 오래 가요", "보습력은 확실해요", "수분감이 오래 유지돼요", "촉촉함이 오래가고"]
+      "original_phrases": [
+        "보습력이 정말 좋고",
+        "촉촉하고",
+        "보습 오래 가요",
+        "보습력은 확실해요",
+        "수분감이 오래 유지돼요",
+        "촉촉함이 오래가고"
+      ]
     },
     {
       "entity_id": "ent_bee_흡수력_pos",
@@ -262,7 +226,9 @@
       "is_placeholder": false,
       "bee_type": "흡수력",
       "polarity": "POS",
-      "original_phrases": ["흡수도 빨라요"]
+      "original_phrases": [
+        "흡수도 빨라요"
+      ]
     },
     {
       "entity_id": "ent_bee_사용감_pos",
@@ -274,7 +240,12 @@
       "is_placeholder": false,
       "bee_type": "사용감",
       "polarity": "POS",
-      "original_phrases": ["사용감이 가벼워서 좋아요", "산뜻하고 끈적임 없어서", "거품이 부드럽고", "피부가 편안해져요"]
+      "original_phrases": [
+        "사용감이 가벼워서 좋아요",
+        "산뜻하고 끈적임 없어서",
+        "거품이 부드럽고",
+        "피부가 편안해져요"
+      ]
     },
     {
       "entity_id": "ent_bee_효과_pos",
@@ -286,7 +257,13 @@
       "is_placeholder": false,
       "bee_type": "효과",
       "polarity": "POS",
-      "original_phrases": ["피부결도 좋아졌어요", "피부가 탄탄해지는 느낌이에요", "효과는 확실한데", "피부에 윤기가 돌아요", "효과도 확실해요"]
+      "original_phrases": [
+        "피부결도 좋아졌어요",
+        "피부가 탄탄해지는 느낌이에요",
+        "효과는 확실한데",
+        "피부에 윤기가 돌아요",
+        "효과도 확실해요"
+      ]
     },
     {
       "entity_id": "ent_bee_제형_pos",
@@ -298,7 +275,9 @@
       "is_placeholder": false,
       "bee_type": "제형",
       "polarity": "POS",
-      "original_phrases": ["제형이 무겁지 않고"]
+      "original_phrases": [
+        "제형이 무겁지 않고"
+      ]
     },
     {
       "entity_id": "ent_bee_가성비_pos",
@@ -310,7 +289,9 @@
       "is_placeholder": false,
       "bee_type": "가성비",
       "polarity": "POS",
-      "original_phrases": ["가성비 좋은"]
+      "original_phrases": [
+        "가성비 좋은"
+      ]
     },
     {
       "entity_id": "ent_bee_가성비_neg",
@@ -322,7 +303,9 @@
       "is_placeholder": false,
       "bee_type": "가성비",
       "polarity": "NEG",
-      "original_phrases": ["가격이 좀 비싸긴 해요"]
+      "original_phrases": [
+        "가격이 좀 비싸긴 해요"
+      ]
     },
     {
       "entity_id": "ent_bee_밀착력_pos",
@@ -334,7 +317,9 @@
       "is_placeholder": false,
       "bee_type": "밀착력",
       "polarity": "POS",
-      "original_phrases": ["밀착력이 대박이에요"]
+      "original_phrases": [
+        "밀착력이 대박이에요"
+      ]
     },
     {
       "entity_id": "ent_bee_커버력_pos",
@@ -346,7 +331,9 @@
       "is_placeholder": false,
       "bee_type": "커버력",
       "polarity": "POS",
-      "original_phrases": ["커버력도 좋고"]
+      "original_phrases": [
+        "커버력도 좋고"
+      ]
     },
     {
       "entity_id": "ent_bee_커버력_neu",
@@ -358,7 +345,9 @@
       "is_placeholder": false,
       "bee_type": "커버력",
       "polarity": "NEU",
-      "original_phrases": ["커버력은 보통이에요"]
+      "original_phrases": [
+        "커버력은 보통이에요"
+      ]
     },
     {
       "entity_id": "ent_bee_지속력_pos",
@@ -370,7 +359,10 @@
       "is_placeholder": false,
       "bee_type": "지속력",
       "polarity": "POS",
-      "original_phrases": ["하루종일 지속돼요", "지속력도 괜찮아요"]
+      "original_phrases": [
+        "하루종일 지속돼요",
+        "지속력도 괜찮아요"
+      ]
     },
     {
       "entity_id": "ent_bee_지속력_neg",
@@ -382,7 +374,9 @@
       "is_placeholder": false,
       "bee_type": "지속력",
       "polarity": "NEG",
-      "original_phrases": ["오후에 좀 무너져요"]
+      "original_phrases": [
+        "오후에 좀 무너져요"
+      ]
     },
     {
       "entity_id": "ent_bee_자극도_neg",
@@ -394,7 +388,9 @@
       "is_placeholder": false,
       "bee_type": "자극도",
       "polarity": "NEG",
-      "original_phrases": ["자극이 좀 있었어요"]
+      "original_phrases": [
+        "자극이 좀 있었어요"
+      ]
     },
     {
       "entity_id": "ent_bee_향_pos",
@@ -406,7 +402,10 @@
       "is_placeholder": false,
       "bee_type": "향",
       "polarity": "POS",
-      "original_phrases": ["향이 정말 고급스럽고", "향도 좋고"]
+      "original_phrases": [
+        "향이 정말 고급스럽고",
+        "향도 좋고"
+      ]
     },
     {
       "entity_id": "ent_bee_충성도_pos",
@@ -418,7 +417,10 @@
       "is_placeholder": false,
       "bee_type": "충성도",
       "polarity": "POS",
-      "original_phrases": ["계속 쓸 거예요", "재구매 의사 있어요"]
+      "original_phrases": [
+        "계속 쓸 거예요",
+        "재구매 의사 있어요"
+      ]
     },
     {
       "entity_id": "ent_bee_발림성_pos",
@@ -430,7 +432,9 @@
       "is_placeholder": false,
       "bee_type": "발림성",
       "polarity": "POS",
-      "original_phrases": ["발림성 좋고"]
+      "original_phrases": [
+        "발림성 좋고"
+      ]
     },
     {
       "entity_id": "ent_bee_발림성_neu",
@@ -442,7 +446,9 @@
       "is_placeholder": false,
       "bee_type": "발림성",
       "polarity": "NEU",
-      "original_phrases": ["발림성은 괜찮은데"]
+      "original_phrases": [
+        "발림성은 괜찮은데"
+      ]
     },
     {
       "entity_id": "ent_bee_색감_pos",
@@ -454,7 +460,9 @@
       "is_placeholder": false,
       "bee_type": "색감",
       "polarity": "POS",
-      "original_phrases": ["색감이 예뻐요"]
+      "original_phrases": [
+        "색감이 예뻐요"
+      ]
     },
     {
       "entity_id": "ent_bee_편리성_pos",
@@ -466,7 +474,9 @@
       "is_placeholder": false,
       "bee_type": "편리성",
       "polarity": "POS",
-      "original_phrases": ["당기지 않아서 편리해요"]
+      "original_phrases": [
+        "당기지 않아서 편리해요"
+      ]
     },
     {
       "entity_id": "ent_kw_촉촉",
@@ -478,7 +488,10 @@
       "is_placeholder": false,
       "bee_type": null,
       "polarity": null,
-      "original_phrases": ["촉촉하고", "촉촉함이"]
+      "original_phrases": [
+        "촉촉하고",
+        "촉촉함이"
+      ]
     },
     {
       "entity_id": "ent_kw_윤기",
@@ -490,7 +503,9 @@
       "is_placeholder": false,
       "bee_type": null,
       "polarity": null,
-      "original_phrases": ["윤기가 돌아요"]
+      "original_phrases": [
+        "윤기가 돌아요"
+      ]
     },
     {
       "entity_id": "ent_kw_재구매",
@@ -502,7 +517,9 @@
       "is_placeholder": false,
       "bee_type": null,
       "polarity": null,
-      "original_phrases": ["재구매 의사 있어요"]
+      "original_phrases": [
+        "재구매 의사 있어요"
+      ]
     },
     {
       "entity_id": "ent_kw_자극",
@@ -514,7 +531,9 @@
       "is_placeholder": false,
       "bee_type": null,
       "polarity": null,
-      "original_phrases": ["자극이 좀 있었어요"]
+      "original_phrases": [
+        "자극이 좀 있었어요"
+      ]
     },
     {
       "entity_id": "ent_kw_산뜻",
@@ -526,106 +545,12 @@
       "is_placeholder": false,
       "bee_type": null,
       "polarity": null,
-      "original_phrases": ["산뜻하고"]
+      "original_phrases": [
+        "산뜻하고"
+      ]
     }
   ],
   "edges": [
-    {
-      "edge_id": "edge_p001_brand",
-      "subj_entity_id": "ent_prd_p001",
-      "obj_entity_id": "ent_brd_laneige",
-      "relation_type": "OFFICIAL_BRAND",
-      "sentiment": "NEU",
-      "weight": 4,
-      "negated": false,
-      "intensity": null,
-      "evidence_kind": "RAW_REL",
-      "confidence": 1.0
-    },
-    {
-      "edge_id": "edge_p002_brand",
-      "subj_entity_id": "ent_prd_p002",
-      "obj_entity_id": "ent_brd_sulwhasoo",
-      "relation_type": "OFFICIAL_BRAND",
-      "sentiment": "NEU",
-      "weight": 2,
-      "negated": false,
-      "intensity": null,
-      "evidence_kind": "RAW_REL",
-      "confidence": 1.0
-    },
-    {
-      "edge_id": "edge_p003_brand",
-      "subj_entity_id": "ent_prd_p003",
-      "obj_entity_id": "ent_brd_innisfree",
-      "relation_type": "OFFICIAL_BRAND",
-      "sentiment": "NEU",
-      "weight": 2,
-      "negated": false,
-      "intensity": null,
-      "evidence_kind": "RAW_REL",
-      "confidence": 1.0
-    },
-    {
-      "edge_id": "edge_p005_brand",
-      "subj_entity_id": "ent_prd_p005",
-      "obj_entity_id": "ent_brd_hera",
-      "relation_type": "OFFICIAL_BRAND",
-      "sentiment": "NEU",
-      "weight": 2,
-      "negated": false,
-      "intensity": null,
-      "evidence_kind": "RAW_REL",
-      "confidence": 1.0
-    },
-    {
-      "edge_id": "edge_p006_brand",
-      "subj_entity_id": "ent_prd_p006",
-      "obj_entity_id": "ent_brd_iope",
-      "relation_type": "OFFICIAL_BRAND",
-      "sentiment": "NEU",
-      "weight": 1,
-      "negated": false,
-      "intensity": null,
-      "evidence_kind": "RAW_REL",
-      "confidence": 1.0
-    },
-    {
-      "edge_id": "edge_p008_brand",
-      "subj_entity_id": "ent_prd_p008",
-      "obj_entity_id": "ent_brd_sulwhasoo",
-      "relation_type": "OFFICIAL_BRAND",
-      "sentiment": "NEU",
-      "weight": 2,
-      "negated": false,
-      "intensity": null,
-      "evidence_kind": "RAW_REL",
-      "confidence": 1.0
-    },
-    {
-      "edge_id": "edge_p009_brand",
-      "subj_entity_id": "ent_prd_p009",
-      "obj_entity_id": "ent_brd_innisfree",
-      "relation_type": "OFFICIAL_BRAND",
-      "sentiment": "NEU",
-      "weight": 1,
-      "negated": false,
-      "intensity": null,
-      "evidence_kind": "RAW_REL",
-      "confidence": 1.0
-    },
-    {
-      "edge_id": "edge_p010_brand",
-      "subj_entity_id": "ent_prd_p010",
-      "obj_entity_id": "ent_brd_hera",
-      "relation_type": "OFFICIAL_BRAND",
-      "sentiment": "NEU",
-      "weight": 1,
-      "negated": false,
-      "intensity": null,
-      "evidence_kind": "RAW_REL",
-      "confidence": 1.0
-    },
     {
       "edge_id": "edge_p001_보습력_pos",
       "subj_entity_id": "ent_prd_p001",

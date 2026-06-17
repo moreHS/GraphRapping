@@ -1,6 +1,5 @@
 """Tests for DATE splitter (4-way classification)."""
 
-import pytest
 from src.normalize.date_splitter import split_date
 from src.common.enums import DateSubType
 
