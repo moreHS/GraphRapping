@@ -37,6 +37,7 @@ _KG_TYPE_TO_GR_TYPE = {
 
 
 _bee_attr_dict: dict | None = None
+_SOURCE_BACKED_KEYWORD_CONFIDENCE = 0.8
 
 
 def _get_bee_attr_dict() -> dict:
@@ -119,6 +120,37 @@ def _classify_promotion(edge: KGEdge, kg_subj: KGEntity | None, kg_obj: KGEntity
     return PromotionDecision.PROMOTE
 
 
+def _is_source_backed_keyword_edge(
+    edge: KGEdge,
+    kg_subj: KGEntity | None,
+    kg_obj: KGEntity | None,
+) -> bool:
+    """Return True for validated review keyword edges, excluding auto candidates."""
+    if edge.relation_type != "HAS_KEYWORD":
+        return False
+    if kg_subj is None or kg_obj is None:
+        return False
+    if kg_subj.entity_type != "BEE_ATTR" or kg_obj.entity_type != "KEYWORD":
+        return False
+    return edge.evidence_kind not in ("AUTO_KEYWORD", "BEE_SYNTHETIC")
+
+
+def _fact_evidence_kind(edge: KGEdge, kg_subj: KGEntity | None, kg_obj: KGEntity | None) -> str | None:
+    """Normalize source-backed KG keyword evidence for projection policy."""
+    if _is_source_backed_keyword_edge(edge, kg_subj, kg_obj):
+        return "BEE_DICT"
+    return edge.evidence_kind
+
+
+def _fact_confidence(edge: KGEdge, kg_subj: KGEntity | None, kg_obj: KGEntity | None) -> float | None:
+    """Preserve KG confidence, adding the KG NER-BeE default for validated keywords."""
+    if edge.confidence is not None:
+        return edge.confidence
+    if _is_source_backed_keyword_edge(edge, kg_subj, kg_obj):
+        return _SOURCE_BACKED_KEYWORD_CONFIDENCE
+    return None
+
+
 def kg_result_to_facts(
     kg_result: KGResult,
     review_id: str,
@@ -194,6 +226,8 @@ def kg_result_to_facts(
 
         # Determine fact_status based on promotion decision
         fact_status = "CANONICAL_PROMOTED" if decision == PromotionDecision.PROMOTE else "EVIDENCE_ONLY"
+        fact_evidence_kind = _fact_evidence_kind(edge, kg_subj, kg_obj)
+        fact_confidence = _fact_confidence(edge, kg_subj, kg_obj)
 
         # Determine predicate, polarity, modality from actual KG data
         predicate = edge.relation_type.lower()
@@ -227,7 +261,7 @@ def kg_result_to_facts(
             subject_type=subj_type,
             object_type=obj_type,
             polarity=polarity,
-            confidence=edge.confidence,
+            confidence=fact_confidence,
             source_modality=modality,
             provenance=FactProvenance(
                 raw_table="bee_raw" if is_bee else "rel_raw",
@@ -237,7 +271,7 @@ def kg_result_to_facts(
             ),
             negated=edge.negated,
             intensity=edge.intensity,
-            evidence_kind=edge.evidence_kind,
+            evidence_kind=fact_evidence_kind,
             fact_status=fact_status,
         )
 

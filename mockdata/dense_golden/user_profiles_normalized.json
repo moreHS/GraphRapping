@@ -1,0 +1,1448 @@
+{
+  "user_brand_null_cat": {
+    "basic": {
+      "age": "30s",
+      "gender": "female",
+      "skin_concerns": [
+        "건조함"
+      ],
+      "skin_tone": "웜톤",
+      "skin_type": "건성"
+    },
+    "chat": {
+      "body": {
+        "body_concerns": [],
+        "bodycare_goals": [],
+        "preferred_texture": []
+      },
+      "color_preference": {
+        "base": [],
+        "cheek": [],
+        "contour": [],
+        "eye": [],
+        "lip": []
+      },
+      "confidence": {},
+      "face": {
+        "preferred_texture": [],
+        "skin_concerns": [
+          "건조함"
+        ],
+        "skin_tone": null,
+        "skin_type": "건성",
+        "skincare_goals": [
+          "보습"
+        ],
+        "undertone": null
+      },
+      "hair": {
+        "hair_concerns": [],
+        "hair_loss_concerns": [],
+        "hair_texture": null,
+        "hair_thickness": null,
+        "haircare_goals": [],
+        "preferred_texture": []
+      },
+      "has_body_profile": false,
+      "has_face_profile": true,
+      "has_hair_profile": false,
+      "has_makeup_color_preference": false,
+      "has_makeup_profile": false,
+      "has_scalp_profile": false,
+      "has_sensitive_concern": false,
+      "has_sensory_signal": false,
+      "has_usage_behavior": false,
+      "ingredients": {
+        "allergy": [],
+        "avoid": [],
+        "preferred": []
+      },
+      "makeup": {
+        "makeup_concerns": [],
+        "makeup_goals": [],
+        "preferred_finish": [],
+        "preferred_texture": []
+      },
+      "preferred_bodycare_brand": [],
+      "preferred_brand": [
+        "이니스프리",
+        "코스알엑스"
+      ],
+      "preferred_hair_brand": [],
+      "preferred_makeup_brand": [],
+      "preferred_perfume_brand": [],
+      "preferred_skincare_brand": [],
+      "scalp": {
+        "scalp_concerns": [],
+        "scalp_type": null,
+        "scalpcare_goals": []
+      },
+      "scent": {
+        "fragrance_tolerance": null,
+        "preferred_scent": []
+      },
+      "updated_at": "2025-06-01",
+      "usage_behavior": [],
+      "usage_frequency": []
+    },
+    "purchase_analysis": {
+      "active_product_category": [],
+      "preferred_bodycare_brand": [],
+      "preferred_bodycare_brand_rank": null,
+      "preferred_brand": [],
+      "preferred_hair_brand": [],
+      "preferred_hair_brand_rank": null,
+      "preferred_makeup_brand": [],
+      "preferred_makeup_brand_rank": null,
+      "preferred_perfume_brand": [],
+      "preferred_perfume_brand_rank": null,
+      "preferred_repurchase_category": [],
+      "preferred_repurchase_category_rank": null,
+      "preferred_repurchase_product_summary": null,
+      "preferred_skincare_brand": [],
+      "preferred_skincare_brand_rank": null,
+      "season_main_category": null,
+      "seasonal_product_summary": null,
+      "use_expected_product_summary": null
+    }
+  },
+  "user_dry_30f": {
+    "basic": {
+      "age": "30s",
+      "gender": "female",
+      "skin_concerns": [
+        "건조함",
+        "잔주름",
+        "칙칙함"
+      ],
+      "skin_tone": "웜톤",
+      "skin_type": "건성"
+    },
+    "chat": {
+      "body": {
+        "body_concerns": [
+          "건조함"
+        ],
+        "bodycare_goals": [
+          "보습"
+        ],
+        "preferred_texture": [
+          "크림",
+          "오일"
+        ]
+      },
+      "color_preference": {
+        "base": [
+          "21호"
+        ],
+        "cheek": [
+          "피치"
+        ],
+        "contour": [],
+        "eye": [
+          "브라운"
+        ],
+        "lip": [
+          "코랄",
+          "MLBB"
+        ]
+      },
+      "confidence": {
+        "body": {
+          "concerns": [
+            0.65
+          ],
+          "goals": [
+            0.63
+          ],
+          "preferred_texture": [
+            0.6,
+            0.58
+          ]
+        },
+        "brand_preference_from_chat": [
+          {
+            "brand": [
+              0.77,
+              0.77
+            ],
+            "category": [
+              0.77
+            ]
+          }
+        ],
+        "color_preference": {
+          "base": [
+            0.89
+          ],
+          "cheek": [
+            0.82
+          ],
+          "contour": [],
+          "eye": [
+            0.8
+          ],
+          "lip": [
+            0.84,
+            0.81
+          ]
+        },
+        "face": {
+          "concerns": [
+            0.92,
+            0.87,
+            0.79
+          ],
+          "goals": [
+            0.88,
+            0.83,
+            0.76
+          ],
+          "preferred_texture": [
+            0.85,
+            0.81
+          ],
+          "profile": {
+            "skin_tone": [
+              0.73
+            ],
+            "skin_type": [
+              0.95
+            ],
+            "undertone": [
+              0.68
+            ]
+          }
+        },
+        "hair": {
+          "concerns": [
+            0.78,
+            0.72
+          ],
+          "goals": [
+            0.75,
+            0.7
+          ],
+          "hair_loss_concerns": [],
+          "preferred_texture": [
+            0.69,
+            0.65
+          ],
+          "profile": {
+            "hair_texture": [
+              0.71
+            ],
+            "hair_thickness": []
+          }
+        },
+        "has_body_profile": [],
+        "has_face_profile": [],
+        "has_hair_profile": [],
+        "has_makeup_color_preference": [],
+        "has_makeup_profile": [],
+        "has_sensitive_concern": [],
+        "has_sensory_signal": [],
+        "has_usage_behavior": [],
+        "ingredients": {
+          "allergy": [],
+          "avoid": [
+            0.93
+          ],
+          "preferred": [
+            0.91,
+            0.88,
+            0.85
+          ]
+        },
+        "makeup": {
+          "concerns": [
+            0.82
+          ],
+          "goals": [
+            0.85,
+            0.8
+          ],
+          "preferred_finish": [
+            0.87
+          ],
+          "preferred_texture": [
+            0.83,
+            0.79
+          ]
+        },
+        "scalp": {
+          "concerns": [
+            0.77,
+            0.72
+          ],
+          "goals": [
+            0.74
+          ],
+          "profile": {
+            "scalp_type": [
+              0.8
+            ]
+          }
+        },
+        "scent": {
+          "preferred": [
+            0.74,
+            0.68
+          ],
+          "tolerance": [
+            0.7
+          ]
+        },
+        "usage_preference": {
+          "behavior": [
+            {
+              "category": [
+                0.8
+              ],
+              "value": [
+                0.8
+              ]
+            }
+          ],
+          "frequency": [
+            {
+              "category": [
+                0.85
+              ],
+              "value": [
+                0.85
+              ]
+            }
+          ]
+        }
+      },
+      "face": {
+        "preferred_texture": [
+          "크림",
+          "밤"
+        ],
+        "skin_concerns": [
+          "건조함",
+          "잔주름",
+          "칙칙함"
+        ],
+        "skin_tone": "밝은 피부",
+        "skin_type": "건성",
+        "skincare_goals": [
+          "보습",
+          "탄력",
+          "광채"
+        ],
+        "undertone": "웜톤"
+      },
+      "hair": {
+        "hair_concerns": [
+          "건조",
+          "갈라짐"
+        ],
+        "hair_loss_concerns": [],
+        "hair_texture": "가는 모발",
+        "hair_thickness": "가는 모발",
+        "haircare_goals": [
+          "보습",
+          "윤기"
+        ],
+        "preferred_texture": [
+          "오일",
+          "크림"
+        ]
+      },
+      "has_body_profile": true,
+      "has_face_profile": true,
+      "has_hair_profile": true,
+      "has_makeup_color_preference": true,
+      "has_makeup_profile": true,
+      "has_scalp_profile": true,
+      "has_sensitive_concern": false,
+      "has_sensory_signal": true,
+      "has_usage_behavior": true,
+      "ingredients": {
+        "allergy": [],
+        "avoid": [
+          "알코올"
+        ],
+        "preferred": [
+          "히알루론산",
+          "세라마이드",
+          "스쿠알란"
+        ]
+      },
+      "makeup": {
+        "makeup_concerns": [
+          "건조함으로 인한 들뜸"
+        ],
+        "makeup_goals": [
+          "촉촉한 마무리",
+          "지속력"
+        ],
+        "preferred_finish": [
+          "글로우"
+        ],
+        "preferred_texture": [
+          "쿠션",
+          "리퀴드"
+        ]
+      },
+      "preferred_bodycare_brand": [],
+      "preferred_brand": [],
+      "preferred_hair_brand": [],
+      "preferred_makeup_brand": [],
+      "preferred_perfume_brand": [],
+      "preferred_skincare_brand": [
+        "라네즈",
+        "설화수"
+      ],
+      "scalp": {
+        "scalp_concerns": [
+          "건조",
+          "각질"
+        ],
+        "scalp_type": "건성 두피",
+        "scalpcare_goals": [
+          "보습"
+        ]
+      },
+      "scent": {
+        "fragrance_tolerance": "보통",
+        "preferred_scent": [
+          "플로럴",
+          "프루티"
+        ]
+      },
+      "updated_at": "2025-05-02",
+      "usage_behavior": [
+        "아침저녁 이중 세안(스킨케어)"
+      ],
+      "usage_frequency": [
+        "매일(스킨케어)"
+      ]
+    },
+    "purchase_analysis": {
+      "active_product_category": [
+        "skincare",
+        "makeup",
+        "bodycare",
+        "hair"
+      ],
+      "preferred_bodycare_brand": [
+        "한율"
+      ],
+      "preferred_bodycare_brand_rank": {
+        "한율": 1
+      },
+      "preferred_brand": [
+        "라네즈",
+        "설화수",
+        "한율"
+      ],
+      "preferred_hair_brand": [],
+      "preferred_hair_brand_rank": null,
+      "preferred_makeup_brand": [],
+      "preferred_makeup_brand_rank": null,
+      "preferred_perfume_brand": [],
+      "preferred_perfume_brand_rank": null,
+      "preferred_repurchase_category": [
+        "크림",
+        "에센스"
+      ],
+      "preferred_repurchase_category_rank": {
+        "에센스": 2,
+        "크림": 1
+      },
+      "preferred_repurchase_product_summary": {
+        "에센스": [
+          {
+            "main_eff": "수분부족 개선",
+            "preferred_repurchase_intense": 5,
+            "purchase_cycle_days": 60,
+            "recent_purchase_date": "2025-12-31",
+            "rprs_prd_nm": "라네즈 워터뱅크세럼"
+          }
+        ],
+        "크림": [
+          {
+            "main_eff": "피부탄력 개선",
+            "preferred_repurchase_intense": 8,
+            "purchase_cycle_days": 30,
+            "recent_purchase_date": "2025-11-15",
+            "rprs_prd_nm": "설화수 자음생크림"
+          }
+        ]
+      },
+      "preferred_skincare_brand": [
+        "설화수",
+        "라네즈"
+      ],
+      "preferred_skincare_brand_rank": {
+        "라네즈": 2,
+        "설화수": 1
+      },
+      "season_main_category": {
+        "fall": [
+          "크림",
+          "에센스"
+        ],
+        "spring": [
+          "에센스",
+          "로션"
+        ],
+        "summer": [
+          "선크림",
+          "젤"
+        ],
+        "winter": [
+          "크림",
+          "앰플",
+          "바디로션"
+        ]
+      },
+      "seasonal_product_summary": {
+        "winter": {
+          "크림": [
+            {
+              "main_eff": "피부탄력 개선",
+              "rprs_prd_nm": "설화수 자음생크림"
+            }
+          ]
+        }
+      },
+      "use_expected_product_summary": {
+        "bodycare": {
+          "바디로션": [
+            {
+              "purchase_date": "2025-12-01",
+              "rprs_prd_nm": "한율 어린쑥바디로션"
+            }
+          ]
+        },
+        "hair": {
+          "샴푸": [
+            {
+              "purchase_date": "2025-11-01",
+              "rprs_prd_nm": "려 자양윤모샴푸"
+            }
+          ]
+        },
+        "makeup": {
+          "쿠션": [
+            {
+              "purchase_date": "2025-10-01",
+              "rprs_prd_nm": "아이오페 에어쿠션"
+            }
+          ]
+        },
+        "skincare": {
+          "에센스": [
+            {
+              "main_eff": "수분부족 개선",
+              "purchase_date": "2025-12-31",
+              "rprs_prd_nm": "라네즈 워터뱅크세럼"
+            }
+          ],
+          "크림": [
+            {
+              "main_eff": "피부탄력 개선",
+              "purchase_date": "2025-11-15",
+              "rprs_prd_nm": "설화수 자음생크림"
+            }
+          ]
+        }
+      }
+    }
+  },
+  "user_fragrance_60f": {
+    "basic": {
+      "age": "60s",
+      "gender": "female",
+      "skin_concerns": [
+        "향 지속력 고민"
+      ],
+      "skin_tone": "뉴트럴",
+      "skin_type": "수부지"
+    },
+    "chat": null,
+    "purchase_analysis": {
+      "active_product_category": [
+        "perfume"
+      ],
+      "preferred_bodycare_brand": [],
+      "preferred_bodycare_brand_rank": null,
+      "preferred_brand": [],
+      "preferred_hair_brand": [],
+      "preferred_hair_brand_rank": null,
+      "preferred_makeup_brand": [],
+      "preferred_makeup_brand_rank": null,
+      "preferred_perfume_brand": [
+        "구딸",
+        "퍼즐우드"
+      ],
+      "preferred_perfume_brand_rank": null,
+      "preferred_repurchase_category": [],
+      "preferred_repurchase_category_rank": null,
+      "preferred_repurchase_product_summary": null,
+      "preferred_skincare_brand": [],
+      "preferred_skincare_brand_rank": null,
+      "season_main_category": null,
+      "seasonal_product_summary": null,
+      "use_expected_product_summary": {
+        "perfume": {
+          "향수": [
+            {
+              "main_eff": "향 지속",
+              "purchase_date": "2025-01-08",
+              "rprs_prd_nm": "구딸 향수"
+            }
+          ]
+        }
+      }
+    }
+  },
+  "user_makeup_matte_50m": {
+    "basic": {
+      "age": "50s",
+      "gender": "male",
+      "skin_concerns": [
+        "번들거림",
+        "모공"
+      ],
+      "skin_tone": "뉴트럴",
+      "skin_type": "지성"
+    },
+    "chat": {
+      "body": {
+        "body_concerns": [],
+        "bodycare_goals": [],
+        "preferred_texture": []
+      },
+      "color_preference": {
+        "base": [
+          "23호"
+        ],
+        "cheek": [],
+        "contour": [],
+        "eye": [],
+        "lip": [
+          "로즈",
+          "브릭"
+        ]
+      },
+      "confidence": {},
+      "face": {
+        "preferred_texture": [],
+        "skin_concerns": [
+          "번들거림",
+          "모공"
+        ],
+        "skin_tone": "23호",
+        "skin_type": "지성",
+        "skincare_goals": [
+          "보송한 표현",
+          "지속력"
+        ],
+        "undertone": "뉴트럴"
+      },
+      "hair": {
+        "hair_concerns": [],
+        "hair_loss_concerns": [],
+        "hair_texture": null,
+        "hair_thickness": null,
+        "haircare_goals": [],
+        "preferred_texture": []
+      },
+      "has_body_profile": false,
+      "has_face_profile": true,
+      "has_hair_profile": false,
+      "has_makeup_color_preference": true,
+      "has_makeup_profile": true,
+      "has_scalp_profile": false,
+      "has_sensitive_concern": false,
+      "has_sensory_signal": false,
+      "has_usage_behavior": false,
+      "ingredients": {
+        "allergy": [],
+        "avoid": [],
+        "preferred": [
+          "실리카"
+        ]
+      },
+      "makeup": {
+        "makeup_concerns": [
+          "무너짐"
+        ],
+        "makeup_goals": [
+          "지속력",
+          "모공 보정"
+        ],
+        "preferred_finish": [
+          "매트",
+          "세미매트"
+        ],
+        "preferred_texture": [
+          "파우더",
+          "틴트"
+        ]
+      },
+      "preferred_bodycare_brand": [],
+      "preferred_brand": [
+        "비레디"
+      ],
+      "preferred_hair_brand": [],
+      "preferred_makeup_brand": [
+        "에스쁘아"
+      ],
+      "preferred_perfume_brand": [],
+      "preferred_skincare_brand": [],
+      "scalp": {
+        "scalp_concerns": [],
+        "scalp_type": null,
+        "scalpcare_goals": []
+      },
+      "scent": {
+        "fragrance_tolerance": null,
+        "preferred_scent": []
+      },
+      "updated_at": "2025-09-16",
+      "usage_behavior": [],
+      "usage_frequency": []
+    },
+    "purchase_analysis": {
+      "active_product_category": [
+        "skincare",
+        "makeup"
+      ],
+      "preferred_bodycare_brand": [],
+      "preferred_bodycare_brand_rank": null,
+      "preferred_brand": [
+        "에뛰드",
+        "에스쁘아",
+        "비레디"
+      ],
+      "preferred_hair_brand": [],
+      "preferred_hair_brand_rank": null,
+      "preferred_makeup_brand": [
+        "에뛰드",
+        "에스쁘아",
+        "비레디"
+      ],
+      "preferred_makeup_brand_rank": null,
+      "preferred_perfume_brand": [],
+      "preferred_perfume_brand_rank": null,
+      "preferred_repurchase_category": [
+        "파우더",
+        "틴트"
+      ],
+      "preferred_repurchase_category_rank": {
+        "틴트": 2,
+        "파우더": 1
+      },
+      "preferred_repurchase_product_summary": {
+        "틴트": [
+          {
+            "main_eff": "지속력",
+            "preferred_repurchase_intense": 7,
+            "purchase_cycle_days": 60,
+            "recent_purchase_date": "2025-02-12",
+            "rprs_prd_nm": "틴트 재구매"
+          }
+        ],
+        "파우더": [
+          {
+            "main_eff": "지속력",
+            "preferred_repurchase_intense": 9,
+            "purchase_cycle_days": 45,
+            "recent_purchase_date": "2025-01-11",
+            "rprs_prd_nm": "파우더 재구매"
+          }
+        ]
+      },
+      "preferred_skincare_brand": [],
+      "preferred_skincare_brand_rank": null,
+      "season_main_category": {
+        "fall": [
+          "틴트"
+        ],
+        "spring": [
+          "틴트"
+        ],
+        "summer": [
+          "파우더",
+          "프라이머"
+        ],
+        "winter": [
+          "클렌저"
+        ]
+      },
+      "seasonal_product_summary": {
+        "summer": {
+          "파우더": [
+            {
+              "main_eff": "지속력",
+              "rprs_prd_nm": "에스쁘아 파우더"
+            }
+          ],
+          "프라이머": [
+            {
+              "main_eff": "지속력",
+              "rprs_prd_nm": "에스쁘아 프라이머"
+            }
+          ]
+        }
+      },
+      "use_expected_product_summary": {
+        "makeup": {
+          "틴트": [
+            {
+              "main_eff": "지속력",
+              "purchase_date": "2025-04-17",
+              "rprs_prd_nm": "에뛰드 틴트"
+            }
+          ],
+          "파우더": [
+            {
+              "main_eff": "지속력",
+              "purchase_date": "2025-02-11",
+              "rprs_prd_nm": "에뛰드 파우더"
+            }
+          ],
+          "프라이머": [
+            {
+              "main_eff": "지속력",
+              "purchase_date": "2025-03-14",
+              "rprs_prd_nm": "에뛰드 프라이머"
+            }
+          ]
+        },
+        "skincare": {
+          "클렌저": [
+            {
+              "main_eff": "지속력",
+              "purchase_date": "2025-01-08",
+              "rprs_prd_nm": "코스알엑스 클렌저"
+            }
+          ]
+        }
+      }
+    }
+  },
+  "user_scalp_care_50m": {
+    "basic": {
+      "age": "50s",
+      "gender": "male",
+      "skin_concerns": [
+        "두피유분",
+        "열감"
+      ],
+      "skin_tone": "뉴트럴",
+      "skin_type": "지성"
+    },
+    "chat": {
+      "body": {
+        "body_concerns": [],
+        "bodycare_goals": [],
+        "preferred_texture": []
+      },
+      "color_preference": {
+        "base": [],
+        "cheek": [],
+        "contour": [],
+        "eye": [],
+        "lip": []
+      },
+      "confidence": {},
+      "face": {
+        "preferred_texture": [],
+        "skin_concerns": [],
+        "skin_tone": null,
+        "skin_type": null,
+        "skincare_goals": [],
+        "undertone": null
+      },
+      "hair": {
+        "hair_concerns": [
+          "볼륨 저하"
+        ],
+        "hair_loss_concerns": [],
+        "hair_texture": "보통 모발",
+        "hair_thickness": "보통",
+        "haircare_goals": [
+          "산뜻함"
+        ],
+        "preferred_texture": []
+      },
+      "has_body_profile": false,
+      "has_face_profile": false,
+      "has_hair_profile": true,
+      "has_makeup_color_preference": false,
+      "has_makeup_profile": false,
+      "has_scalp_profile": true,
+      "has_sensitive_concern": false,
+      "has_sensory_signal": true,
+      "has_usage_behavior": true,
+      "ingredients": {
+        "allergy": [],
+        "avoid": [],
+        "preferred": [
+          "멘톨",
+          "징크피리치온"
+        ]
+      },
+      "makeup": {
+        "makeup_concerns": [],
+        "makeup_goals": [],
+        "preferred_finish": [],
+        "preferred_texture": []
+      },
+      "preferred_bodycare_brand": [],
+      "preferred_brand": [],
+      "preferred_hair_brand": [
+        "라보에이치",
+        "려"
+      ],
+      "preferred_makeup_brand": [],
+      "preferred_perfume_brand": [],
+      "preferred_skincare_brand": [],
+      "scalp": {
+        "scalp_concerns": [
+          "유분",
+          "열감",
+          "냄새"
+        ],
+        "scalp_type": "지성 두피",
+        "scalpcare_goals": [
+          "두피진정",
+          "클렌징"
+        ]
+      },
+      "scent": {
+        "fragrance_tolerance": "산뜻한 향 선호",
+        "preferred_scent": []
+      },
+      "updated_at": "2025-10-16",
+      "usage_behavior": [],
+      "usage_frequency": []
+    },
+    "purchase_analysis": {
+      "active_product_category": [
+        "bodycare",
+        "hair"
+      ],
+      "preferred_bodycare_brand": [],
+      "preferred_bodycare_brand_rank": null,
+      "preferred_brand": [
+        "라보에이치",
+        "려",
+        "아모스 프로페셔널"
+      ],
+      "preferred_hair_brand": [
+        "라보에이치",
+        "려",
+        "아모스 프로페셔널"
+      ],
+      "preferred_hair_brand_rank": null,
+      "preferred_makeup_brand": [],
+      "preferred_makeup_brand_rank": null,
+      "preferred_perfume_brand": [],
+      "preferred_perfume_brand_rank": null,
+      "preferred_repurchase_category": [
+        "샴푸",
+        "두피토닉"
+      ],
+      "preferred_repurchase_category_rank": {
+        "두피토닉": 2,
+        "샴푸": 1
+      },
+      "preferred_repurchase_product_summary": {
+        "두피토닉": [
+          {
+            "main_eff": "두피진정",
+            "preferred_repurchase_intense": 7,
+            "purchase_cycle_days": 60,
+            "recent_purchase_date": "2025-02-12",
+            "rprs_prd_nm": "두피토닉 재구매"
+          }
+        ],
+        "샴푸": [
+          {
+            "main_eff": "두피진정",
+            "preferred_repurchase_intense": 9,
+            "purchase_cycle_days": 45,
+            "recent_purchase_date": "2025-01-11",
+            "rprs_prd_nm": "샴푸 재구매"
+          }
+        ]
+      },
+      "preferred_skincare_brand": [],
+      "preferred_skincare_brand_rank": null,
+      "season_main_category": {
+        "fall": [
+          "두피토닉"
+        ],
+        "spring": [
+          "샴푸"
+        ],
+        "summer": [
+          "샴푸",
+          "두피토닉"
+        ],
+        "winter": [
+          "샴푸"
+        ]
+      },
+      "seasonal_product_summary": {
+        "summer": {
+          "두피토닉": [
+            {
+              "main_eff": "두피진정",
+              "rprs_prd_nm": "라보에이치 두피토닉"
+            }
+          ],
+          "샴푸": [
+            {
+              "main_eff": "두피진정",
+              "rprs_prd_nm": "라보에이치 샴푸"
+            }
+          ]
+        }
+      },
+      "use_expected_product_summary": {
+        "bodycare": {
+          "바디워시": [
+            {
+              "main_eff": "두피진정",
+              "purchase_date": "2025-01-08",
+              "rprs_prd_nm": "해피바스 바디워시"
+            }
+          ]
+        },
+        "hair": {
+          "두피토닉": [
+            {
+              "main_eff": "두피진정",
+              "purchase_date": "2025-03-14",
+              "rprs_prd_nm": "라보에이치 두피토닉"
+            }
+          ],
+          "샴푸": [
+            {
+              "main_eff": "두피진정",
+              "purchase_date": "2025-02-11",
+              "rprs_prd_nm": "라보에이치 샴푸"
+            }
+          ]
+        }
+      }
+    }
+  },
+  "user_sensitive_40f": {
+    "basic": {
+      "age": "40s",
+      "gender": "female",
+      "skin_concerns": [
+        "붉은기",
+        "자극",
+        "건조"
+      ],
+      "skin_tone": "쿨톤",
+      "skin_type": "민감성"
+    },
+    "chat": {
+      "body": {
+        "body_concerns": [],
+        "bodycare_goals": [],
+        "preferred_texture": []
+      },
+      "color_preference": {
+        "base": [
+          "21호"
+        ],
+        "cheek": [
+          "핑크"
+        ],
+        "contour": [],
+        "eye": [
+          "핑크브라운"
+        ],
+        "lip": [
+          "로즈"
+        ]
+      },
+      "confidence": {
+        "body": {
+          "concerns": [],
+          "goals": [],
+          "preferred_texture": []
+        },
+        "brand_preference_from_chat": [
+          {
+            "brand": [
+              0.82,
+              0.82
+            ],
+            "category": [
+              0.82
+            ]
+          }
+        ],
+        "color_preference": {
+          "base": [
+            0.91
+          ],
+          "cheek": [
+            0.86
+          ],
+          "contour": [],
+          "eye": [
+            0.84
+          ],
+          "lip": [
+            0.88
+          ]
+        },
+        "face": {
+          "concerns": [
+            0.95,
+            0.93,
+            0.9
+          ],
+          "goals": [
+            0.92,
+            0.89,
+            0.86
+          ],
+          "preferred_texture": [
+            0.88,
+            0.83
+          ],
+          "profile": {
+            "skin_tone": [
+              0.82
+            ],
+            "skin_type": [
+              0.97
+            ],
+            "undertone": [
+              0.79
+            ]
+          }
+        },
+        "hair": {
+          "concerns": [
+            0.72
+          ],
+          "goals": [
+            0.7,
+            0.67
+          ],
+          "hair_loss_concerns": [
+            0.68
+          ],
+          "preferred_texture": [
+            0.65
+          ],
+          "profile": {
+            "hair_texture": [
+              0.75
+            ],
+            "hair_thickness": []
+          }
+        },
+        "has_body_profile": [],
+        "has_face_profile": [],
+        "has_hair_profile": [],
+        "has_makeup_color_preference": [],
+        "has_makeup_profile": [],
+        "has_sensitive_concern": [],
+        "has_sensory_signal": [],
+        "has_usage_behavior": [],
+        "ingredients": {
+          "allergy": [
+            0.98
+          ],
+          "avoid": [
+            0.96,
+            0.94,
+            0.91
+          ],
+          "preferred": [
+            0.93,
+            0.91,
+            0.89
+          ]
+        },
+        "makeup": {
+          "concerns": [
+            0.88
+          ],
+          "goals": [
+            0.86,
+            0.83
+          ],
+          "preferred_finish": [
+            0.82
+          ],
+          "preferred_texture": [
+            0.85
+          ]
+        },
+        "scalp": {
+          "concerns": [
+            0.83,
+            0.8
+          ],
+          "goals": [
+            0.82
+          ],
+          "profile": {
+            "scalp_type": [
+              0.85
+            ]
+          }
+        },
+        "scent": {
+          "preferred": [],
+          "tolerance": [
+            0.9
+          ]
+        },
+        "usage_preference": {
+          "behavior": [
+            {
+              "category": [
+                0.85
+              ],
+              "value": [
+                0.85
+              ]
+            }
+          ],
+          "frequency": [
+            {
+              "category": [
+                0.88
+              ],
+              "value": [
+                0.88
+              ]
+            }
+          ]
+        }
+      },
+      "face": {
+        "preferred_texture": [
+          "크림",
+          "밀크"
+        ],
+        "skin_concerns": [
+          "붉은기",
+          "자극",
+          "건조"
+        ],
+        "skin_tone": "21호",
+        "skin_type": "민감성",
+        "skincare_goals": [
+          "진정",
+          "보습",
+          "장벽강화"
+        ],
+        "undertone": "쿨톤"
+      },
+      "hair": {
+        "hair_concerns": [
+          "푸석함"
+        ],
+        "hair_loss_concerns": [
+          "가르마 숱 감소"
+        ],
+        "hair_texture": "가는 모발",
+        "hair_thickness": "보통",
+        "haircare_goals": [
+          "볼륨",
+          "영양"
+        ],
+        "preferred_texture": [
+          "에센스"
+        ]
+      },
+      "has_body_profile": false,
+      "has_face_profile": true,
+      "has_hair_profile": true,
+      "has_makeup_color_preference": true,
+      "has_makeup_profile": true,
+      "has_scalp_profile": true,
+      "has_sensitive_concern": true,
+      "has_sensory_signal": true,
+      "has_usage_behavior": true,
+      "ingredients": {
+        "allergy": [
+          "프로폴리스"
+        ],
+        "avoid": [
+          "향료",
+          "에탄올",
+          "레티놀"
+        ],
+        "preferred": [
+          "판테놀",
+          "마데카소사이드",
+          "세라마이드"
+        ]
+      },
+      "makeup": {
+        "makeup_concerns": [
+          "자극 없는 제품"
+        ],
+        "makeup_goals": [
+          "피부 보정",
+          "자극 최소화"
+        ],
+        "preferred_finish": [
+          "세미매트"
+        ],
+        "preferred_texture": [
+          "쿠션"
+        ]
+      },
+      "preferred_bodycare_brand": [],
+      "preferred_brand": [],
+      "preferred_hair_brand": [],
+      "preferred_makeup_brand": [],
+      "preferred_perfume_brand": [],
+      "preferred_skincare_brand": [
+        "아이오페",
+        "프리메라"
+      ],
+      "scalp": {
+        "scalp_concerns": [
+          "자극",
+          "가려움"
+        ],
+        "scalp_type": "민감 두피",
+        "scalpcare_goals": [
+          "진정"
+        ]
+      },
+      "scent": {
+        "fragrance_tolerance": "무향 선호",
+        "preferred_scent": []
+      },
+      "updated_at": "2025-05-10",
+      "usage_behavior": [
+        "아침저녁 단계적 레이어링(스킨케어)"
+      ],
+      "usage_frequency": [
+        "매일(스킨케어)"
+      ]
+    },
+    "purchase_analysis": {
+      "active_product_category": [
+        "skincare",
+        "makeup",
+        "hair"
+      ],
+      "preferred_bodycare_brand": [],
+      "preferred_bodycare_brand_rank": null,
+      "preferred_brand": [
+        "아이오페",
+        "일리윤"
+      ],
+      "preferred_hair_brand": [],
+      "preferred_hair_brand_rank": null,
+      "preferred_makeup_brand": [
+        "아이오페"
+      ],
+      "preferred_makeup_brand_rank": {
+        "아이오페": 1
+      },
+      "preferred_perfume_brand": [],
+      "preferred_perfume_brand_rank": null,
+      "preferred_repurchase_category": [
+        "크림",
+        "선크림"
+      ],
+      "preferred_repurchase_category_rank": {
+        "선크림": 2,
+        "크림": 1
+      },
+      "preferred_repurchase_product_summary": {
+        "선크림": [
+          {
+            "preferred_repurchase_intense": 8,
+            "purchase_cycle_days": 90
+          }
+        ],
+        "크림": [
+          {
+            "preferred_repurchase_intense": 9,
+            "purchase_cycle_days": 60
+          }
+        ]
+      },
+      "preferred_skincare_brand": [
+        "아이오페",
+        "일리윤"
+      ],
+      "preferred_skincare_brand_rank": {
+        "아이오페": 1,
+        "일리윤": 1
+      },
+      "season_main_category": {
+        "fall": [
+          "크림",
+          "앰플"
+        ],
+        "spring": [
+          "에센스",
+          "크림"
+        ],
+        "summer": [
+          "선크림",
+          "젤크림"
+        ],
+        "winter": [
+          "크림",
+          "오일",
+          "앰플"
+        ]
+      },
+      "seasonal_product_summary": null,
+      "use_expected_product_summary": {
+        "hair": {
+          "트리트먼트": [
+            {
+              "purchase_date": "2025-12-05"
+            }
+          ]
+        },
+        "makeup": {
+          "쿠션": [
+            {
+              "purchase_date": "2025-10-15"
+            }
+          ]
+        },
+        "skincare": {
+          "선크림": [
+            {
+              "purchase_date": "2025-12-10"
+            }
+          ],
+          "에센스": [
+            {
+              "purchase_date": "2025-11-30"
+            }
+          ],
+          "크림": [
+            {
+              "purchase_date": "2025-12-25"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

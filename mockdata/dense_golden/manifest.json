@@ -1,0 +1,1464 @@
+{
+  "fixture_date": "2026-06-22",
+  "fixture_name": "dense_golden",
+  "hashes": {
+    "algorithm": "sha256",
+    "inputs": {
+      "product_catalog_es.json": "376e93c3241cac00a51e9db81bc6db34b6174fb34899e58a211d860ccc45c6d9",
+      "product_review_stats_snowflake_latest.json": "cf278d9bf6b9c138622528062619b7040401e041ac03be8f8c6b1457043e332b",
+      "review_triples_raw.json": "ed4911a5941a0913f8d52d38c506fa579e875f20ae7a0b501200a946ec1c29e8",
+      "user_profiles_normalized.json": "7954e16007aefc44bf2067e9ef8fff6912fc2858d0da91f86a25cb58a9c1f586"
+    },
+    "manifest_self_hash": null,
+    "manifest_self_hash_note": "Self-hash is intentionally omitted because it would change the manifest content.",
+    "outputs": {
+      "product_catalog_es.json": "d4cf6c474bf5e06272d5bbb4109a74ecffa67169eb6cb3fca1338c0e8ffd861e",
+      "review_triples_raw.json": "6ef1ffdc076b37dcafbb08a818da341f94666c79ca34d9bab042820283f38beb",
+      "user_profiles_normalized.json": "e6a8843f28cf5ed60b3edc0dc3cecadafb8a578bebee518601849208fcd0288d"
+    }
+  },
+  "inputs": {
+    "product_count": 517,
+    "review_count": 906,
+    "user_count": 50,
+    "wide_distinct_product_count": 517
+  },
+  "policy": {
+    "review_remap": "text, NER, BEE, and relation annotations are preserved; product metadata is remapped.",
+    "selection": [
+      "top 20 source_review_count_6m overall after service/noise exclusion",
+      "top 5 source_review_count_6m per recommendation category group",
+      "profile anchors only when exact product id or exact normalized name resolves to one product"
+    ],
+    "wide_baseline_preserved": true
+  },
+  "profiles": {
+    "coverage": {
+      "user_brand_null_cat": {
+        "active_categories": [],
+        "concerns": [
+          "건조함"
+        ],
+        "empty_fields": {
+          "has_no_active_category": true,
+          "has_no_any_preferred_brand": false,
+          "has_no_chat": false,
+          "has_no_purchase_preferred_brand": true
+        },
+        "goals": [
+          "보습"
+        ],
+        "owned_or_summary_products": [],
+        "preferred_brands": [
+          "이니스프리",
+          "코스알엑스"
+        ],
+        "purchase_preferred_brands": [],
+        "texture_or_value_preferences": []
+      },
+      "user_dry_30f": {
+        "active_categories": [
+          "skincare",
+          "makeup",
+          "bodycare",
+          "hair"
+        ],
+        "concerns": [
+          "건조함",
+          "잔주름",
+          "칙칙함"
+        ],
+        "empty_fields": {
+          "has_no_active_category": false,
+          "has_no_any_preferred_brand": false,
+          "has_no_chat": false,
+          "has_no_purchase_preferred_brand": false
+        },
+        "goals": [
+          "보습",
+          "탄력",
+          "광채",
+          "윤기",
+          "촉촉한 마무리",
+          "지속력"
+        ],
+        "owned_or_summary_products": [
+          "라네즈 워터뱅크세럼",
+          "설화수 자음생크림",
+          "아이오페 에어쿠션",
+          "한율 어린쑥바디로션",
+          "려 자양윤모샴푸",
+          "설화수 자음생크림",
+          "라네즈 워터뱅크세럼",
+          "설화수 자음생크림"
+        ],
+        "preferred_brands": [
+          "라네즈",
+          "설화수",
+          "한율"
+        ],
+        "purchase_preferred_brands": [
+          "라네즈",
+          "설화수",
+          "한율"
+        ],
+        "texture_or_value_preferences": []
+      },
+      "user_fragrance_60f": {
+        "active_categories": [
+          "perfume"
+        ],
+        "concerns": [
+          "향 지속력 고민"
+        ],
+        "empty_fields": {
+          "has_no_active_category": false,
+          "has_no_any_preferred_brand": false,
+          "has_no_chat": true,
+          "has_no_purchase_preferred_brand": false
+        },
+        "goals": [],
+        "owned_or_summary_products": [
+          "구딸 향수"
+        ],
+        "preferred_brands": [
+          "구딸",
+          "퍼즐우드"
+        ],
+        "purchase_preferred_brands": [
+          "구딸",
+          "퍼즐우드"
+        ],
+        "texture_or_value_preferences": []
+      },
+      "user_makeup_matte_50m": {
+        "active_categories": [
+          "skincare",
+          "makeup"
+        ],
+        "concerns": [
+          "번들거림",
+          "모공"
+        ],
+        "empty_fields": {
+          "has_no_active_category": false,
+          "has_no_any_preferred_brand": false,
+          "has_no_chat": false,
+          "has_no_purchase_preferred_brand": false
+        },
+        "goals": [
+          "보송한 표현",
+          "지속력",
+          "모공 보정"
+        ],
+        "owned_or_summary_products": [
+          "코스알엑스 클렌저",
+          "에뛰드 파우더",
+          "에뛰드 프라이머",
+          "에뛰드 틴트",
+          "파우더 재구매",
+          "틴트 재구매",
+          "에스쁘아 파우더",
+          "에스쁘아 프라이머"
+        ],
+        "preferred_brands": [
+          "에뛰드",
+          "에스쁘아",
+          "비레디"
+        ],
+        "purchase_preferred_brands": [
+          "에뛰드",
+          "에스쁘아",
+          "비레디"
+        ],
+        "texture_or_value_preferences": []
+      },
+      "user_scalp_care_50m": {
+        "active_categories": [
+          "bodycare",
+          "hair"
+        ],
+        "concerns": [
+          "두피유분",
+          "열감"
+        ],
+        "empty_fields": {
+          "has_no_active_category": false,
+          "has_no_any_preferred_brand": false,
+          "has_no_chat": false,
+          "has_no_purchase_preferred_brand": false
+        },
+        "goals": [
+          "산뜻함"
+        ],
+        "owned_or_summary_products": [
+          "해피바스 바디워시",
+          "라보에이치 샴푸",
+          "라보에이치 두피토닉",
+          "샴푸 재구매",
+          "두피토닉 재구매",
+          "라보에이치 샴푸",
+          "라보에이치 두피토닉"
+        ],
+        "preferred_brands": [
+          "라보에이치",
+          "려",
+          "아모스 프로페셔널"
+        ],
+        "purchase_preferred_brands": [
+          "라보에이치",
+          "려",
+          "아모스 프로페셔널"
+        ],
+        "texture_or_value_preferences": []
+      },
+      "user_sensitive_40f": {
+        "active_categories": [
+          "skincare",
+          "makeup",
+          "hair"
+        ],
+        "concerns": [
+          "붉은기",
+          "자극",
+          "건조"
+        ],
+        "empty_fields": {
+          "has_no_active_category": false,
+          "has_no_any_preferred_brand": false,
+          "has_no_chat": false,
+          "has_no_purchase_preferred_brand": false
+        },
+        "goals": [
+          "진정",
+          "보습",
+          "장벽강화",
+          "볼륨",
+          "영양",
+          "피부 보정",
+          "자극 최소화"
+        ],
+        "owned_or_summary_products": [],
+        "preferred_brands": [
+          "아이오페",
+          "일리윤",
+          "프리메라"
+        ],
+        "purchase_preferred_brands": [
+          "아이오페",
+          "일리윤"
+        ],
+        "texture_or_value_preferences": []
+      }
+    },
+    "profile_count": 6,
+    "profile_ids": [
+      "user_dry_30f",
+      "user_brand_null_cat",
+      "user_sensitive_40f",
+      "user_scalp_care_50m",
+      "user_fragrance_60f",
+      "user_makeup_matte_50m"
+    ],
+    "source_policy": "copied_from_existing_normalized_fixture_after_verifying_personal_agent_final_six_ids"
+  },
+  "review_remap": {
+    "assigned_counts_by_group": {
+      "bodycare": 85,
+      "fragrance": 22,
+      "haircare": 91,
+      "makeup": 186,
+      "skincare": 522
+    },
+    "assigned_counts_by_product": {
+      "100389": 14,
+      "100669": 56,
+      "101057": 37,
+      "101059": 51,
+      "102622": 3,
+      "103537": 50,
+      "17792": 18,
+      "19929": 14,
+      "31573": 31,
+      "34511": 39,
+      "35036": 36,
+      "35100": 34,
+      "35117": 62,
+      "35231": 4,
+      "35236": 8,
+      "35237": 2,
+      "36903": 47,
+      "38800": 16,
+      "46647": 14,
+      "50165": 42,
+      "52110": 18,
+      "52917": 5,
+      "58763": 28,
+      "60188": 16,
+      "60766": 36,
+      "60892": 59,
+      "61090": 19,
+      "61257": 26,
+      "62454": 23,
+      "63917": 43,
+      "66964": 24,
+      "68788": 31
+    },
+    "distinct_dense_products": 32,
+    "distinct_original_products": 517,
+    "reason_counts": {
+      "dense_round_robin:bodycare": 77,
+      "dense_round_robin:fallback_all": 33,
+      "dense_round_robin:fragrance": 17,
+      "dense_round_robin:haircare": 85,
+      "dense_round_robin:makeup": 180,
+      "dense_round_robin:skincare": 514
+    },
+    "total_reviews": 906
+  },
+  "schema_version": 1,
+  "seed": 20260622,
+  "selection": {
+    "anchor_resolution": {
+      "ambiguous": [],
+      "resolved": [
+        {
+          "matches": [
+            "58763"
+          ],
+          "product_id": "58763",
+          "query_codes": [],
+          "query_name": "아이오페 에어쿠션",
+          "source_review_count_6m": 315,
+          "user_id": "user_dry_30f"
+        }
+      ],
+      "unresolved": [
+        {
+          "matches": [],
+          "query_codes": [],
+          "query_name": "라네즈 워터뱅크세럼",
+          "user_id": "user_dry_30f"
+        },
+        {
+          "matches": [],
+          "query_codes": [],
+          "query_name": "설화수 자음생크림",
+          "user_id": "user_dry_30f"
+        },
+        {
+          "matches": [],
+          "query_codes": [],
+          "query_name": "한율 어린쑥바디로션",
+          "user_id": "user_dry_30f"
+        },
+        {
+          "matches": [],
+          "query_codes": [],
+          "query_name": "려 자양윤모샴푸",
+          "user_id": "user_dry_30f"
+        },
+        {
+          "matches": [],
+          "query_codes": [],
+          "query_name": "해피바스 바디워시",
+          "user_id": "user_scalp_care_50m"
+        },
+        {
+          "matches": [],
+          "query_codes": [],
+          "query_name": "라보에이치 샴푸",
+          "user_id": "user_scalp_care_50m"
+        },
+        {
+          "matches": [],
+          "query_codes": [],
+          "query_name": "라보에이치 두피토닉",
+          "user_id": "user_scalp_care_50m"
+        },
+        {
+          "matches": [],
+          "query_codes": [],
+          "query_name": "샴푸 재구매",
+          "user_id": "user_scalp_care_50m"
+        },
+        {
+          "matches": [],
+          "query_codes": [],
+          "query_name": "두피토닉 재구매",
+          "user_id": "user_scalp_care_50m"
+        },
+        {
+          "matches": [],
+          "query_codes": [],
+          "query_name": "구딸 향수",
+          "user_id": "user_fragrance_60f"
+        },
+        {
+          "matches": [],
+          "query_codes": [],
+          "query_name": "코스알엑스 클렌저",
+          "user_id": "user_makeup_matte_50m"
+        },
+        {
+          "matches": [],
+          "query_codes": [],
+          "query_name": "에뛰드 파우더",
+          "user_id": "user_makeup_matte_50m"
+        },
+        {
+          "matches": [],
+          "query_codes": [],
+          "query_name": "에뛰드 프라이머",
+          "user_id": "user_makeup_matte_50m"
+        },
+        {
+          "matches": [],
+          "query_codes": [],
+          "query_name": "에뛰드 틴트",
+          "user_id": "user_makeup_matte_50m"
+        },
+        {
+          "matches": [],
+          "query_codes": [],
+          "query_name": "파우더 재구매",
+          "user_id": "user_makeup_matte_50m"
+        },
+        {
+          "matches": [],
+          "query_codes": [],
+          "query_name": "틴트 재구매",
+          "user_id": "user_makeup_matte_50m"
+        },
+        {
+          "matches": [],
+          "query_codes": [],
+          "query_name": "에스쁘아 파우더",
+          "user_id": "user_makeup_matte_50m"
+        },
+        {
+          "matches": [],
+          "query_codes": [],
+          "query_name": "에스쁘아 프라이머",
+          "user_id": "user_makeup_matte_50m"
+        }
+      ]
+    },
+    "category_groups": {
+      "bodycare": [
+        "100389",
+        "17792",
+        "38800",
+        "46647",
+        "62454"
+      ],
+      "fragrance": [
+        "102622",
+        "35231",
+        "35236",
+        "35237",
+        "52917"
+      ],
+      "haircare": [
+        "19929",
+        "52110",
+        "60188",
+        "61090",
+        "66964"
+      ],
+      "makeup": [
+        "31573",
+        "35036",
+        "35100",
+        "58763",
+        "61257",
+        "68788"
+      ],
+      "skincare": [
+        "100669",
+        "101057",
+        "101059",
+        "103537",
+        "34511",
+        "35117",
+        "36903",
+        "50165",
+        "60766",
+        "60892",
+        "63917"
+      ]
+    },
+    "noise_exclusion_tokens": {
+      "category": [
+        "소품",
+        "도구",
+        "메이크업소품",
+        "스킨케어소품",
+        "바디/헤어소품",
+        "뷰티툴/소품",
+        "미용 소도구",
+        "구강",
+        "치약",
+        "칫솔",
+        "Beauty서비스",
+        "서비스",
+        "화장솜",
+        "면봉",
+        "퍼프",
+        "브러쉬",
+        "브러시",
+        "공병",
+        "케이스",
+        "Beauty서비스기타"
+      ],
+      "name": [
+        "SOURCE_KEY_COLLISION",
+        "source_key_collision",
+        "면봉",
+        "치약",
+        "칫솔",
+        "구강",
+        "0원",
+        "체험단",
+        "쿠폰",
+        "발송되는 제품 없음",
+        "서비스",
+        "service",
+        "화장솜",
+        "퍼프",
+        "공병",
+        "쇼핑백",
+        "종이백",
+        "브러쉬",
+        "브러시",
+        "수정칼",
+        "스펀지",
+        "쇼핑백",
+        "토트백",
+        "키링",
+        "파우치",
+        "지퍼백",
+        "기름종이",
+        "샤워 볼",
+        "샘플",
+        "증정",
+        "리필용기"
+      ]
+    },
+    "selected_product_count": 32,
+    "selected_products": [
+      {
+        "brand_name": "이니스프리",
+        "category_group": "bodycare",
+        "category_names": {
+          "large": "Beauty",
+          "medium": "바디",
+          "small": "핸드보습",
+          "subsmall": "핸드보습"
+        },
+        "product_id": "100389",
+        "product_name": "한란 핸드 크림 (SPF 15 PA+)",
+        "selection_reasons": [
+          "bodycare_top5",
+          "overall_top20"
+        ],
+        "source_stats": {
+          "source": "snowflake:f_prd_rv_hist:2026-06-18",
+          "source_avg_rating_6m": 4.835834,
+          "source_avg_rating_all": 4.81138,
+          "source_channel": "036",
+          "source_key_type": "chn_prd_cd",
+          "source_review_count_6m": 2199,
+          "source_review_count_all": 3796,
+          "source_review_max_date_6m": "2026-06-17",
+          "source_review_max_date_all": "2026-06-17",
+          "source_review_min_date_6m": "2025-12-18",
+          "source_review_min_date_all": "2025-06-05"
+        }
+      },
+      {
+        "brand_name": "이니스프리",
+        "category_group": "skincare",
+        "category_names": {
+          "large": "Beauty",
+          "medium": "스킨케어",
+          "small": "스킨",
+          "subsmall": "스킨"
+        },
+        "product_id": "100669",
+        "product_name": "비자 트러블 토너(170mL) + 비자 트러블 로션(100mL)",
+        "selection_reasons": [
+          "overall_top20"
+        ],
+        "source_stats": {
+          "source": "snowflake:f_prd_rv_hist:2026-06-18",
+          "source_avg_rating_6m": 4.82715,
+          "source_avg_rating_all": 4.840855,
+          "source_channel": "036",
+          "source_key_type": "chn_prd_cd",
+          "source_review_count_6m": 2291,
+          "source_review_count_all": 7157,
+          "source_review_max_date_6m": "2026-06-17",
+          "source_review_max_date_all": "2026-06-17",
+          "source_review_min_date_6m": "2025-12-18",
+          "source_review_min_date_all": "2025-04-29"
+        }
+      },
+      {
+        "brand_name": "이니스프리",
+        "category_group": "skincare",
+        "category_names": {
+          "large": "Beauty",
+          "medium": "스킨케어",
+          "small": "마스크",
+          "subsmall": "마스크"
+        },
+        "product_id": "101057",
+        "product_name": "겔 마스크 (비타민C/레티놀/PDRN)",
+        "selection_reasons": [
+          "overall_top20",
+          "skincare_top5"
+        ],
+        "source_stats": {
+          "source": "snowflake:f_prd_rv_hist:2026-06-18",
+          "source_avg_rating_6m": 4.835117,
+          "source_avg_rating_all": 4.836933,
+          "source_channel": "036",
+          "source_key_type": "chn_prd_cd",
+          "source_review_count_6m": 8412,
+          "source_review_count_all": 11946,
+          "source_review_max_date_6m": "2026-06-17",
+          "source_review_max_date_all": "2026-06-17",
+          "source_review_min_date_6m": "2025-12-18",
+          "source_review_min_date_all": "2025-07-22"
+        }
+      },
+      {
+        "brand_name": "이니스프리",
+        "category_group": "skincare",
+        "category_names": {
+          "large": "Beauty",
+          "medium": "스킨케어",
+          "small": "마스크",
+          "subsmall": "마스크"
+        },
+        "product_id": "101059",
+        "product_name": "[ONLY APP] 에너지 마스크",
+        "selection_reasons": [
+          "overall_top20",
+          "skincare_top5"
+        ],
+        "source_stats": {
+          "source": "snowflake:f_prd_rv_hist:2026-06-18",
+          "source_avg_rating_6m": 4.854848,
+          "source_avg_rating_all": 4.846262,
+          "source_channel": "036",
+          "source_key_type": "chn_prd_cd",
+          "source_review_count_6m": 5105,
+          "source_review_count_all": 8573,
+          "source_review_max_date_6m": "2026-06-17",
+          "source_review_max_date_all": "2026-06-17",
+          "source_review_min_date_6m": "2025-12-18",
+          "source_review_min_date_all": "2025-07-22"
+        }
+      },
+      {
+        "brand_name": "이니스프리",
+        "category_group": "fragrance",
+        "category_names": {
+          "large": "Beauty",
+          "medium": "바디",
+          "small": "핸드보습",
+          "subsmall": "핸드보습"
+        },
+        "product_id": "102622",
+        "product_name": "[나라사랑카드] 마이 퍼퓸드 핸드크림",
+        "selection_reasons": [
+          "fragrance_top5"
+        ],
+        "source_stats": {
+          "source": "snowflake:f_prd_rv_hist:2026-06-18",
+          "source_avg_rating_6m": 4.846512,
+          "source_avg_rating_all": 4.846512,
+          "source_channel": "036",
+          "source_key_type": "chn_prd_cd",
+          "source_review_count_6m": 645,
+          "source_review_count_all": 645,
+          "source_review_max_date_6m": "2026-06-17",
+          "source_review_max_date_all": "2026-06-17",
+          "source_review_min_date_6m": "2025-12-29",
+          "source_review_min_date_all": "2025-12-29"
+        }
+      },
+      {
+        "brand_name": "이니스프리",
+        "category_group": "skincare",
+        "category_names": {
+          "large": "Beauty",
+          "medium": "스킨케어",
+          "small": "에센스",
+          "subsmall": "에센스"
+        },
+        "product_id": "103537",
+        "product_name": "비타씨그린티엔자임 듀오 세트 (세럼 15mL+패드 1개)",
+        "selection_reasons": [
+          "overall_top20",
+          "skincare_top5"
+        ],
+        "source_stats": {
+          "source": "snowflake:f_prd_rv_hist:2026-06-18",
+          "source_avg_rating_6m": 4.832288,
+          "source_avg_rating_all": 4.832288,
+          "source_channel": "036",
+          "source_key_type": "chn_prd_cd",
+          "source_review_count_6m": 3828,
+          "source_review_count_all": 3828,
+          "source_review_max_date_6m": "2026-06-17",
+          "source_review_max_date_all": "2026-06-17",
+          "source_review_min_date_6m": "2026-03-04",
+          "source_review_min_date_all": "2026-03-04"
+        }
+      },
+      {
+        "brand_name": "일리윤",
+        "category_group": "bodycare",
+        "category_names": {
+          "large": "바디케어",
+          "medium": "바디크림",
+          "small": null,
+          "subsmall": ""
+        },
+        "product_id": "17792",
+        "product_name": "세라마이드 아토 로션",
+        "selection_reasons": [
+          "bodycare_top5"
+        ],
+        "source_stats": {
+          "source": "snowflake:f_prd_rv_hist:2026-06-18",
+          "source_avg_rating_6m": 4.903388,
+          "source_avg_rating_all": 4.870781,
+          "source_channel": "031",
+          "source_key_type": "ecp_onln_prd_srno",
+          "source_review_count_6m": 1594,
+          "source_review_count_all": 5007,
+          "source_review_max_date_6m": "2026-06-17",
+          "source_review_max_date_all": "2026-06-17",
+          "source_review_min_date_6m": "2025-12-18",
+          "source_review_min_date_all": "2023-06-17"
+        }
+      },
+      {
+        "brand_name": "려",
+        "category_group": "haircare",
+        "category_names": {
+          "large": "헤어케어",
+          "medium": "염색",
+          "small": null,
+          "subsmall": ""
+        },
+        "product_id": "19929",
+        "product_name": "우아채 한방크림염색",
+        "selection_reasons": [
+          "haircare_top5",
+          "overall_top20"
+        ],
+        "source_stats": {
+          "source": "snowflake:f_prd_rv_hist:2026-06-18",
+          "source_avg_rating_6m": 4.818683,
+          "source_avg_rating_all": 4.810135,
+          "source_channel": "031",
+          "source_key_type": "ecp_onln_prd_srno",
+          "source_review_count_6m": 2537,
+          "source_review_count_all": 7163,
+          "source_review_max_date_6m": "2026-06-17",
+          "source_review_max_date_all": "2026-06-17",
+          "source_review_min_date_6m": "2025-12-18",
+          "source_review_min_date_all": "2023-06-17"
+        }
+      },
+      {
+        "brand_name": "헤라",
+        "category_group": "makeup",
+        "category_names": {
+          "large": "메이크업",
+          "medium": "립",
+          "small": "립케어/립밤",
+          "subsmall": "립 글로스"
+        },
+        "product_id": "31573",
+        "product_name": "[NEW 컬러 출시] 센슈얼 누드 글로스",
+        "selection_reasons": [
+          "makeup_top5",
+          "overall_top20"
+        ],
+        "source_stats": {
+          "source": "snowflake:f_prd_rv_hist:2026-06-18",
+          "source_avg_rating_6m": 4.857961,
+          "source_avg_rating_all": 4.839367,
+          "source_channel": "031",
+          "source_key_type": "ecp_onln_prd_srno",
+          "source_review_count_6m": 1746,
+          "source_review_count_all": 8093,
+          "source_review_max_date_6m": "2026-06-17",
+          "source_review_max_date_all": "2026-06-17",
+          "source_review_min_date_6m": "2025-12-18",
+          "source_review_min_date_all": "2023-06-18"
+        }
+      },
+      {
+        "brand_name": "이니스프리",
+        "category_group": "skincare",
+        "category_names": {
+          "large": "Beauty",
+          "medium": "스킨케어",
+          "small": "페이셜 워시",
+          "subsmall": "페이셜 워시"
+        },
+        "product_id": "34511",
+        "product_name": "그린티 아미노 수분 폼 클렌징",
+        "selection_reasons": [
+          "overall_top20"
+        ],
+        "source_stats": {
+          "source": "snowflake:f_prd_rv_hist:2026-06-18",
+          "source_avg_rating_6m": 4.878279,
+          "source_avg_rating_all": 4.871985,
+          "source_channel": "036",
+          "source_key_type": "chn_prd_cd",
+          "source_review_count_6m": 1906,
+          "source_review_count_all": 14967,
+          "source_review_max_date_6m": "2026-06-17",
+          "source_review_max_date_all": "2026-06-17",
+          "source_review_min_date_6m": "2025-12-18",
+          "source_review_min_date_all": "2023-06-17"
+        }
+      },
+      {
+        "brand_name": "이니스프리",
+        "category_group": "makeup",
+        "category_names": {
+          "large": "Beauty",
+          "medium": "메이크업",
+          "small": "립밤/립케어",
+          "subsmall": "립밤/립케어"
+        },
+        "product_id": "35036",
+        "product_name": "듀이 틴트 립밤",
+        "selection_reasons": [
+          "makeup_top5"
+        ],
+        "source_stats": {
+          "source": "snowflake:f_prd_rv_hist:2026-06-18",
+          "source_avg_rating_6m": 4.844444,
+          "source_avg_rating_all": 4.813681,
+          "source_channel": "036",
+          "source_key_type": "chn_prd_cd",
+          "source_review_count_6m": 1485,
+          "source_review_count_all": 10847,
+          "source_review_max_date_6m": "2026-06-17",
+          "source_review_max_date_all": "2026-06-17",
+          "source_review_min_date_6m": "2025-12-18",
+          "source_review_min_date_all": "2023-06-17"
+        }
+      },
+      {
+        "brand_name": "이니스프리",
+        "category_group": "makeup",
+        "category_names": {
+          "large": "Beauty",
+          "medium": "메이크업",
+          "small": "아이브로우",
+          "subsmall": "아이브로우"
+        },
+        "product_id": "35100",
+        "product_name": "납작 아이브로우 펜슬",
+        "selection_reasons": [
+          "makeup_top5",
+          "overall_top20"
+        ],
+        "source_stats": {
+          "source": "snowflake:f_prd_rv_hist:2026-06-18",
+          "source_avg_rating_6m": 4.820799,
+          "source_avg_rating_all": 4.824482,
+          "source_channel": "036",
+          "source_key_type": "chn_prd_cd",
+          "source_review_count_6m": 2327,
+          "source_review_count_all": 22670,
+          "source_review_max_date_6m": "2026-06-17",
+          "source_review_max_date_all": "2026-06-17",
+          "source_review_min_date_6m": "2025-12-18",
+          "source_review_min_date_all": "2023-06-17"
+        }
+      },
+      {
+        "brand_name": "이니스프리",
+        "category_group": "skincare",
+        "category_names": {
+          "large": "Beauty",
+          "medium": "스킨케어",
+          "small": "마스크",
+          "subsmall": "마스크"
+        },
+        "product_id": "35117",
+        "product_name": "에너지 마스크",
+        "selection_reasons": [
+          "overall_top20",
+          "skincare_top5"
+        ],
+        "source_stats": {
+          "source": "snowflake:f_prd_rv_hist:2026-06-18",
+          "source_avg_rating_6m": 4.868397,
+          "source_avg_rating_all": 4.86843,
+          "source_channel": "036",
+          "source_key_type": "chn_prd_cd",
+          "source_review_count_6m": 36329,
+          "source_review_count_all": 162552,
+          "source_review_max_date_6m": "2026-06-17",
+          "source_review_max_date_all": "2026-06-17",
+          "source_review_min_date_6m": "2025-12-18",
+          "source_review_min_date_all": "2023-06-17"
+        }
+      },
+      {
+        "brand_name": "이니스프리",
+        "category_group": "fragrance",
+        "category_names": {
+          "large": "Beauty",
+          "medium": "방향",
+          "small": "프래그런스",
+          "subsmall": "프래그런스"
+        },
+        "product_id": "35231",
+        "product_name": "마이 퍼퓸드 바디 앤 헤어 미스트",
+        "selection_reasons": [
+          "fragrance_top5"
+        ],
+        "source_stats": {
+          "source": "snowflake:f_prd_rv_hist:2026-06-18",
+          "source_avg_rating_6m": 4.768946,
+          "source_avg_rating_all": 4.766299,
+          "source_channel": "036",
+          "source_key_type": "chn_prd_cd",
+          "source_review_count_6m": 541,
+          "source_review_count_all": 2991,
+          "source_review_max_date_6m": "2026-06-17",
+          "source_review_max_date_all": "2026-06-17",
+          "source_review_min_date_6m": "2025-12-18",
+          "source_review_min_date_all": "2023-06-18"
+        }
+      },
+      {
+        "brand_name": "이니스프리",
+        "category_group": "fragrance",
+        "category_names": {
+          "large": "Beauty",
+          "medium": "바디",
+          "small": "핸드보습",
+          "subsmall": "핸드보습"
+        },
+        "product_id": "35236",
+        "product_name": "마이 퍼퓸드 핸드크림",
+        "selection_reasons": [
+          "fragrance_top5",
+          "overall_top20"
+        ],
+        "source_stats": {
+          "source": "snowflake:f_prd_rv_hist:2026-06-18",
+          "source_avg_rating_6m": 4.81433,
+          "source_avg_rating_all": 4.832745,
+          "source_channel": "036",
+          "source_key_type": "chn_prd_cd",
+          "source_review_count_6m": 5806,
+          "source_review_count_all": 27784,
+          "source_review_max_date_6m": "2026-06-17",
+          "source_review_max_date_all": "2026-06-17",
+          "source_review_min_date_6m": "2025-12-18",
+          "source_review_min_date_all": "2023-06-17"
+        }
+      },
+      {
+        "brand_name": "이니스프리",
+        "category_group": "fragrance",
+        "category_names": {
+          "large": "Beauty",
+          "medium": "바디",
+          "small": "핸드보습",
+          "subsmall": "핸드보습"
+        },
+        "product_id": "35237",
+        "product_name": "마이 퍼퓸드 핸드크림 [대용량]",
+        "selection_reasons": [
+          "fragrance_top5"
+        ],
+        "source_stats": {
+          "source": "snowflake:f_prd_rv_hist:2026-06-18",
+          "source_avg_rating_6m": 4.837662,
+          "source_avg_rating_all": 4.82668,
+          "source_channel": "036",
+          "source_key_type": "chn_prd_cd",
+          "source_review_count_6m": 1232,
+          "source_review_count_all": 7039,
+          "source_review_max_date_6m": "2026-06-17",
+          "source_review_max_date_all": "2026-06-17",
+          "source_review_min_date_6m": "2025-12-18",
+          "source_review_min_date_all": "2023-06-17"
+        }
+      },
+      {
+        "brand_name": "이니스프리",
+        "category_group": "skincare",
+        "category_names": {
+          "large": "Beauty",
+          "medium": "스킨케어",
+          "small": "페이셜 워시",
+          "subsmall": "페이셜 워시"
+        },
+        "product_id": "36903",
+        "product_name": "블루베리 리밸런싱 5.5 클렌저",
+        "selection_reasons": [
+          "overall_top20"
+        ],
+        "source_stats": {
+          "source": "snowflake:f_prd_rv_hist:2026-06-18",
+          "source_avg_rating_6m": 4.807924,
+          "source_avg_rating_all": 4.844198,
+          "source_channel": "036",
+          "source_key_type": "chn_prd_cd",
+          "source_review_count_6m": 1994,
+          "source_review_count_all": 11091,
+          "source_review_max_date_6m": "2026-06-17",
+          "source_review_max_date_all": "2026-06-17",
+          "source_review_min_date_6m": "2025-12-18",
+          "source_review_min_date_all": "2023-12-22"
+        }
+      },
+      {
+        "brand_name": "일리윤",
+        "category_group": "bodycare",
+        "category_names": {
+          "large": "바디케어",
+          "medium": "바디크림",
+          "small": null,
+          "subsmall": ""
+        },
+        "product_id": "38800",
+        "product_name": "NEW [대용량] 세라마이드 아토 로션",
+        "selection_reasons": [
+          "bodycare_top5"
+        ],
+        "source_stats": {
+          "source": "snowflake:f_prd_rv_hist:2026-06-18",
+          "source_avg_rating_6m": 4.902634,
+          "source_avg_rating_all": 4.892805,
+          "source_channel": "031",
+          "source_key_type": "ecp_onln_prd_srno",
+          "source_review_count_6m": 1253,
+          "source_review_count_all": 4795,
+          "source_review_max_date_6m": "2026-06-17",
+          "source_review_max_date_all": "2026-06-17",
+          "source_review_min_date_6m": "2025-12-18",
+          "source_review_min_date_all": "2023-06-17"
+        }
+      },
+      {
+        "brand_name": "일리윤",
+        "category_group": "bodycare",
+        "category_names": {
+          "large": "바디케어",
+          "medium": "바디워시",
+          "small": null,
+          "subsmall": ""
+        },
+        "product_id": "46647",
+        "product_name": "[리필] 세라마이드 아토 6.0 탑투토워시",
+        "selection_reasons": [
+          "bodycare_top5"
+        ],
+        "source_stats": {
+          "source": "snowflake:f_prd_rv_hist:2026-06-18",
+          "source_avg_rating_6m": 4.900446,
+          "source_avg_rating_all": 4.884398,
+          "source_channel": "031",
+          "source_key_type": "ecp_onln_prd_srno",
+          "source_review_count_6m": 1346,
+          "source_review_count_all": 4429,
+          "source_review_max_date_6m": "2026-06-17",
+          "source_review_max_date_all": "2026-06-17",
+          "source_review_min_date_6m": "2025-12-18",
+          "source_review_min_date_all": "2023-06-17"
+        }
+      },
+      {
+        "brand_name": "헤라",
+        "category_group": "skincare",
+        "category_names": {
+          "large": "스킨케어",
+          "medium": "선케어",
+          "small": "선블럭",
+          "subsmall": "선크림 & 선블럭"
+        },
+        "product_id": "50165",
+        "product_name": "UV프로텍터 톤업 피치 SPF50+/PA++++",
+        "selection_reasons": [
+          "overall_top20"
+        ],
+        "source_stats": {
+          "source": "snowflake:f_prd_rv_hist:2026-06-18",
+          "source_avg_rating_6m": 4.865664,
+          "source_avg_rating_all": 4.86521,
+          "source_channel": "031",
+          "source_key_type": "ecp_onln_prd_srno",
+          "source_review_count_6m": 1995,
+          "source_review_count_all": 9385,
+          "source_review_max_date_6m": "2026-06-17",
+          "source_review_max_date_all": "2026-06-17",
+          "source_review_min_date_6m": "2025-12-18",
+          "source_review_min_date_all": "2023-06-17"
+        }
+      },
+      {
+        "brand_name": "롱테이크",
+        "category_group": "haircare",
+        "category_names": {
+          "large": "헤어케어",
+          "medium": "샴푸",
+          "small": null,
+          "subsmall": ""
+        },
+        "product_id": "52110",
+        "product_name": "샌달우드 인텐시브 3종 트라이얼 키트",
+        "selection_reasons": [
+          "haircare_top5",
+          "overall_top20"
+        ],
+        "source_stats": {
+          "source": "snowflake:f_prd_rv_hist:2026-06-18",
+          "source_avg_rating_6m": 4.841639,
+          "source_avg_rating_all": 4.817957,
+          "source_channel": "031",
+          "source_key_type": "ecp_onln_prd_srno",
+          "source_review_count_6m": 1806,
+          "source_review_count_all": 10492,
+          "source_review_max_date_6m": "2026-06-17",
+          "source_review_max_date_all": "2026-06-17",
+          "source_review_min_date_6m": "2025-12-18",
+          "source_review_min_date_all": "2023-06-17"
+        }
+      },
+      {
+        "brand_name": "해피바스",
+        "category_group": "fragrance",
+        "category_names": {
+          "large": "바디케어",
+          "medium": "바디워시",
+          "small": null,
+          "subsmall": ""
+        },
+        "product_id": "52917",
+        "product_name": "모이스처 퍼퓸 바디워시",
+        "selection_reasons": [
+          "fragrance_top5",
+          "overall_top20"
+        ],
+        "source_stats": {
+          "source": "snowflake:f_prd_rv_hist:2026-06-18",
+          "source_avg_rating_6m": 4.863059,
+          "source_avg_rating_all": 4.857113,
+          "source_channel": "031",
+          "source_key_type": "ecp_onln_prd_srno",
+          "source_review_count_6m": 1811,
+          "source_review_count_all": 4857,
+          "source_review_max_date_6m": "2026-06-17",
+          "source_review_max_date_all": "2026-06-17",
+          "source_review_min_date_6m": "2025-12-18",
+          "source_review_min_date_all": "2023-06-17"
+        }
+      },
+      {
+        "brand_name": "아이오페",
+        "category_group": "makeup",
+        "category_names": {
+          "large": "메이크업",
+          "medium": "베이스",
+          "small": "쿠션",
+          "subsmall": ""
+        },
+        "product_id": "58763",
+        "product_name": "에어쿠션 5.5세대 커버 SPF50/PA+++",
+        "selection_reasons": [
+          "profile_anchor"
+        ],
+        "source_stats": {
+          "source": "snowflake:f_prd_rv_hist:2026-06-18",
+          "source_avg_rating_6m": 4.755556,
+          "source_avg_rating_all": 4.703903,
+          "source_channel": "031",
+          "source_key_type": "ecp_onln_prd_srno",
+          "source_review_count_6m": 315,
+          "source_review_count_all": 1486,
+          "source_review_max_date_6m": "2026-06-17",
+          "source_review_max_date_all": "2026-06-17",
+          "source_review_min_date_6m": "2025-12-18",
+          "source_review_min_date_all": "2023-07-11"
+        }
+      },
+      {
+        "brand_name": "려",
+        "category_group": "haircare",
+        "category_names": {
+          "large": "헤어케어",
+          "medium": null,
+          "small": null,
+          "subsmall": ""
+        },
+        "product_id": "60188",
+        "product_name": "함빛/청아/흑운/민감 샴푸&컨디셔너",
+        "selection_reasons": [
+          "haircare_top5"
+        ],
+        "source_stats": {
+          "source": "snowflake:f_prd_rv_hist:2026-06-18",
+          "source_avg_rating_6m": 4.799821,
+          "source_avg_rating_all": 4.809116,
+          "source_channel": "031",
+          "source_key_type": "ecp_onln_prd_srno",
+          "source_review_count_6m": 1119,
+          "source_review_count_all": 5375,
+          "source_review_max_date_6m": "2026-06-17",
+          "source_review_max_date_all": "2026-06-17",
+          "source_review_min_date_6m": "2025-12-18",
+          "source_review_min_date_all": "2023-06-23"
+        }
+      },
+      {
+        "brand_name": "한율",
+        "category_group": "skincare",
+        "category_names": {
+          "large": "스킨케어",
+          "medium": "마스크/팩",
+          "small": null,
+          "subsmall": ""
+        },
+        "product_id": "60766",
+        "product_name": "달빛유자 패드 기획세트",
+        "selection_reasons": [
+          "overall_top20"
+        ],
+        "source_stats": {
+          "source": "snowflake:f_prd_rv_hist:2026-06-18",
+          "source_avg_rating_6m": 4.862925,
+          "source_avg_rating_all": 4.827737,
+          "source_channel": "031",
+          "source_key_type": "ecp_onln_prd_srno",
+          "source_review_count_6m": 1853,
+          "source_review_count_all": 5718,
+          "source_review_max_date_6m": "2026-06-17",
+          "source_review_max_date_all": "2026-06-17",
+          "source_review_min_date_6m": "2025-12-18",
+          "source_review_min_date_all": "2024-02-08"
+        }
+      },
+      {
+        "brand_name": "에스트라",
+        "category_group": "skincare",
+        "category_names": {
+          "large": "스킨케어",
+          "medium": "크림",
+          "small": null,
+          "subsmall": ""
+        },
+        "product_id": "60892",
+        "product_name": "아토베리어365 크림 80ml",
+        "selection_reasons": [
+          "overall_top20"
+        ],
+        "source_stats": {
+          "source": "snowflake:f_prd_rv_hist:2026-06-18",
+          "source_avg_rating_6m": 4.901221,
+          "source_avg_rating_all": 4.901015,
+          "source_channel": "031",
+          "source_key_type": "ecp_onln_prd_srno",
+          "source_review_count_6m": 1883,
+          "source_review_count_all": 2364,
+          "source_review_max_date_6m": "2026-06-17",
+          "source_review_max_date_all": "2026-06-17",
+          "source_review_min_date_6m": "2025-12-18",
+          "source_review_min_date_all": "2024-02-24"
+        }
+      },
+      {
+        "brand_name": "미쟝센",
+        "category_group": "haircare",
+        "category_names": {
+          "large": "헤어케어",
+          "medium": null,
+          "small": null,
+          "subsmall": ""
+        },
+        "product_id": "61090",
+        "product_name": "올뉴 쉽고 빠른 거품 염색",
+        "selection_reasons": [
+          "haircare_top5"
+        ],
+        "source_stats": {
+          "source": "snowflake:f_prd_rv_hist:2026-06-18",
+          "source_avg_rating_6m": 4.825688,
+          "source_avg_rating_all": 4.786783,
+          "source_channel": "031",
+          "source_key_type": "ecp_onln_prd_srno",
+          "source_review_count_6m": 1526,
+          "source_review_count_all": 5281,
+          "source_review_max_date_6m": "2026-06-17",
+          "source_review_max_date_all": "2026-06-17",
+          "source_review_min_date_6m": "2025-12-18",
+          "source_review_min_date_all": "2024-03-16"
+        }
+      },
+      {
+        "brand_name": "헤라",
+        "category_group": "makeup",
+        "category_names": {
+          "large": "메이크업",
+          "medium": "베이스",
+          "small": "쿠션",
+          "subsmall": ""
+        },
+        "product_id": "61257",
+        "product_name": "[듀오] 블랙 쿠션 파운데이션 SPF34/PA++",
+        "selection_reasons": [
+          "makeup_top5",
+          "overall_top20"
+        ],
+        "source_stats": {
+          "source": "snowflake:f_prd_rv_hist:2026-06-18",
+          "source_avg_rating_6m": 4.874665,
+          "source_avg_rating_all": 4.876834,
+          "source_channel": "031",
+          "source_key_type": "ecp_onln_prd_srno",
+          "source_review_count_6m": 2242,
+          "source_review_count_all": 11180,
+          "source_review_max_date_6m": "2026-06-17",
+          "source_review_max_date_all": "2026-06-17",
+          "source_review_min_date_6m": "2025-12-18",
+          "source_review_min_date_all": "2023-06-23"
+        }
+      },
+      {
+        "brand_name": "해피바스",
+        "category_group": "bodycare",
+        "category_names": {
+          "large": null,
+          "medium": null,
+          "small": null,
+          "subsmall": ""
+        },
+        "product_id": "62454",
+        "product_name": "리얼가든 바디워시",
+        "selection_reasons": [
+          "bodycare_top5"
+        ],
+        "source_stats": {
+          "source": "snowflake:f_prd_rv_hist:2026-06-18",
+          "source_avg_rating_6m": 4.877787,
+          "source_avg_rating_all": 4.857969,
+          "source_channel": "031",
+          "source_key_type": "ecp_onln_prd_srno",
+          "source_review_count_6m": 1211,
+          "source_review_count_all": 3457,
+          "source_review_max_date_6m": "2026-06-17",
+          "source_review_max_date_all": "2026-06-17",
+          "source_review_min_date_6m": "2025-12-18",
+          "source_review_min_date_all": "2024-08-29"
+        }
+      },
+      {
+        "brand_name": "설화수",
+        "category_group": "skincare",
+        "category_names": {
+          "large": "스킨케어",
+          "medium": "스킨/토너",
+          "small": null,
+          "subsmall": "로션 & 에멀전"
+        },
+        "product_id": "63917",
+        "product_name": "자음2종 세트",
+        "selection_reasons": [
+          "overall_top20",
+          "skincare_top5"
+        ],
+        "source_stats": {
+          "source": "snowflake:f_prd_rv_hist:2026-06-18",
+          "source_avg_rating_6m": 4.914508,
+          "source_avg_rating_all": 4.921438,
+          "source_channel": "031",
+          "source_key_type": "ecp_onln_prd_srno",
+          "source_review_count_6m": 2316,
+          "source_review_count_all": 6479,
+          "source_review_max_date_6m": "2026-06-17",
+          "source_review_max_date_all": "2026-06-17",
+          "source_review_min_date_6m": "2025-12-18",
+          "source_review_min_date_all": "2025-02-18"
+        }
+      },
+      {
+        "brand_name": "려",
+        "category_group": "haircare",
+        "category_names": {
+          "large": "헤어케어",
+          "medium": null,
+          "small": null,
+          "subsmall": ""
+        },
+        "product_id": "66964",
+        "product_name": "[2입] 루트젠 탈모증상전문케어 두피 에센스",
+        "selection_reasons": [
+          "haircare_top5"
+        ],
+        "source_stats": {
+          "source": "snowflake:f_prd_rv_hist:2026-06-18",
+          "source_avg_rating_6m": 4.809605,
+          "source_avg_rating_all": 4.805128,
+          "source_channel": "031",
+          "source_key_type": "ecp_onln_prd_srno",
+          "source_review_count_6m": 1166,
+          "source_review_count_all": 1365,
+          "source_review_max_date_6m": "2026-06-17",
+          "source_review_max_date_all": "2026-06-17",
+          "source_review_min_date_6m": "2025-12-18",
+          "source_review_min_date_all": "2025-10-01"
+        }
+      },
+      {
+        "brand_name": "라네즈",
+        "category_group": "makeup",
+        "category_names": {
+          "large": "메이크업",
+          "medium": "립",
+          "small": "립틴트",
+          "subsmall": "립 틴트"
+        },
+        "product_id": "68788",
+        "product_name": "주스팝박스 립 틴트",
+        "selection_reasons": [
+          "makeup_top5",
+          "overall_top20"
+        ],
+        "source_stats": {
+          "source": "snowflake:f_prd_rv_hist:2026-06-18",
+          "source_avg_rating_6m": 4.882754,
+          "source_avg_rating_all": 4.882754,
+          "source_channel": "031",
+          "source_key_type": "ecp_onln_prd_srno",
+          "source_review_count_6m": 1612,
+          "source_review_count_all": 1612,
+          "source_review_max_date_6m": "2026-06-17",
+          "source_review_max_date_all": "2026-06-17",
+          "source_review_min_date_6m": "2026-03-05",
+          "source_review_min_date_all": "2026-03-05"
+        }
+      }
+    ],
+    "target_max_products": 45,
+    "target_min_products": 30
+  }
+}

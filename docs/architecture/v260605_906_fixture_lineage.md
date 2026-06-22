@@ -271,7 +271,62 @@ promotion gate와 projection registry를 통과한 일부 signal만 담는다.
    실제 최종 산출물이 상품마스터, relation 결과, 리뷰요약 ES 세 축을 모두
    써야 한다면 이 축은 별도 ingestion path와 regression test가 필요하다.
 
-## 7. Fixture 사용 가이드
+## 7. Dense Golden 평가 Fixture
+
+2026-06-22 기준으로 추천 품질 검증용 별도 fixture를 추가했다.
+
+- 위치: `mockdata/dense_golden/`
+- 리뷰 수: 906
+- 선택 상품 수: 32
+- 사용자 프로필 수: 6
+- 목적: source identity 회귀가 아니라 추천 품질, category tab, promoted
+  review evidence 활용도를 보기 위한 dense 평가 데이터
+
+Wide fixture와 역할이 다르다.
+
+| Fixture | Products | 목적 |
+|---|---:|---|
+| `mockdata/` | 517 | source identity, product master join, DB/full-load baseline |
+| `mockdata/dense_golden/` | 32 | recommendation QA, graph evidence utilization, golden profile checks |
+
+Dense fixture는 906개 review text/NER/BEE/REL annotation을 유지하고,
+`source_product_id`, `prod_nm`, `brnd_nm` 등 product metadata만 source-grounded
+상위 리뷰수 상품으로 deterministic remap한다. 원래 mapping은
+`fixture_original_source_product_id`, `fixture_original_prod_nm`,
+`fixture_remap_reason`에 남긴다.
+
+카테고리 분포:
+
+| Category group | Products |
+|---|---:|
+| skincare | 11 |
+| makeup | 6 |
+| bodycare | 5 |
+| haircare | 5 |
+| fragrance | 5 |
+
+추천 audit의 최종 기준:
+
+- `kg_on` signal count: 2,767
+- wide fixture `kg_on` serving `top_keyword_ids`: 5 products
+- dense fixture `kg_on` serving `top_keyword_ids`: 18 products / 22 items
+- source review stats snapshot is loaded explicitly for audit/UI so
+  `source_review_count_6m`, `source_avg_rating_6m`, min/max dates are visible.
+- source review stats remain trust/tie-break data, not graph evidence or
+  candidate eligibility data.
+
+Recommendation evidence rules:
+
+- product master brand/category/ingredient/benefit truth is first-class
+  evidence.
+- promoted review graph evidence is first-class only when exact or
+  semantic-value compatible.
+- generic axes such as `bee_attr_formulation` do not qualify candidates by
+  exact BEE attr match.
+- group-level category aliases such as `perfume -> fragrance` are allowed for
+  personal-agent profile intent; detailed category ids remain exact-match only.
+
+## 8. Fixture 사용 가이드
 
 이 fixture로 반드시 고정해야 하는 테스트:
 
@@ -289,7 +344,7 @@ promotion gate와 projection registry를 통과한 일부 signal만 담는다.
 - 상품명이 review text에 등장한다는 lexical assumption
 - 모든 relation이 serving signal로 승격된다는 assumption
 
-## 8. 관련 문서
+## 9. 관련 문서
 
 - `mockdata/README.md`
 - `DECISIONS/2026-06-17_final_906_review_baseline_cleanup.md`

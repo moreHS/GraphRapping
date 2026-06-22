@@ -86,6 +86,23 @@ def test_source_review_stats_preserved_on_master():
     assert master["_es_meta"]["REVIEW_SCORE"] == 4.5
 
 
+def test_category_falls_back_to_deepest_available_hierarchy():
+    record = dict(_DUMMY_PRODUCT)
+    record["ONLINE_PROD_SERIAL_NUMBER"] = "TEST_BODY"
+    record["CTGR_L_NAME"] = "바디케어"
+    record["CTGR_M_NAME"] = "바디크림"
+    record["CTGR_S_NAME"] = None
+    record["CTGR_SS_NAME"] = None
+
+    result = load_products_from_es_records([record])
+    master = result.product_masters["TEST_BODY"]
+
+    assert master["category_name"] == "바디크림"
+    assert master["category_id"] == "바디크림"
+    assert master["_es_meta"]["CTGR_L_NAME"] == "바디케어"
+    assert master["_es_meta"]["CTGR_M_NAME"] == "바디크림"
+
+
 def test_missing_source_review_score_is_none_not_zero():
     record = dict(_DUMMY_PRODUCT)
     record["ONLINE_PROD_SERIAL_NUMBER"] = "TEST_ZERO_SCORE"

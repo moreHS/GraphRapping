@@ -84,6 +84,83 @@ def _match_product_by_source_id(source_product_id: str | None, index: ProductInd
     )
 
 
+def _add_source_backed_keyword_helper_facts(
+    *,
+    builder: CanonicalFactBuilder,
+    bee_rows: list[dict[str, Any]],
+    bee_normalizer: BEENormalizer,
+    review_id: str,
+    target_product_iri: str | None,
+) -> int:
+    """Add kg_on BEEAttr→Keyword helper facts from dictionary-backed BEE surfaces.
+
+    KG mode remains the source for product attribution and Product→BEEAttr facts.
+    This helper intentionally adds only HAS_KEYWORD facts so the legacy
+    Product→BEEAttr path is not duplicated in kg_mode="on".
+    """
+    if not target_product_iri:
+        return 0
+
+    added = 0
+    for i, bee_row in enumerate(bee_rows):
+        if not bee_row.get("target_linked", True):
+            continue
+
+        bee_result = bee_normalizer.normalize(
+            phrase_text=bee_row["phrase_text"],
+            bee_attr_raw=bee_row["bee_attr_raw"],
+            raw_sentiment=bee_row.get("raw_sentiment"),
+        )
+        if bee_result.keyword_source != "DICT" or not bee_result.keyword_ids:
+            continue
+        if bee_result.confidence < 0.6:
+            continue
+
+        attr_iri = make_concept_iri("BEEAttr", bee_result.bee_attr_id)
+        builder.register_entity(CanonicalEntity(
+            entity_iri=attr_iri,
+            entity_type="BEEAttr",
+            canonical_name=bee_result.bee_attr_label,
+            canonical_name_norm=normalize_text(bee_result.bee_attr_label),
+        ))
+
+        provenance = FactProvenance(
+            raw_table="bee_raw",
+            raw_row_id=str(i),
+            review_id=review_id,
+            snippet=bee_row["phrase_text"],
+            source_modality="BEE",
+        )
+        for keyword_id, keyword_label in zip(bee_result.keyword_ids, bee_result.keyword_labels):
+            keyword_iri = make_concept_iri("Keyword", keyword_id)
+            builder.register_entity(CanonicalEntity(
+                entity_iri=keyword_iri,
+                entity_type="Keyword",
+                canonical_name=keyword_label,
+                canonical_name_norm=normalize_text(keyword_label),
+            ))
+            fact_id = builder.add_fact(
+                review_id=review_id,
+                subject_iri=attr_iri,
+                predicate="HAS_KEYWORD",
+                object_iri=keyword_iri,
+                object_ref_kind=ObjectRefKind.CONCEPT,
+                subject_type="BEEAttr",
+                object_type="Keyword",
+                polarity=bee_result.polarity,
+                confidence=bee_result.confidence,
+                source_modality="BEE",
+                provenance=provenance,
+                negated=bee_result.negated if bee_result.negated else None,
+                intensity=bee_result.intensity if bee_result.intensity != 1.0 else None,
+                evidence_kind="BEE_DICT",
+            )
+            if fact_id is not None:
+                added += 1
+
+    return added
+
+
 def process_review(
     record: RawReviewRecord,
     source: str,
@@ -215,6 +292,13 @@ def process_review(
             if target_product_iri:
                 kg_result_to_facts(kg_result, ingested.review_id, target_product_iri, builder,
                                    reviewer_proxy_iri=ingested.reviewer_proxy_id)
+                _add_source_backed_keyword_helper_facts(
+                    builder=builder,
+                    bee_rows=ingested.bee_rows,
+                    bee_normalizer=bee_normalizer,
+                    review_id=ingested.review_id,
+                    target_product_iri=target_product_iri,
+                )
             else:
                 logger.debug("KG skip: no target_product_iri for review %s", ingested.review_id)
             # Route KG keyword candidates to quarantine

@@ -10,8 +10,8 @@ Baselines (final 906-review source-grounded fixture):
   906 reviews / 517 distinct products / 50 users
 - kg_mode=off : signal_count = 2,801, quarantine_count = 9,255
                 top_bee_attr_ids on 26 products, top_keyword_ids on 5
-- kg_mode=on  : signal_count = 2,529, quarantine_count = 6,331
-                top_bee_attr_ids on 26 products
+- kg_mode=on  : signal_count = 2,767, quarantine_count = 6,331
+                top_bee_attr_ids on 26 products, top_keyword_ids on 5
 
 The active baseline is now the final 906-review source-grounded fixture; see
 `DECISIONS/2026-06-17_final_906_review_baseline_cleanup.md`.
@@ -73,8 +73,8 @@ def test_kg_off_quarantine_baseline(_load_inputs: tuple[list[dict], dict]) -> No
 def test_kg_on_signal_baseline(_load_inputs: tuple[list[dict], dict]) -> None:
     products, users = _load_inputs
     r = _run(products, users, "on")
-    assert r.signal_count == 2529, (
-        f"kg_mode=on signal_count baseline drift: got {r.signal_count} (expected 2529). "
+    assert r.signal_count == 2767, (
+        f"kg_mode=on signal_count baseline drift: got {r.signal_count} (expected 2767). "
         f"{_DRIFT_HINT}"
     )
 
@@ -105,8 +105,9 @@ _TOP_SIGNAL_FIELDS = (
 # top_bee_attr_ids on 26 products after source_product_id exact matching.
 # See DECISIONS/2026-06-17_final_906_review_baseline_cleanup.md.
 #
-# signal_count / quarantine_count 자체는 review 906 의 내용은 동일하므로
-# 변하지 않음 (2801/9255 kg_off, 2529/6331 kg_on).
+# kg_on now restores source-backed BEE dictionary keyword projection:
+# BEEAttr -> HAS_KEYWORD -> Keyword helper facts are emitted only in kg_on.
+# See DECISIONS/2026-06-22_kg_on_source_backed_keyword_repair.md.
 _EXPECTED_TOP_FIELD_COUNTS = {
     "off": {
         "top_bee_attr_ids": 26,
@@ -120,7 +121,7 @@ _EXPECTED_TOP_FIELD_COUNTS = {
     },
     "on": {
         "top_bee_attr_ids": 26,
-        "top_keyword_ids": 0,
+        "top_keyword_ids": 5,
         "top_context_ids": 0,
         "top_concern_pos_ids": 0,
         "top_concern_neg_ids": 0,
@@ -141,7 +142,7 @@ def test_promoted_top_field_counts_match_baseline(
     v260605 refresh activated promotion gates (Wave 2.8/2.9). Expected
     (after 2026-06-10 catalog 교체 → 517 distinct products):
     - top_bee_attr_ids on 26 products (both kg_modes)
-    - top_keyword_ids on 5 products (kg_off only — kg_on routes keywords differently)
+    - top_keyword_ids on 5 products (both modes; kg_on uses source-backed helper facts)
     - Other top_* fields stay at 0 (mock data has limited context/concern/tool/co-use signals)
 
     Any drift is a stop condition.

@@ -75,6 +75,15 @@ def _parse_review_score(value: Any) -> float | None:
     return parsed if parsed > 0 else None
 
 
+def _deepest_category_name(record: dict[str, Any]) -> str:
+    """Return the most specific non-empty ES category label."""
+    for field in ("CTGR_SS_NAME", "CTGR_S_NAME", "CTGR_M_NAME", "CTGR_L_NAME"):
+        value = record.get(field)
+        if value is not None and str(value).strip():
+            return str(value).strip()
+    return ""
+
+
 @dataclass
 class ProductLoadResult:
     """All product-side artifacts needed by run_batch()."""
@@ -102,7 +111,7 @@ def load_products_from_es_records(
       ONLINE_PROD_SERIAL_NUMBER → product_id
       prd_nm → product_name
       BRAND_NAME → brand_name, brand_id=normalize(BRAND_NAME)
-      CTGR_SS_NAME → category_name, category_id=normalize(CTGR_SS_NAME)
+      deepest available CTGR_*_NAME → category_name/category_id
       SALE_STATUS → optional caller filter (default: keep all source products)
       SALE_PRICE → price (float, None on failure)
       MAIN_INGREDIENT → ingredients (comma-split list)
@@ -124,7 +133,7 @@ def load_products_from_es_records(
         product_id = str(product_id_raw)
 
         raw_brand_name = record.get("BRAND_NAME", "")
-        category_name = record.get("CTGR_SS_NAME", "")
+        category_name = _deepest_category_name(record)
         source_truth = merge_product_truth({
             "product_id": product_id,
             "product_name": record.get("prd_nm", ""),
@@ -169,7 +178,13 @@ def load_products_from_es_records(
             "source_review_score": _parse_review_score(record.get("REVIEW_SCORE")),
         })
         master["_es_meta"] = {
+            "ONLINE_PROD_NAME": record.get("ONLINE_PROD_NAME"),
+            "prd_nm": record.get("prd_nm"),
             "REPRESENTATIVE_PROD_NAME": record.get("REPRESENTATIVE_PROD_NAME"),
+            "CTGR_L_NAME": record.get("CTGR_L_NAME"),
+            "CTGR_M_NAME": record.get("CTGR_M_NAME"),
+            "CTGR_S_NAME": record.get("CTGR_S_NAME"),
+            "CTGR_SS_NAME": record.get("CTGR_SS_NAME"),
             "REVIEW_COUNT": record.get("REVIEW_COUNT"),
             "REVIEW_SCORE": record.get("REVIEW_SCORE"),
             "SAP_CODE": record.get("SAP_CODE"),
