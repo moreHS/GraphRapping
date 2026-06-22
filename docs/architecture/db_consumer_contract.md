@@ -97,16 +97,17 @@ Consumer 는 단일 window 만 선택해 join 한다. 동시 다중 window read 
 
 `serving_profile_schema.py` 가 single source of truth. 아래는 그 미러.
 
-> **2026-06-17 local DB baseline** (2026-06-16 real product master/source
+> **2026-06-18 local DB baseline** (Snowflake `f_prd_rv_hist` 6-month source
 > stats refresh 적용 후 재조회):
 > - kg_off: 2801 signals / 9255 quarantine
 > - kg_on : 2529 signals / 6331 quarantine
 > - **517 active products** (rs_own.product_id 문자열 그대로; 분포는 §3
 >   product_id 형식 contract 참조), 50 active users, 906 reviews
 > - `product_review_stats`: 516 rows
+> - `serving_product_profile.source_review_count_6m`: 516 positive, 0 zero
+> - `serving_product_profile.source_avg_rating_6m`: 516 non-null
 > - `serving_product_profile.source_review_count_all`: 516 non-null
 > - `serving_product_profile.source_avg_rating_all`: 516 non-null
-> - `serving_product_profile.source_avg_rating_6m`: 0 non-null
 > - promoted signals (kg_off, window=all): top_bee_attr_ids on 26 products,
 >   top_keyword_ids on 5 products
 >

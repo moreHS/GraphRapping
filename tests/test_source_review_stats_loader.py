@@ -9,6 +9,7 @@ from src.loaders.source_review_stats_loader import (
     SNOWFLAKE_SOURCE,
     build_031_source_review_stats_sql,
     build_source_review_stats_sql,
+    load_source_review_stats_snapshot,
     parse_source_review_stats_row,
     product_review_stats_rows,
     sql_literal,
@@ -131,3 +132,138 @@ def test_product_review_stats_rows_maps_loader_fields_to_persistence_contract() 
         "source_review_max_date_all": None,
         "source": SNOWFLAKE_SOURCE,
     }]
+
+
+def test_parse_source_review_stats_row_accepts_persistence_aliases() -> None:
+    stats = parse_source_review_stats_row({
+        "product_id": "61289",
+        "source_channel": "031",
+        "source_key_type": "ecp_onln_prd_srno",
+        "source_review_count_6m": 874,
+        "source_review_score_count_6m": 874,
+        "source_avg_rating_6m": Decimal("4.939"),
+        "source_review_min_date_6m": "2025-12-15",
+        "source_review_max_date_6m": "2026-06-14",
+        "source_review_count_all": 4917,
+        "source_review_score_count_all": 4917,
+        "source_avg_rating_all": Decimal("4.945"),
+        "source_review_min_date_all": "2024-09-26",
+        "source_review_max_date_all": "2026-06-14",
+        "source_review_stats_source": "snowflake:f_prd_rv_hist:2026-06-18",
+    })
+
+    assert stats.product_id == "61289"
+    assert stats.review_count_6m == 874
+    assert stats.score_count_6m == 874
+    assert stats.avg_rating_6m == 4.939
+    assert stats.review_min_date_6m == date(2025, 12, 15)
+    assert stats.review_max_date_6m == date(2026, 6, 14)
+    assert stats.review_count_all == 4917
+    assert stats.avg_rating_all == 4.945
+    assert stats.source == "snowflake:f_prd_rv_hist:2026-06-18"
+
+
+def test_load_source_review_stats_snapshot_skips_ambiguous_product_ids(tmp_path) -> None:
+    path = tmp_path / "stats.json"
+    path.write_text(
+        """
+        {
+          "records": [
+            {
+              "product_id": "61289",
+              "source_channel": "031",
+              "source_key_type": "ecp_onln_prd_srno",
+              "source_review_count_6m": 874,
+              "source_review_score_count_6m": 874,
+              "source_avg_rating_6m": 4.939,
+              "source_review_min_date_6m": "2025-12-15",
+              "source_review_max_date_6m": "2026-06-14",
+              "source_review_count_all": 4917,
+              "source_review_score_count_all": 4917,
+              "source_avg_rating_all": 4.945,
+              "source_review_min_date_all": "2024-09-26",
+              "source_review_max_date_all": "2026-06-14"
+            },
+            {
+              "product_id": "35119",
+              "source_channel": "031",
+              "source_key_type": "ecp_onln_prd_srno",
+              "source_review_count_6m": 10,
+              "source_review_score_count_6m": 10,
+              "source_avg_rating_6m": 4.0,
+              "source_review_min_date_6m": "2026-01-01",
+              "source_review_max_date_6m": "2026-06-01",
+              "source_review_count_all": 100,
+              "source_review_score_count_all": 100,
+              "source_avg_rating_all": 4.1,
+              "source_review_min_date_all": "2025-01-01",
+              "source_review_max_date_all": "2026-06-01"
+            },
+            {
+              "product_id": "35119",
+              "source_channel": "036",
+              "source_key_type": "chn_prd_cd",
+              "source_review_count_6m": 20,
+              "source_review_score_count_6m": 20,
+              "source_avg_rating_6m": 4.2,
+              "source_review_min_date_6m": "2026-01-01",
+              "source_review_max_date_6m": "2026-06-01",
+              "source_review_count_all": 200,
+              "source_review_score_count_all": 200,
+              "source_avg_rating_all": 4.3,
+              "source_review_min_date_all": "2025-01-01",
+              "source_review_max_date_all": "2026-06-01"
+            }
+          ]
+        }
+        """,
+        encoding="utf-8",
+    )
+
+    stats = load_source_review_stats_snapshot(path)
+
+    assert set(stats) == {"61289"}
+    assert stats["61289"]["source_review_count_6m"] == 874
+    assert stats["61289"]["source_avg_rating_6m"] == 4.939
+
+
+def test_load_source_review_stats_snapshot_rejects_product_master_snapshot(tmp_path) -> None:
+    path = tmp_path / "wrong.json"
+    path.write_text(
+        '{"records": [{"product_id": "61289", "REVIEW_COUNT": 4917, "REVIEW_SCORE": 4.945}]}',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="missing required value"):
+        load_source_review_stats_snapshot(path)
+
+
+def test_load_source_review_stats_snapshot_rejects_null_required_values(tmp_path) -> None:
+    path = tmp_path / "null_stats.json"
+    path.write_text(
+        """
+        {
+          "records": [
+            {
+              "product_id": "61289",
+              "source_channel": "031",
+              "source_key_type": "ecp_onln_prd_srno",
+              "source_review_count_6m": 862,
+              "source_review_score_count_6m": 862,
+              "source_avg_rating_6m": null,
+              "source_review_min_date_6m": "2025-12-18",
+              "source_review_max_date_6m": "2026-06-17",
+              "source_review_count_all": 4965,
+              "source_review_score_count_all": 4965,
+              "source_avg_rating_all": 4.945,
+              "source_review_min_date_all": "2024-09-26",
+              "source_review_max_date_all": "2026-06-17"
+            }
+          ]
+        }
+        """,
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="missing required value"):
+        load_source_review_stats_snapshot(path)

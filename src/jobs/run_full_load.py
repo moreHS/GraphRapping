@@ -41,6 +41,12 @@ class FullLoadConfig:
     # Source-grounded review stats keyed by product_id. Values may be parsed
     # Snowflake rows or product_review_stats persistence rows.
     source_review_stats_by_product: dict[str, dict[str, Any]] | None = None
+    # Optional JSON snapshot path used by DB full-load materialization. The
+    # in-memory pipeline accepts already-loaded dicts; DB runners can use this
+    # path to avoid silently falling back to catalog all-time review stats.
+    source_review_stats_json_path: str | None = (
+        "data/source_snapshots/product_review_stats_snowflake_latest.json"
+    )
 
 
 @dataclass
@@ -123,6 +129,7 @@ def run_full_load(config: FullLoadConfig) -> FullLoadResult:
             brand_lookup=brand_lookup,
             category_lookup=category_lookup,
             family_lookup=family_lookup,
+            product_masters=product_result.product_masters,
         )
     else:
         user_result = UserLoadResult()
@@ -235,9 +242,6 @@ def _merge_source_review_stats(
             "source_product_id": master.get("source_product_id") or pid,
             "source_channel": master.get("source_channel"),
             "source_key_type": master.get("source_key_type"),
-            "source_review_count_6m": 0,
-            "source_review_score_count_6m": 0,
-            "source_avg_rating_6m": None,
             "source_review_count_all": int(count or 0),
             "source_review_score_count_all": score_count,
             "source_avg_rating_all": score,

@@ -4,6 +4,8 @@ Product repository: product_master + concept_registry + entity_concept_link + ca
 
 from __future__ import annotations
 
+import json
+import re
 from typing import Any
 
 from src.db.unit_of_work import UnitOfWork
@@ -120,8 +122,8 @@ async def upsert_product_review_stats(uow: UnitOfWork, row: dict[str, Any]) -> N
         row["product_id"],
         _source_key_value(row.get("source_channel")),
         _source_key_value(row.get("source_key_type")),
-        row.get("source_review_count_6m", 0),
-        row.get("source_review_score_count_6m", 0),
+        row.get("source_review_count_6m"),
+        row.get("source_review_score_count_6m"),
         row.get("source_avg_rating_6m"),
         row.get("source_review_min_date_6m"),
         row.get("source_review_max_date_6m"),
@@ -133,6 +135,39 @@ async def upsert_product_review_stats(uow: UnitOfWork, row: dict[str, Any]) -> N
         row.get("source") or row.get("source_review_stats_source") or "snowflake:f_prd_rv_hist",
         uow.as_of_ts,
     )
+
+
+async def delete_product_review_stats_outside_keys(
+    uow: UnitOfWork,
+    rows: list[dict[str, Any]],
+) -> int:
+    """Delete product_review_stats rows not present in this full-load batch."""
+    keep = [
+        {
+            "product_id": str(row["product_id"]),
+            "source_channel": _source_key_value(row.get("source_channel")),
+            "source_key_type": _source_key_value(row.get("source_key_type")),
+        }
+        for row in rows
+    ]
+    result = await uow.execute(
+        """
+        DELETE FROM product_review_stats prs
+        WHERE NOT EXISTS (
+            SELECT 1
+            FROM jsonb_to_recordset($1::jsonb) AS keep(
+                product_id text,
+                source_channel text,
+                source_key_type text
+            )
+            WHERE prs.product_id = keep.product_id
+              AND prs.source_channel = keep.source_channel
+              AND prs.source_key_type = keep.source_key_type
+        )
+        """,
+        json.dumps(keep, ensure_ascii=False),
+    )
+    return _row_count_from_status(result)
 
 
 async def load_product_review_stats(
@@ -182,6 +217,11 @@ def _source_key_value(value: Any) -> str:
         return _UNKNOWN_SOURCE_KEY
     text = str(value).strip()
     return text or _UNKNOWN_SOURCE_KEY
+
+
+def _row_count_from_status(status: str) -> int:
+    match = re.search(r"(\d+)$", status)
+    return int(match.group(1)) if match else 0
 
 
 async def upsert_concept_seeds(uow: UnitOfWork, concepts: list[dict]) -> None:

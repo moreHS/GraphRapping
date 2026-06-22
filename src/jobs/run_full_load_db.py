@@ -26,9 +26,11 @@ Acceptance (Wave 4 plan v2):
 
 from __future__ import annotations
 
+import json
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 import asyncpg
@@ -45,8 +47,13 @@ from src.db.unit_of_work import UnitOfWork
 from src.ingest.purchase_ingest import PurchaseEvent
 from src.jobs.run_daily_pipeline import _agg_to_dict
 from src.jobs.run_full_load import FullLoadConfig, FullLoadResult, run_full_load
+from src.loaders.source_review_stats_loader import load_source_review_stats_snapshot
 
 logger = logging.getLogger(__name__)
+REPO_ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_SOURCE_REVIEW_STATS_SNAPSHOT = (
+    "data/source_snapshots/product_review_stats_snowflake_latest.json"
+)
 
 
 @dataclass
@@ -211,6 +218,7 @@ async def _persist_layer0(
     counts = {
         "product_masters": 0,
         "product_review_stats": 0,
+        "product_review_stats_deleted_stale": 0,
         "concept_seeds": 0,
         "entity_concept_links": 0,
         "user_masters": 0,
@@ -222,9 +230,13 @@ async def _persist_layer0(
             await product_repo.upsert_product_master(uow, product)
             counts["product_masters"] += 1
 
-        for stats in batch.get("source_review_stats_by_product", {}).values():
+        stats_rows = list(batch.get("source_review_stats_by_product", {}).values())
+        for stats in stats_rows:
             await product_repo.upsert_product_review_stats(uow, stats)
             counts["product_review_stats"] += 1
+        counts["product_review_stats_deleted_stale"] = (
+            await product_repo.delete_product_review_stats_outside_keys(uow, stats_rows)
+        )
 
         # Concept registry seeds (from product_loader) — required so consumer
         # joins on concept_id resolve. ON CONFLICT DO NOTHING already; safe.
@@ -301,6 +313,7 @@ async def run_full_load_to_db(
     """
     if run_migrations:
         await migrate(pool)
+    config = _config_with_default_source_review_stats(config)
 
     # Wave 5.3: serialize against any other FULL or INCREMENTAL run.
     # Lock is held for the entire critical section (Layer0 → bundles →
@@ -359,3 +372,50 @@ async def run_full_load_to_db(
                 error_message=str(exc),
             )
             raise
+
+
+def _config_with_default_source_review_stats(config: FullLoadConfig) -> FullLoadConfig:
+    if config.source_review_stats_by_product is not None:
+        return config
+    snapshot_path = config.source_review_stats_json_path
+    if snapshot_path is None:
+        return config
+    path = Path(snapshot_path)
+    if not path.is_absolute():
+        path = REPO_ROOT / path
+    if not path.exists():
+        raise FileNotFoundError(f"source review stats snapshot not found: {path}")
+
+    stats = load_source_review_stats_snapshot(path)
+    product_ids = _product_ids_from_full_load_config(config)
+    if product_ids is not None:
+        stats = {pid: row for pid, row in stats.items() if pid in product_ids}
+    if not stats:
+        raise ValueError(
+            "source review stats snapshot loaded zero rows for this full-load product universe: "
+            f"{path}"
+        )
+    return replace(config, source_review_stats_by_product=stats)
+
+
+def _product_ids_from_full_load_config(config: FullLoadConfig) -> set[str] | None:
+    records: list[dict[str, Any]] | None = None
+    if config.product_es_records is not None:
+        records = config.product_es_records
+    elif config.product_json_path:
+        path = Path(config.product_json_path)
+        if not path.is_absolute():
+            path = REPO_ROOT / path
+        if path.exists():
+            data = json.loads(path.read_text(encoding="utf-8"))
+            records = data if isinstance(data, list) else [data]
+    if records is None:
+        return None
+    product_ids = {
+        str(pid)
+        for record in records
+        if isinstance(record, dict)
+        for pid in [record.get("ONLINE_PROD_SERIAL_NUMBER") or record.get("product_id")]
+        if pid is not None and str(pid).strip()
+    }
+    return product_ids

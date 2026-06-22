@@ -325,7 +325,53 @@ async def _count_source_grounding_violations(pool: asyncpg.Pool) -> dict[str, in
               )
             """
         )
-    return {"source_identity": identity or 0, "promo_prefix_brand": promo_brand or 0}
+        source_stats_shape = await conn.fetchval(
+            """
+            SELECT COUNT(*)
+            FROM serving_product_profile
+            WHERE is_active = true
+              AND source_review_stats_source ILIKE '%snowflake%'
+              AND (
+                  source_review_count_6m IS NULL
+                  OR source_review_count_6m <= 0
+                  OR source_review_score_count_6m IS NULL
+                  OR source_avg_rating_6m IS NULL
+                  OR source_review_min_date_6m IS NULL
+                  OR source_review_max_date_6m IS NULL
+                  OR source_review_count_all IS NULL
+                  OR source_review_score_count_all IS NULL
+                  OR source_avg_rating_all IS NULL
+                  OR source_review_min_date_all IS NULL
+                  OR source_review_max_date_all IS NULL
+              )
+            """
+        )
+    return {
+        "source_identity": identity or 0,
+        "promo_prefix_brand": promo_brand or 0,
+        "source_stats_shape": source_stats_shape or 0,
+    }
+
+
+async def _count_source_review_stats_readiness(pool: asyncpg.Pool) -> dict[str, int]:
+    async with pool.acquire() as conn:
+        positive_6m = await conn.fetchval(
+            """
+            SELECT COUNT(*)
+            FROM serving_product_profile
+            WHERE is_active = true
+              AND source_review_count_6m > 0
+            """
+        )
+        avg_6m = await conn.fetchval(
+            """
+            SELECT COUNT(*)
+            FROM serving_product_profile
+            WHERE is_active = true
+              AND source_avg_rating_6m IS NOT NULL
+            """
+        )
+    return {"positive_6m": positive_6m or 0, "avg_6m": avg_6m or 0}
 
 
 async def _count_active_rows(pool: asyncpg.Pool, table: str) -> int:
@@ -356,6 +402,8 @@ async def validate_data(
     expected_min_active_users: int = 0,
     expected_min_concepts: int = 0,
     expected_min_promoted_signals: int = 0,
+    expected_min_source_review_count_6m: int = 0,
+    expected_min_source_avg_rating_6m: int = 0,
     signal_window: str = "all",
     enforce_stale_policy: bool = True,
     stale_threshold_days: int = 90,
@@ -378,16 +426,29 @@ async def validate_data(
     active_users = await _count_active_rows(pool, "user_master")
     concept_count = await _count_concepts(pool)
     promoted_in_window = await _count_promoted_signals_in_window(pool, signal_window)
+    source_stats = await _count_source_review_stats_readiness(pool)
     counts["active_products"] = active_products
     counts["active_users"] = active_users
     counts["concepts"] = concept_count
     counts[f"promoted_signals.{signal_window}"] = promoted_in_window
+    counts["source_review_stats.positive_6m"] = source_stats["positive_6m"]
+    counts["source_review_stats.avg_rating_6m"] = source_stats["avg_6m"]
 
     for name, actual, expected_min in (
         ("data.active_products", active_products, expected_min_active_products),
         ("data.active_users", active_users, expected_min_active_users),
         ("data.concepts", concept_count, expected_min_concepts),
         (f"data.promoted_signals.{signal_window}", promoted_in_window, expected_min_promoted_signals),
+        (
+            "data.source_review_stats.positive_6m",
+            source_stats["positive_6m"],
+            expected_min_source_review_count_6m,
+        ),
+        (
+            "data.source_review_stats.avg_rating_6m",
+            source_stats["avg_6m"],
+            expected_min_source_avg_rating_6m,
+        ),
     ):
         if actual < expected_min:
             checks.append(ContractCheck(
@@ -495,6 +556,7 @@ async def validate_data(
         source_violations = await _count_source_grounding_violations(pool)
         counts["source_grounding.source_identity"] = source_violations["source_identity"]
         counts["source_grounding.promo_prefix_brand"] = source_violations["promo_prefix_brand"]
+        counts["source_grounding.source_stats_shape"] = source_violations["source_stats_shape"]
         total_source_violations = sum(source_violations.values())
         if total_source_violations > 0:
             checks.append(ContractCheck(
@@ -505,7 +567,9 @@ async def validate_data(
                     f"{source_violations['source_identity']} serving/product source "
                     "identity mismatch row(s), "
                     f"{source_violations['promo_prefix_brand']} source-backed promo-prefix "
-                    "brand row(s)"
+                    "brand row(s), "
+                    f"{source_violations['source_stats_shape']} snowflake source stats "
+                    "shape row(s)"
                 ),
                 actual=total_source_violations,
             ))
@@ -527,6 +591,8 @@ async def validate_all(
     expected_min_active_users: int = 0,
     expected_min_concepts: int = 0,
     expected_min_promoted_signals: int = 0,
+    expected_min_source_review_count_6m: int = 0,
+    expected_min_source_avg_rating_6m: int = 0,
     signal_window: str = "all",
     enforce_stale_policy: bool = True,
     stale_threshold_days: int = 90,
@@ -547,6 +613,8 @@ async def validate_all(
         expected_min_active_users=expected_min_active_users,
         expected_min_concepts=expected_min_concepts,
         expected_min_promoted_signals=expected_min_promoted_signals,
+        expected_min_source_review_count_6m=expected_min_source_review_count_6m,
+        expected_min_source_avg_rating_6m=expected_min_source_avg_rating_6m,
         signal_window=signal_window,
         enforce_stale_policy=enforce_stale_policy,
         stale_threshold_days=stale_threshold_days,

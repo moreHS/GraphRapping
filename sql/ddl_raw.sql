@@ -47,8 +47,8 @@ create table if not exists product_review_stats (
     product_id text not null references product_master(product_id),
     source_channel text not null default 'unknown',
     source_key_type text not null default 'unknown',
-    source_review_count_6m int not null default 0,
-    source_review_score_count_6m int not null default 0,
+    source_review_count_6m int,
+    source_review_score_count_6m int,
     source_avg_rating_6m numeric(5, 3),
     source_review_min_date_6m date,
     source_review_max_date_6m date,
@@ -61,6 +61,11 @@ create table if not exists product_review_stats (
     updated_at timestamptz not null default now(),
     primary key (product_id, source_channel, source_key_type)
 );
+
+alter table product_review_stats alter column source_review_count_6m drop not null;
+alter table product_review_stats alter column source_review_count_6m drop default;
+alter table product_review_stats alter column source_review_score_count_6m drop not null;
+alter table product_review_stats alter column source_review_score_count_6m drop default;
 
 -- Layer 0: User Master
 create table if not exists user_master (

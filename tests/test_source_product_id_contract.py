@@ -159,6 +159,9 @@ def test_catalog_review_stats_are_preserved_as_source_fallback() -> None:
     assert stats["61289"]["source_product_id"] == "61289"
     assert stats["61289"]["source_channel"] == "031"
     assert stats["61289"]["source_key_type"] == "ecp_onln_prd_srno"
+    assert "source_review_count_6m" not in stats["61289"]
+    assert "source_review_score_count_6m" not in stats["61289"]
+    assert "source_avg_rating_6m" not in stats["61289"]
     assert stats["61289"]["source_review_count_all"] == 42
     assert stats["61289"]["source_review_score_count_all"] == 42
     assert stats["61289"]["source_avg_rating_all"] == 4.5
@@ -219,6 +222,9 @@ def test_configured_source_review_stats_win_over_mock_master() -> None:
             "61289": {
                 "product_id": "61289",
                 "source_product_id": "61289",
+                "source_review_count_6m": 874,
+                "source_review_score_count_6m": 874,
+                "source_avg_rating_6m": 4.939,
                 "source_review_count_all": 99,
                 "source_avg_rating_all": 4.9,
                 "source": "snowflake:f_prd_rv_hist",
@@ -226,6 +232,8 @@ def test_configured_source_review_stats_win_over_mock_master() -> None:
         },
     )
 
+    assert stats["61289"]["source_review_count_6m"] == 874
+    assert stats["61289"]["source_avg_rating_6m"] == 4.939
     assert stats["61289"]["source_review_count_all"] == 99
     assert stats["61289"]["source_avg_rating_all"] == 4.9
     assert stats["61289"]["source"] == "snowflake:f_prd_rv_hist"

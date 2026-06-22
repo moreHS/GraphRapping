@@ -198,15 +198,14 @@ truth이며, review-derived graph support count로 집계하지 않는다.
 |---|---:|
 | `serving_product_profile.source_review_count_6m` | 516 |
 | `serving_product_profile.source_review_count_all` | 516 |
-| `serving_product_profile.source_avg_rating_6m` | 0 |
+| `serving_product_profile.source_avg_rating_6m` | 516 |
 | `serving_product_profile.source_avg_rating_all` | 516 |
 
 `product_review_stats`는 516 rows다.
 
-현재 6개월 rating 평균은 모두 NULL이고, all-time rating 평균은 516개에 존재한다.
-따라서 AmoreSimulation의 `avg_rating`은 `source_avg_rating_6m`이 없으면
-`source_avg_rating_all`로 fallback해야 한다. 이 값들은 graph evidence count가
-아니라 source raw stats다.
+2026-06-18 재적재 기준 6개월 count/rating/date와 all-time count/rating/date가
+모두 `snowflake:f_prd_rv_hist:2026-06-18` source로 채워져 있다. 이 값들은
+graph evidence count가 아니라 source raw stats다.
 
 GraphRapping에는 이미 다음 경로가 있다.
 
@@ -600,14 +599,19 @@ source review stats:
 
 ### 7.1 GraphRapping DB 적재 손실
 
-2026-06-16 refresh 이후 source stats 적재는 완료됐다. 현재 DB 기준:
+2026-06-18 refresh 이후 source stats 적재는 `f_prd_rv_hist` 6개월 window까지
+완료됐다. 현재 DB 기준:
 
 - `product_review_stats`: 516 rows
+- `product_review_stats.source_review_count_6m > 0`: 516 rows
+- `product_review_stats.source_review_count_6m = 0`: 0 rows
+- `serving_product_profile.source_avg_rating_6m`: 516 non-null
 - `serving_product_profile.source_review_count_all`: 516 non-null
 - `serving_product_profile.source_avg_rating_all`: 516 non-null
-- `serving_product_profile.source_avg_rating_6m`: 0 non-null
 
-남은 손실은 GraphRapping 내부보다 AmoreSimulation consumer boundary에 있다.
+남은 구조적 제약은 `35119` source identity collision이다. 현 product-id
+compatibility schema에서는 이 1개 product state가 lossless source stats를
+가질 수 없으므로 NULL로 유지한다.
 다만 GraphRapping에서는 다음 검증을 유지해야 한다.
 
 - `review_count_*`와 `source_review_*` 의미가 섞이지 않는지 테스트한다.

@@ -9,9 +9,11 @@ module so tests can lock the source-truth SQL shape without a warehouse.
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
+from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
 
@@ -133,8 +135,8 @@ def parse_source_review_stats_row(row: Mapping[str, Any]) -> SourceReviewStats:
     if source_key_type is None and source_channel_str in _CHANNEL_KEY_TYPES:
         source_key_type = _CHANNEL_KEY_TYPES[source_channel_str]
 
-    score_count_6m = _to_int(_get(row, "score_count_6m"))
-    score_count_all = _to_int(_get(row, "score_count_all"))
+    score_count_6m = _to_int(_get(row, "score_count_6m", "source_review_score_count_6m"))
+    score_count_all = _to_int(_get(row, "score_count_all", "source_review_score_count_all"))
 
     return SourceReviewStats(
         product_id=str(_get_required(row, "product_id")),
@@ -144,17 +146,19 @@ def parse_source_review_stats_row(row: Mapping[str, Any]) -> SourceReviewStats:
         representative_product_name=_to_optional_str(_get(row, "representative_product_name")),
         brand_id=_to_optional_str(_get(row, "brand_id")),
         brand_name=_to_optional_str(_get(row, "brand_name")),
-        review_count_6m=_to_int(_get(row, "review_count_6m")),
+        review_count_6m=_to_int(_get(row, "review_count_6m", "source_review_count_6m")),
         score_count_6m=score_count_6m,
-        avg_rating_6m=_to_float(_get(row, "avg_rating_6m")) if score_count_6m > 0 else None,
-        review_min_date_6m=_to_date(_get(row, "review_min_date_6m")),
-        review_max_date_6m=_to_date(_get(row, "review_max_date_6m")),
-        review_count_all=_to_int(_get(row, "review_count_all")),
+        avg_rating_6m=_to_float(_get(row, "avg_rating_6m", "source_avg_rating_6m"))
+        if score_count_6m > 0 else None,
+        review_min_date_6m=_to_date(_get(row, "review_min_date_6m", "source_review_min_date_6m")),
+        review_max_date_6m=_to_date(_get(row, "review_max_date_6m", "source_review_max_date_6m")),
+        review_count_all=_to_int(_get(row, "review_count_all", "source_review_count_all")),
         score_count_all=score_count_all,
-        avg_rating_all=_to_float(_get(row, "avg_rating_all")) if score_count_all > 0 else None,
-        review_min_date_all=_to_date(_get(row, "review_min_date_all")),
-        review_max_date_all=_to_date(_get(row, "review_max_date_all")),
-        source=_to_optional_str(_get(row, "source")) or SNOWFLAKE_SOURCE,
+        avg_rating_all=_to_float(_get(row, "avg_rating_all", "source_avg_rating_all"))
+        if score_count_all > 0 else None,
+        review_min_date_all=_to_date(_get(row, "review_min_date_all", "source_review_min_date_all")),
+        review_max_date_all=_to_date(_get(row, "review_max_date_all", "source_review_max_date_all")),
+        source=_to_optional_str(_get(row, "source", "source_review_stats_source")) or SNOWFLAKE_SOURCE,
     )
 
 
@@ -167,10 +171,114 @@ def product_review_stats_rows(rows: Iterable[Mapping[str, Any]]) -> list[dict[st
     return [stats.to_product_review_stats_row() for stats in parse_source_review_stats_rows(rows)]
 
 
+def load_source_review_stats_snapshot(
+    file_path: str | Path,
+    *,
+    skip_ambiguous_product_ids: bool = True,
+) -> dict[str, dict[str, Any]]:
+    """Load a source review stats JSON snapshot keyed by product_id.
+
+    The current compatibility pipeline accepts only one stats row per product_id.
+    Source identity snapshots can contain real cross-channel product_id
+    collisions, so ambiguous product ids are skipped by default rather than
+    silently attaching one channel's stats to the wrong compatibility product.
+    """
+    path = Path(file_path)
+    data = json.loads(path.read_text(encoding="utf-8"))
+    records = _extract_snapshot_records(data)
+    _assert_window_stats_present(records, path)
+
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for row in product_review_stats_rows(records):
+        grouped.setdefault(str(row["product_id"]), []).append(row)
+
+    result: dict[str, dict[str, Any]] = {}
+    for product_id, rows in grouped.items():
+        identities = {
+            (row.get("source_channel"), row.get("source_key_type"))
+            for row in rows
+        }
+        if skip_ambiguous_product_ids and len(identities) > 1:
+            continue
+        result[product_id] = rows[0]
+    return result
+
+
 def _sql_literal_list(values: Sequence[str]) -> str:
     if not values:
         raise ValueError("product_ids must not be empty")
     return ", ".join(sql_literal(str(value)) for value in values)
+
+
+def _extract_snapshot_records(data: Any) -> list[Mapping[str, Any]]:
+    if isinstance(data, list):
+        records = data
+    elif isinstance(data, dict):
+        records = data.get("records", [])
+    else:
+        raise TypeError("source review stats snapshot must be a list or object with records")
+    if not isinstance(records, list):
+        raise TypeError("source review stats snapshot records must be a list")
+    return records
+
+
+def _assert_window_stats_present(records: list[Mapping[str, Any]], path: Path) -> None:
+    required_aliases = {
+        "review_count_6m": ("review_count_6m", "source_review_count_6m"),
+        "score_count_6m": ("score_count_6m", "source_review_score_count_6m"),
+        "avg_rating_6m": ("avg_rating_6m", "source_avg_rating_6m"),
+        "review_min_date_6m": ("review_min_date_6m", "source_review_min_date_6m"),
+        "review_max_date_6m": ("review_max_date_6m", "source_review_max_date_6m"),
+        "review_count_all": ("review_count_all", "source_review_count_all"),
+        "score_count_all": ("score_count_all", "source_review_score_count_all"),
+        "avg_rating_all": ("avg_rating_all", "source_avg_rating_all"),
+        "review_min_date_all": ("review_min_date_all", "source_review_min_date_all"),
+        "review_max_date_all": ("review_max_date_all", "source_review_max_date_all"),
+    }
+    for index, row in enumerate(records):
+        missing = [
+            field
+            for field, aliases in required_aliases.items()
+            if _first_existing_value(row, *aliases) is None
+        ]
+        if missing:
+            raise ValueError(
+                f"{path} is not a source review stats snapshot: "
+                f"records[{index}] is missing required value(s): {', '.join(missing)}"
+            )
+        review_count_6m = _to_int(_first_existing_value(
+            row, "review_count_6m", "source_review_count_6m",
+        ))
+        score_count_6m = _to_int(_first_existing_value(
+            row, "score_count_6m", "source_review_score_count_6m",
+        ))
+        if review_count_6m <= 0:
+            raise ValueError(
+                f"{path} is not a source review stats snapshot: "
+                f"records[{index}] has non-positive review_count_6m"
+            )
+        if score_count_6m <= 0:
+            raise ValueError(
+                f"{path} is not a source review stats snapshot: "
+                f"records[{index}] has non-positive score_count_6m"
+            )
+        # Force parse validation here so bad date/rating values fail before DB load.
+        _to_float(_first_existing_value(row, "avg_rating_6m", "source_avg_rating_6m"))
+        _to_float(_first_existing_value(row, "avg_rating_all", "source_avg_rating_all"))
+        _to_date(_first_existing_value(row, "review_min_date_6m", "source_review_min_date_6m"))
+        _to_date(_first_existing_value(row, "review_max_date_6m", "source_review_max_date_6m"))
+        _to_date(_first_existing_value(row, "review_min_date_all", "source_review_min_date_all"))
+        _to_date(_first_existing_value(row, "review_max_date_all", "source_review_max_date_all"))
+
+
+def _first_existing_value(row: Mapping[str, Any], *names: str) -> Any:
+    for name in names:
+        if name in row:
+            return row[name]
+        upper = name.upper()
+        if upper in row:
+            return row[upper]
+    return None
 
 
 def _build_031_source_review_stats_sql(

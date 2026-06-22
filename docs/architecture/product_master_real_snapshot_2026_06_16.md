@@ -65,6 +65,8 @@ composite source identity로 승격하는 schema 변경이 필요하다.
 | `data/source_snapshots/product_master_source_identity_latest.json` | source identity | 518 | latest copy |
 | `data/source_snapshots/product_master_compat_product_id_2026-06-16.json` | legacy product id | 517 | 현행 GraphRapping 로더 호환본 |
 | `data/source_snapshots/product_master_compat_product_id_latest.json` | legacy product id | 517 | latest copy |
+| `data/source_snapshots/product_review_stats_snowflake_2026-06-18.json` | source identity | 518 | Snowflake `f_prd_rv_hist` 6개월/all-time 리뷰통계 |
+| `data/source_snapshots/product_review_stats_snowflake_latest.json` | source identity | 518 | latest source review stats copy |
 | `mockdata/product_catalog_es.json` | legacy product id | 517 | full load 입력 파일 |
 
 compat catalog 품질:
@@ -83,16 +85,30 @@ source identity snapshot 품질:
 - source review stats present: 518
 - missing source identity: 0
 
+source review stats snapshot 품질:
+
+- source identity rows: 518
+- distinct product ids: 517
+- duplicate product id: `35119`
+- `source_review_count_6m > 0`: 518/518
+- `source_avg_rating_6m` present: 518/518
+
 ## DB 적재 결과
 
-2026-06-16 기준 로컬 `graphrapping` Postgres는 데이터 테이블을 truncate 후
-오늘자 catalog로 full load 재적재했다.
+2026-06-18 기준 로컬 `graphrapping` Postgres는 오늘자
+`product_review_stats_snowflake_latest.json`을 `FullLoadConfig`에 주입해
+full load 재적재했다. 2026-06-16 적재분의 6개월 source stats 0/null 문제는
+해결됐다.
 
 | table/check | count |
 | --- | ---: |
 | `pipeline_run` latest status | `COMPLETED` |
 | `product_master` active | 517 |
 | `product_review_stats` | 516 |
+| `product_review_stats.source_review_count_6m > 0` | 516 |
+| `product_review_stats.source_review_count_6m = 0` | 0 |
+| `product_review_stats.source_avg_rating_6m` | 516 |
+| `product_review_stats.source_review_min/max_date_6m` | 516/516 |
 | `user_master` active | 50 |
 | `review_raw` active | 906 |
 | `review_catalog_link` | 906 |
@@ -101,6 +117,14 @@ source identity snapshot 품질:
 | `agg_product_signal` | 6849 |
 | `review_catalog_link` joined to `product_master` | 906/906 |
 | `source_product_id = matched_product_id` | 906/906 |
+
+대표 product stats:
+
+| product_id | `source_review_count_6m` | `source_avg_rating_6m` | `source_review_count_all` |
+| --- | ---: | ---: | ---: |
+| `61289` | 862 | 4.941 | 4965 |
+| `35117` | 36329 | 4.868 | 162552 |
+| `16855` | 24 | 4.958 | 69 |
 
 `35119` 관련 리뷰 2건은 둘 다 `SOURCE_KEY_COLLISION` master에 연결된다.
 이는 잘못된 단일 상품으로 연결하는 것보다 안전한 표현이다.

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import uuid
+import json
 from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Any
@@ -11,7 +12,11 @@ import pytest
 import pytest_asyncio
 
 from src.db.migrate import migrate
-from src.db.repos.product_repo import load_product_review_stats, upsert_product_review_stats
+from src.db.repos.product_repo import (
+    delete_product_review_stats_outside_keys,
+    load_product_review_stats,
+    upsert_product_review_stats,
+)
 from src.db.unit_of_work import UnitOfWork
 
 
@@ -76,10 +81,46 @@ def test_upsert_product_review_stats_normalizes_missing_source_key_parts() -> No
 
     _query, args = uow.executed[0]
     assert args[:3] == ("P1", "unknown", "unknown")
-    assert args[3] == 0
-    assert args[4] == 0
+    assert args[3] is None
+    assert args[4] is None
     assert args[8] == 0
     assert args[9] == 0
+
+
+def test_delete_product_review_stats_outside_keys_uses_current_batch_keys() -> None:
+    uow = FakeUow()
+
+    import asyncio
+
+    deleted = asyncio.run(delete_product_review_stats_outside_keys(uow, [
+        {
+            "product_id": "61289",
+            "source_channel": "031",
+            "source_key_type": "ecp_onln_prd_srno",
+        },
+        {
+            "product_id": "P2",
+            "source_channel": None,
+            "source_key_type": "",
+        },
+    ]))  # type: ignore[arg-type]
+
+    query, args = uow.executed[0]
+    keep = json.loads(args[0])
+    assert "DELETE FROM product_review_stats" in query
+    assert deleted == 1
+    assert keep == [
+        {
+            "product_id": "61289",
+            "source_channel": "031",
+            "source_key_type": "ecp_onln_prd_srno",
+        },
+        {
+            "product_id": "P2",
+            "source_channel": "unknown",
+            "source_key_type": "unknown",
+        },
+    ]
 
 
 def test_load_product_review_stats_is_product_id_first_with_source_key_preference() -> None:

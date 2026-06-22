@@ -149,6 +149,11 @@ def _stub_data(monkeypatch: pytest.MonkeyPatch):
         "source_grounding": {
             "source_identity": 0,
             "promo_prefix_brand": 0,
+            "source_stats_shape": 0,
+        },
+        "source_review_stats": {
+            "positive_6m": 0,
+            "avg_6m": 0,
         },
     }
 
@@ -173,6 +178,9 @@ def _stub_data(monkeypatch: pytest.MonkeyPatch):
     async def _source_grounding(pool: Any) -> dict[str, int]:
         return state["source_grounding"]
 
+    async def _source_stats(pool: Any) -> dict[str, int]:
+        return state["source_review_stats"]
+
     monkeypatch.setattr(contract_validator, "_count_active_rows", _active)
     monkeypatch.setattr(contract_validator, "_count_concepts", _concepts)
     monkeypatch.setattr(contract_validator, "_count_promoted_signals_in_window", _promoted)
@@ -180,6 +188,7 @@ def _stub_data(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(contract_validator, "_count_stale_active_violations", _stale)
     monkeypatch.setattr(contract_validator, "_count_product_id_mismatches", _mismatches)
     monkeypatch.setattr(contract_validator, "_count_source_grounding_violations", _source_grounding)
+    monkeypatch.setattr(contract_validator, "_count_source_review_stats_readiness", _source_stats)
     return state
 
 
@@ -216,6 +225,22 @@ async def test_validate_data_empty_when_minimums_unmet(
     assert result.status == ContractStatus.EMPTY
     empty_checks = [c for c in result.checks if c.status == ContractStatus.EMPTY]
     assert len(empty_checks) >= 2  # active_products + active_users
+
+
+@pytest.mark.asyncio
+async def test_validate_data_empty_when_source_review_stats_minimums_unmet(
+    _stub_data: dict[str, Any],
+) -> None:
+    result = await validate_data(
+        pool=None,  # type: ignore[arg-type]
+        expected_min_source_review_count_6m=1,
+        expected_min_source_avg_rating_6m=1,
+    )
+
+    assert result.status == ContractStatus.EMPTY
+    assert result.counts["source_review_stats.positive_6m"] == 0
+    assert result.counts["source_review_stats.avg_rating_6m"] == 0
+    assert any(c.name == "data.source_review_stats.positive_6m" for c in result.checks)
 
 
 @pytest.mark.asyncio
@@ -340,6 +365,24 @@ async def test_validate_data_invalid_on_source_backed_promo_prefix_brand(
     check = next(c for c in result.checks if c.name == "invariant.source_grounding")
     assert check.status == ContractStatus.INVALID
     assert "promo-prefix brand" in check.message
+
+
+@pytest.mark.asyncio
+async def test_validate_data_invalid_on_source_stats_shape_in_production_mode(
+    _stub_data: dict[str, Any],
+) -> None:
+    _stub_data["source_grounding"]["source_stats_shape"] = 1
+
+    result = await validate_data(  # type: ignore[arg-type]
+        pool=None,
+        enforce_source_grounding=True,
+    )
+
+    assert result.status == ContractStatus.INVALID
+    check = next(c for c in result.checks if c.name == "invariant.source_grounding")
+    assert check.status == ContractStatus.INVALID
+    assert "source stats shape" in check.message
+    assert result.counts["source_grounding.source_stats_shape"] == 1
 
 
 @pytest.mark.asyncio
