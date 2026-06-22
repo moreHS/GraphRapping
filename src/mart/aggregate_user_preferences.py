@@ -76,13 +76,17 @@ def refresh_user_preferences(
     if now is None:
         now = datetime.now(timezone.utc)
 
-    # Group by (predicate, dst_id)
-    grouped: dict[tuple[str, str], dict] = {}
+    # Group by (predicate, dst_id, scope_group). The same keyword can be a
+    # valid preference for makeup but invalid for skincare, so scope is part of
+    # the aggregate identity and DB conflict key.
+    grouped: dict[tuple[str, str, str | None], dict] = {}
 
     for fact in canonical_user_facts:
         predicate = fact.get("predicate", "")
         dst_id = fact.get("object_iri", "")
-        key = (predicate, dst_id)
+        scope_group = _scope_group(fact)
+        source_section = _source_section(fact)
+        key = (predicate, dst_id, scope_group)
 
         if key not in grouped:
             grouped[key] = {
@@ -90,8 +94,10 @@ def refresh_user_preferences(
                 "preference_edge_type": predicate,
                 "dst_node_type": fact.get("object_type", ""),
                 "dst_node_id": dst_id,
+                "scope_group": scope_group,
                 "max_confidence": fact.get("confidence", 1.0) or 1.0,
                 "sources": set(),
+                "source_sections": set(),
                 "count": 0,
                 "last_seen_at": None,
                 "source_weights": {},
@@ -103,6 +109,8 @@ def refresh_user_preferences(
             existing["max_confidence"] = new_conf
 
         existing["count"] += 1
+        if source_section:
+            existing["source_sections"].add(source_section)
 
         # Track last_seen_at
         fact_ts = fact.get("last_seen_at")
@@ -122,7 +130,7 @@ def refresh_user_preferences(
     # Boost brand/category preferences if purchase data exists
     if purchase_brand_confidence:
         for key, row in grouped.items():
-            predicate, dst_id = key
+            predicate, dst_id, _scope_group_value = key
             if predicate in ("PREFERS_BRAND", "PREFERS_CATEGORY"):
                 brand_conf = purchase_brand_confidence.get(dst_id)
                 if brand_conf:
@@ -153,6 +161,7 @@ def refresh_user_preferences(
         weight = round(row["max_confidence"] * freq_factor * recency_factor * source_type_weight, 4)
 
         sources = row.pop("sources")
+        source_sections = row.pop("source_sections")
         source_weights = row.pop("source_weights")
         last_seen = row.pop("last_seen_at")
 
@@ -163,10 +172,38 @@ def refresh_user_preferences(
         row["support_count"] = row.pop("count")
         row["last_seen_at"] = last_seen.isoformat() if last_seen else None
         row["source_types"] = sorted(sources)
-        row["source_mix"] = {src: round(w, 2) for src, w in source_weights.items()} if source_weights else {"sources": sorted(sources)}
+        source_mix = (
+            {src: round(w, 2) for src, w in source_weights.items()}
+            if source_weights
+            else {"sources": sorted(sources)}
+        )
+        if row.get("scope_group"):
+            source_mix["scope_group"] = row["scope_group"]
+        if source_sections:
+            source_mix["source_sections"] = sorted(source_sections)
+        row["source_sections"] = sorted(source_sections)
+        row["source_mix"] = source_mix
         row["recency_weight"] = round(recency_factor, 4)
         row["frequency_weight"] = round(freq_factor, 4)
 
         results.append(row)
 
     return results
+
+
+def _scope_group(fact: dict[str, Any]) -> str | None:
+    scope = fact.get("scope_group")
+    if not scope:
+        provenance = fact.get("provenance") or {}
+        if isinstance(provenance, dict):
+            scope = provenance.get("scope_group")
+    return str(scope) if scope else None
+
+
+def _source_section(fact: dict[str, Any]) -> str | None:
+    section = fact.get("source_section")
+    if not section:
+        provenance = fact.get("provenance") or {}
+        if isinstance(provenance, dict):
+            section = provenance.get("source_section")
+    return str(section) if section else None

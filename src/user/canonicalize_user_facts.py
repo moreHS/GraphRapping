@@ -32,6 +32,17 @@ _SOURCE_KIND_MAP: dict[str, str] = {
 }
 
 
+def _object_ref_kind(value: Any) -> ObjectRefKind:
+    if isinstance(value, ObjectRefKind):
+        return value
+    if isinstance(value, str):
+        try:
+            return ObjectRefKind(value)
+        except ValueError:
+            return ObjectRefKind.CONCEPT
+    return ObjectRefKind.CONCEPT
+
+
 def _build_facts_for_family(
     user_iri: str,
     adapted_facts: list[dict[str, Any]],
@@ -45,14 +56,26 @@ def _build_facts_for_family(
             continue
 
         concept_id = af.get("concept_id", "")
+        scope_group = af.get("scope_group")
+        source_section = af.get("source_section")
+        fact_object_ref = f"{concept_id}|scope={scope_group}" if scope_group else concept_id
         fact_id = make_fact_id(
             review_id="",
             subject_iri=user_iri,
             predicate=predicate,
-            object_ref=concept_id,
+            object_ref=fact_object_ref,
         )
 
         source = af.get("source", "user_profile")
+        provenance = {
+            "source_domain": "user",
+            "source_kind": _SOURCE_KIND_MAP.get(source, "derived"),
+        }
+        if scope_group:
+            provenance["scope_group"] = scope_group
+        if source_section:
+            provenance["source_section"] = source_section
+
         facts.append({
             "fact_id": fact_id,
             "review_id": None,
@@ -60,17 +83,16 @@ def _build_facts_for_family(
             "predicate": predicate,
             "object_iri": concept_id,
             "object_value_text": af.get("concept_value"),
-            "object_ref_kind": ObjectRefKind.CONCEPT,
+            "object_ref_kind": _object_ref_kind(af.get("object_ref_kind")),
             "subject_type": "User",
             "object_type": af.get("concept_type", ""),
             "polarity": None,
             "confidence": af.get("confidence"),
             "source_modalities": [source],
             "last_seen_at": af.get("last_seen_at"),
-            "provenance": {
-                "source_domain": "user",
-                "source_kind": _SOURCE_KIND_MAP.get(source, "derived"),
-            },
+            "scope_group": scope_group,
+            "source_section": source_section,
+            "provenance": provenance,
         })
 
     return facts
@@ -129,10 +151,18 @@ def build_user_preference_rows(
     for fact in canonical_facts:
         predicate = fact["predicate"]
         dst_id = fact.get("object_iri", "")
-        dedup_key = (user_id, predicate, dst_id)
+        scope_group = fact.get("scope_group") or (fact.get("provenance") or {}).get("scope_group")
+        source_section = fact.get("source_section") or (fact.get("provenance") or {}).get("source_section")
+        dedup_key = (user_id, predicate, dst_id, scope_group)
         if dedup_key in seen:
             continue
         seen.add(dedup_key)
+
+        source_mix = {"sources": fact.get("source_modalities", [])}
+        if scope_group:
+            source_mix["scope_group"] = scope_group
+        if source_section:
+            source_mix["source_sections"] = [source_section]
 
         rows.append({
             "user_id": user_id,
@@ -140,7 +170,9 @@ def build_user_preference_rows(
             "dst_node_type": fact.get("object_type", ""),
             "dst_node_id": dst_id,
             "weight": fact.get("confidence", 1.0) or 1.0,
-            "source_mix": {"sources": fact.get("source_modalities", [])},
+            "scope_group": scope_group,
+            "source_sections": [source_section] if source_section else [],
+            "source_mix": source_mix,
         })
 
     return rows

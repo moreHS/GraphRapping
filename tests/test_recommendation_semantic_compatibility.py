@@ -1,5 +1,6 @@
 from src.common.enums import RecommendationMode
 from src.rec.candidate_generator import generate_candidates
+from src.rec.explainer import explain
 from src.rec.recommendation_evidence_index import build_candidate_eligibility
 from src.rec.scorer import Scorer
 from src.rec.semantic_compatibility import find_semantic_matches
@@ -179,6 +180,54 @@ def test_compatible_moist_value_evidence_contributes_to_review_graph_score():
     assert scored.score_layers["review_graph_weak_evidence_score"] == 0
 
 
+def test_semantic_strength_changes_review_graph_score():
+    user = _user(preferred_keyword_ids=[{"id": "concept:Keyword:산뜻", "weight": 1.0}])
+    strong_product = _product(
+        "strong",
+        top_keyword_ids=[
+            {"id": "concept:Keyword:흡수", "score": 0.9, "review_cnt": 8},
+        ],
+    )
+    weak_product = _product(
+        "weak",
+        top_keyword_ids=[
+            {"id": "concept:Keyword:끈적임 없음", "score": 0.9, "review_cnt": 8},
+        ],
+    )
+
+    strong_candidate = generate_candidates(user, [strong_product], mode=RecommendationMode.EXPLORE)[0]
+    weak_candidate = generate_candidates(user, [weak_product], mode=RecommendationMode.EXPLORE)[0]
+
+    scorer = Scorer()
+    scorer.load_from_dict({"keyword_match": 1.0}, shrinkage_k=0)
+
+    strong = scorer.score(user, strong_product, strong_candidate.overlap_concepts)
+    weak = scorer.score(user, weak_product, weak_candidate.overlap_concepts)
+
+    concepts = strong_candidate.overlap_concepts + weak_candidate.overlap_concepts
+    assert any("|strength=" in concept for concept in concepts)
+    assert strong.final_score > weak.final_score
+
+
+def test_semantic_review_graph_match_is_explainable():
+    user = _user(preferred_keyword_ids=[{"id": "concept:Keyword:촉촉", "weight": 1.0}])
+    product = _product(
+        top_keyword_ids=[
+            {"id": "concept:Keyword:보습", "score": 0.9, "review_cnt": 8},
+        ],
+    )
+    candidate = generate_candidates(user, [product], mode=RecommendationMode.EXPLORE)[0]
+
+    scorer = Scorer()
+    scorer.load_from_dict({"keyword_match": 1.0}, shrinkage_k=0)
+    scored = scorer.score(user, product, candidate.overlap_concepts)
+
+    explanation = explain(scored, candidate.overlap_concepts)
+
+    assert explanation.paths
+    assert explanation.paths[0].concept_type == "semantic_keyword"
+
+
 def test_fresh_light_value_evidence_can_match_absorption_and_non_sticky_language():
     user = _user(preferred_keyword_ids=[{"id": "concept:Keyword:산뜻", "weight": 1.0}])
     product = _product(
@@ -214,7 +263,7 @@ def test_weak_semantic_relation_is_separated_from_promoted_review_graph_score():
     assert "REVIEW_GRAPH_WEAK_RELATION" in candidate.eligibility.evidence_families
 
     scorer = Scorer()
-    scorer.load_from_dict({"keyword_match": 1.0}, shrinkage_k=10)
+    scorer.load_from_dict({"review_graph_weak_relation_match": 1.0}, shrinkage_k=10)
     scored = scorer.score(user, product, candidate.overlap_concepts)
 
     assert scored.score_layers["review_graph_score"] == 0
@@ -226,3 +275,51 @@ def test_source_review_stats_are_not_eligibility_evidence():
 
     assert eligibility.eligible is False
     assert eligibility.evidence_families == []
+
+
+def test_scoped_makeup_keyword_does_not_qualify_skincare_product():
+    user = _user(
+        preferred_keyword_ids=[{"id": "concept:Keyword:매트", "weight": 1.0}],
+        scoped_preference_ids=[
+            {
+                "edge_type": "PREFERS_KEYWORD",
+                "id": "concept:Keyword:매트",
+                "weight": 1.0,
+                "scope_group": "makeup",
+            }
+        ],
+    )
+    product = _product(
+        category_name="스킨케어 크림",
+        top_keyword_ids=[
+            {"id": "concept:Keyword:매트", "score": 0.9, "review_cnt": 8},
+        ],
+    )
+
+    assert find_semantic_matches(user, product) == []
+    assert generate_candidates(user, [product], mode=RecommendationMode.EXPLORE) == []
+
+
+def test_scoped_makeup_keyword_matches_makeup_product():
+    user = _user(
+        preferred_keyword_ids=[{"id": "concept:Keyword:매트", "weight": 1.0}],
+        scoped_preference_ids=[
+            {
+                "edge_type": "PREFERS_KEYWORD",
+                "id": "concept:Keyword:매트",
+                "weight": 1.0,
+                "scope_group": "makeup",
+            }
+        ],
+    )
+    product = _product(
+        category_name="메이크업 쿠션",
+        top_keyword_ids=[
+            {"id": "concept:Keyword:매트", "score": 0.9, "review_cnt": 8},
+        ],
+    )
+
+    candidates = generate_candidates(user, [product], mode=RecommendationMode.EXPLORE)
+
+    assert len(candidates) == 1
+    assert any(concept.startswith("keyword:") for concept in candidates[0].overlap_concepts)

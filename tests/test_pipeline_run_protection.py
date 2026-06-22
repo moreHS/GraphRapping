@@ -135,6 +135,37 @@ async def test_default_mock_fixture_is_loaded_without_remap(
 
 
 @pytest.mark.asyncio
+async def test_dense_golden_fixture_loads_matching_product_user_and_review_files(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Dense recommendation QA must load review/product/user files together.
+
+    Loading only the dense review file with the wide product/user fixtures would
+    silently put the demo back into the 517-product/50-user baseline.
+    """
+    monkeypatch.setenv("GRAPHRAPPING_ENABLE_PIPELINE_RUN", "1")
+    monkeypatch.delenv("GRAPHRAPPING_PIPELINE_RUN_TOKEN", raising=False)
+    captured: dict[str, object] = {}
+
+    def fake_load_demo_data(**kwargs):
+        captured.update(kwargs)
+        server.demo_state.review_count = 0
+        server.demo_state.product_count = 0
+        server.demo_state.user_count = 0
+        server.demo_state.batch_result = {"total_signals": 0}
+        return server.demo_state
+
+    monkeypatch.setattr(server, "load_demo_data", fake_load_demo_data)
+
+    await server.pipeline_run(server.PipelineRunRequest(fixture="dense_golden"))
+
+    dense_dir = server._MOCKDATA_DIR / "dense_golden"
+    assert Path(captured["review_json_path"]).resolve() == (dense_dir / "review_triples_raw.json").resolve()
+    assert len(captured["product_es_records"]) == 32
+    assert len(captured["user_profiles"]) == 6
+
+
+@pytest.mark.asyncio
 async def test_external_review_file_is_loaded_as_is(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

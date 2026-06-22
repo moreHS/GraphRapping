@@ -53,21 +53,43 @@ _MOCKDATA_DIR = _PROJECT_ROOT / "mockdata"
 # P1-2 (audit fix): demo review path is resolved via environment variable
 # (GRAPHRAPPING_DEMO_REVIEW_PATH) with mockdata as the default. Previously this
 # was a hardcoded absolute path tied to a single developer's machine.
-_DEFAULT_REVIEW_PATH = os.environ.get(
-    "GRAPHRAPPING_DEMO_REVIEW_PATH",
-    str(_MOCKDATA_DIR / "review_triples_raw.json"),
-)
+_DEFAULT_FIXTURE = os.environ.get("GRAPHRAPPING_DEMO_FIXTURE", "wide")
+_DEFAULT_REVIEW_PATH = os.environ.get("GRAPHRAPPING_DEMO_REVIEW_PATH")
 _DEFAULT_SOURCE_REVIEW_STATS_PATH = (
     _PROJECT_ROOT / "data/source_snapshots/product_review_stats_snowflake_latest.json"
 )
 
 
 class PipelineRunRequest(BaseModel):
-    review_json_path: str = _DEFAULT_REVIEW_PATH
+    fixture: str = _DEFAULT_FIXTURE
+    review_json_path: str | None = _DEFAULT_REVIEW_PATH
+    product_json_path: str | None = None
+    user_json_path: str | None = None
     max_reviews: int = 5000
     source: str = "demo"
     review_format: str = "relation"
     source_review_stats_json_path: str | None = str(_DEFAULT_SOURCE_REVIEW_STATS_PATH)
+
+
+def _resolve_fixture_dir(fixture: str | None) -> Path:
+    name = (fixture or "wide").strip()
+    if name in {"", "wide", "mockdata", "default"}:
+        return _MOCKDATA_DIR
+    if name in {"dense", "dense_golden"}:
+        return _MOCKDATA_DIR / "dense_golden"
+    path = Path(name)
+    if not path.is_absolute():
+        path = _PROJECT_ROOT / path
+    return path
+
+
+def _resolve_existing_json_path(path_value: str | None, default_path: Path, label: str) -> Path:
+    path = Path(path_value) if path_value else default_path
+    if not path.is_absolute():
+        path = _PROJECT_ROOT / path
+    if not path.exists():
+        raise HTTPException(400, f"{label} not found: {path}")
+    return path
 
 
 def _check_pipeline_run_allowed(provided_token: str | None) -> None:
@@ -115,16 +137,30 @@ async def pipeline_run(
     _check_pipeline_run_allowed(_extract_pipeline_token(authorization, x_pipeline_token))
     import json as _json
 
-    # --- 1. Load products from mock catalog ---
-    mock_products = _json.loads((_MOCKDATA_DIR / "product_catalog_es.json").read_text(encoding="utf-8"))
+    fixture_dir = _resolve_fixture_dir(req.fixture)
 
-    # --- 2. Load users from mock profiles ---
-    mock_users = _json.loads((_MOCKDATA_DIR / "user_profiles_normalized.json").read_text(encoding="utf-8"))
+    # --- 1. Load products from selected fixture catalog ---
+    product_path = _resolve_existing_json_path(
+        req.product_json_path,
+        fixture_dir / "product_catalog_es.json",
+        "product_json_path",
+    )
+    mock_products = _json.loads(product_path.read_text(encoding="utf-8"))
+
+    # --- 2. Load users from selected fixture profiles ---
+    user_path = _resolve_existing_json_path(
+        req.user_json_path,
+        fixture_dir / "user_profiles_normalized.json",
+        "user_json_path",
+    )
+    mock_users = _json.loads(user_path.read_text(encoding="utf-8"))
 
     # --- 3. Prepare review path ---
-    review_path = Path(req.review_json_path)
-    mock_review_path = _MOCKDATA_DIR / "review_triples_raw.json"
-    selected_review_path = review_path if review_path.exists() else mock_review_path
+    selected_review_path = _resolve_existing_json_path(
+        req.review_json_path,
+        fixture_dir / "review_triples_raw.json",
+        "review_json_path",
+    )
 
     # The active fixture is the final 906-review source-grounded baseline,
     # synthesized from upstream NER-NER / NER-BeE annotation files + rs_own
@@ -345,6 +381,7 @@ async def recommend(req: RecommendRequest):
                 "raw_score": scored_product.raw_score,
                 "shrinked_score": scored_product.shrinked_score,
                 "final_score": r.final_score,
+                "rank_score": r.rank_score,
                 "diversity_bonus": r.diversity_bonus,
                 "support_count": scored_product.support_count,
                 "feature_contributions": scored_product.feature_contributions,
@@ -531,6 +568,33 @@ async def user_graph(user_id: str):
 
     nodes = [{"id": user_id, "label": user_id, "type": "user", "main": True}]
     edges = []
+
+    scoped_preferences = user.get("scoped_preference_ids") or []
+    if scoped_preferences:
+        for item in scoped_preferences:
+            if not isinstance(item, dict):
+                continue
+            nid = item.get("id", "")
+            if not nid:
+                continue
+            scope = item.get("scope_group") or "global"
+            node_id = f"{nid}|scope:{scope}"
+            label = nid.split(":")[-1] if ":" in nid else nid
+            edge_label = item.get("edge_type", "PREFERS")
+            nodes.append({
+                "id": node_id,
+                "label": f"{label} ({scope})",
+                "type": edge_label.lower(),
+                "weight": item.get("weight", 0),
+                "scope_group": scope,
+            })
+            edges.append({
+                "source": user_id,
+                "target": node_id,
+                "label": f"{edge_label}[{scope}]",
+                "weight": item.get("weight", 0),
+            })
+        return {"nodes": nodes, "edges": edges}
 
     for field_key, edge_label, node_type in [
         ("preferred_brand_ids", "PREFERS_BRAND", "brand"),

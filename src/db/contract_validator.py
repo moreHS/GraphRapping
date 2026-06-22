@@ -108,7 +108,7 @@ _REQUIRED_TABLES: dict[str, set[str]] = {
     },
     "agg_user_preference": {
         "user_id", "preference_edge_type", "dst_node_id",
-        "weight", "confidence", "is_active", "updated_at",
+        "scope_group", "weight", "confidence", "is_active", "updated_at",
     },
     # Wave 4 Task 3 (2nd review): serving profiles' consumer-facing columns
     # are the single source of truth in src/mart/serving_profile_schema.py.

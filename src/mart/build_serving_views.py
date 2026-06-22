@@ -7,6 +7,7 @@ serving_user_profile: demographics + preference edges
 
 from __future__ import annotations
 
+import json
 from collections import defaultdict
 from typing import Any
 
@@ -196,8 +197,30 @@ def build_serving_user_profile(
 
     def _collect(edge_type: str) -> list[dict]:
         items = [p for p in active_preferences if p.get("preference_edge_type") == edge_type]
-        items.sort(key=lambda x: x.get("weight", 0), reverse=True)
-        return [{"id": i["dst_node_id"], "weight": i["weight"]} for i in items[:20]]
+        by_id: dict[str, dict] = {}
+        for item in items:
+            dst_id = item.get("dst_node_id")
+            if not dst_id:
+                continue
+            if dst_id not in by_id or (item.get("weight") or 0) > (by_id[dst_id].get("weight") or 0):
+                by_id[dst_id] = item
+        values = list(by_id.values())
+        values.sort(key=lambda x: x.get("weight", 0), reverse=True)
+        return [{"id": i["dst_node_id"], "weight": i["weight"]} for i in values[:20]]
+
+    def _collect_scoped() -> list[dict]:
+        items = list(active_preferences)
+        items.sort(key=lambda x: (x.get("preference_edge_type", ""), -float(x.get("weight") or 0)))
+        result: list[dict] = []
+        for item in items:
+            result.append({
+                "edge_type": item.get("preference_edge_type", ""),
+                "id": item.get("dst_node_id", ""),
+                "weight": item.get("weight", 0),
+                "scope_group": _preference_scope_group(item),
+                "source_sections": _preference_source_sections(item),
+            })
+        return result
 
     return {
         "user_id": uid,
@@ -214,6 +237,7 @@ def build_serving_user_profile(
         "preferred_bee_attr_ids": _collect("PREFERS_BEE_ATTR"),
         "preferred_keyword_ids": _collect("PREFERS_KEYWORD"),
         "preferred_context_ids": _collect("PREFERS_CONTEXT"),
+        "scoped_preference_ids": _collect_scoped(),
         # Behavior section (purchase-derived)
         "recent_purchase_brand_ids": _collect("RECENTLY_PURCHASED"),
         "repurchase_brand_ids": _collect("REPURCHASES_BRAND"),
@@ -222,3 +246,32 @@ def build_serving_user_profile(
         "owned_family_ids": _collect("OWNS_FAMILY"),
         "repurchased_family_ids": _collect("REPURCHASES_FAMILY"),
     }
+
+
+def _preference_source_mix(item: dict[str, Any]) -> dict[str, Any]:
+    value = item.get("source_mix") or {}
+    if isinstance(value, str):
+        try:
+            loaded = json.loads(value)
+        except json.JSONDecodeError:
+            return {}
+        return loaded if isinstance(loaded, dict) else {}
+    return value if isinstance(value, dict) else {}
+
+
+def _preference_scope_group(item: dict[str, Any]) -> str | None:
+    scope = item.get("scope_group")
+    if not scope:
+        scope = _preference_source_mix(item).get("scope_group")
+    return str(scope) if scope else None
+
+
+def _preference_source_sections(item: dict[str, Any]) -> list[str]:
+    sections = item.get("source_sections")
+    if not sections:
+        sections = _preference_source_mix(item).get("source_sections")
+    if isinstance(sections, str):
+        return [sections]
+    if isinstance(sections, list):
+        return [str(section) for section in sections if section]
+    return []

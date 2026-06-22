@@ -47,11 +47,22 @@ async function loadDashboard() {
       fetch(API + '/api/dashboard/summary').then(r => r.json()),
       fetch(API + '/api/dashboard/charts').then(r => r.json()),
     ]);
+    updateHeaderStatus(summary);
     renderKPI(summary);
     renderCharts(charts_data);
   } catch(e) {
     document.getElementById('kpiGrid').innerHTML = '<div class="empty">파이프라인을 먼저 실행하세요</div>';
   }
+}
+
+function updateHeaderStatus(summary) {
+  const el = document.getElementById('headerStatus');
+  if (!el) return;
+  if (!summary || !summary.loaded) {
+    el.textContent = '데이터 미로드';
+    return;
+  }
+  el.textContent = `리뷰 ${fmtCount(summary.reviews_processed)}건 / 상품 ${fmtCount(summary.serving_products)}개 / 유저 ${fmtCount(summary.serving_users)}명 / 신호 ${fmtCount(summary.total_signals)}개`;
 }
 
 function renderKPI(d) {
@@ -187,13 +198,14 @@ async function loadUsers() {
   const data = await res.json();
   const panel = document.getElementById('explorerContent');
   panel.innerHTML = `<table><thead><tr>
-    <th>User ID</th><th>연령대</th><th>성별</th><th>피부타입</th><th>고민</th><th>선호 브랜드</th>
+    <th>User ID</th><th>연령대</th><th>성별</th><th>피부타입</th><th>고민</th><th>선호 브랜드</th><th>스코프 선호</th>
   </tr></thead><tbody>${data.items.map(u => `
     <tr class="clickable" onclick="showUserDetail(${jsStringArg(u.user_id)})">
       <td>${displayText(u.user_id)}</td><td>${displayText(u.age_band)}</td><td>${displayText(u.gender)}</td>
       <td>${displayText(u.skin_type)}</td>
       <td>${displayText((u.concern_ids||[]).slice(0,2).map(c => c.id ? c.id.split(':').pop() : '').join(', '))}</td>
       <td>${displayText((u.preferred_brand_ids||[]).slice(0,2).map(b => b.id ? b.id.split(':').pop() : '').join(', '))}</td>
+      <td>${displayText(scopeSummary(u))}</td>
     </tr>`).join('')}</tbody></table>`;
 }
 
@@ -203,6 +215,15 @@ async function showUserDetail(id) {
   const dp = document.getElementById('explorerDetail');
   dp.style.display = 'block';
   dp.innerHTML = `<h3>유저 상세: ${displayText(id)}</h3><pre>${jsonHtml(d)}</pre>`;
+}
+
+function scopeSummary(u) {
+  const counts = {};
+  (u.scoped_preference_ids || []).forEach(item => {
+    const scope = item.scope_group || 'global';
+    counts[scope] = (counts[scope] || 0) + 1;
+  });
+  return Object.entries(counts).map(([scope, count]) => `${scope}:${count}`).join(', ');
 }
 
 // =============================================================================
@@ -242,6 +263,7 @@ function summaryStatusLabel(summary) {
 // =============================================================================
 const DEFAULT_WEIGHTS = {
   keyword_match: 0.16, residual_bee_attr_match: 0.07, context_match: 0.08,
+  review_graph_weak_relation_match: 0.02,
   concern_fit: 0.08, concern_bridge_fit: 0.04,
   ingredient_match: 0.07, brand_match_conf_weighted: 0.06,
   goal_fit_master: 0.05,
@@ -255,6 +277,7 @@ const DEFAULT_WEIGHTS = {
 const WEIGHT_META = {
   keyword_match:              { label: '키워드 일치',      group: 'core',    desc: '리뷰에서 추출된 구체 키워드(촉촉, 물광 등)와 유저 선호 키워드의 겹침. 가장 핵심적인 매칭 축.' },
   residual_bee_attr_match:    { label: '잔여 BEE속성',    group: 'core',    desc: '키워드로 이미 커버되지 않은 상위 BEE 속성(제형, 발림성 등)의 추가 매칭. 키워드와 중복 카운트를 방지하는 잔여분만 반영.' },
+  review_graph_weak_relation_match: { label: '약한 리뷰관계', group: 'core', desc: '승격되지 않은 long-tail 리뷰 신호가 유저 선호와 의미적으로 맞을 때만 낮은 가중치로 반영.' },
   context_match:              { label: '맥락 일치',       group: 'core',    desc: '사용 맥락(아침, 세안 후, 여름 등)이 유저 선호 맥락과 겹치는 정도.' },
   concern_fit:                { label: '고민 적합도',      group: 'core',    desc: '유저 피부 고민(건조, 모공, 트러블 등)을 제품 리뷰 시그널이 얼마나 다루는지.' },
   concern_bridge_fit:         { label: '고민 브릿지',      group: 'core',    desc: '직접 고민 시그널이 없어도 BEE 속성에서 고민 대응 가능성을 추정한 간접 매칭.' },
@@ -445,6 +468,7 @@ function renderRecommendResults(data) {
       ? [product.brand_name, product.representative_product_name].filter(Boolean).join(' ')
       : (r.product_id || product.product_id || '-');
     const finalScore = fmtScore(r.final_score);
+    const rankScore = fmtScore(r.rank_score);
     const rawScore = fmtScore(r.raw_score);
     const shrinkedScore = fmtScore(r.shrinked_score);
     const diversity = Number(r.diversity_bonus);
@@ -456,7 +480,7 @@ function renderRecommendResults(data) {
         <div class="rank">#${r.rank || '-'}</div>
         <div>
           <strong>${displayText(productName)}</strong>
-          <span class="score">점수: ${finalScore} (raw: ${rawScore}, shrink: ${shrinkedScore}, diversity: ${diversityText})</span>
+          <span class="score">점수: ${finalScore} (rank: ${rankScore}, raw: ${rawScore}, shrink: ${shrinkedScore}, diversity: ${diversityText})</span>
           <div class="explanation">${displayText(r.explanation, '설명 없음')}</div>
           <div class="hooks" style="margin-top:8px">
             <span><span class="label">Evidence:</span> ${evidenceFamilies.length ? evidenceFamilies.map(f => `<span class="chip rel">${displayText(f)}</span>`).join(' ') : '없음'}</span>

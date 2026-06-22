@@ -93,6 +93,7 @@ SERVING_USER_PROFILE_COLUMNS: tuple[str, ...] = (
     "preferred_bee_attr_ids",
     "preferred_keyword_ids",
     "preferred_context_ids",
+    "scoped_preference_ids",
     # Behavior section (purchase-derived)
     "recent_purchase_brand_ids",
     "repurchase_brand_ids",
@@ -173,6 +174,7 @@ class ServingUserProfile(TypedDict, total=False):
     preferred_bee_attr_ids: list[dict]
     preferred_keyword_ids: list[dict]
     preferred_context_ids: list[dict]
+    scoped_preference_ids: list[dict]
     recent_purchase_brand_ids: list[dict]
     repurchase_brand_ids: list[dict]
     repurchase_category_ids: list[dict]

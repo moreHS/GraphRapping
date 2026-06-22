@@ -130,6 +130,35 @@ def test_builder_output_keys_match_user_columns() -> None:
     )
 
 
+def test_user_builder_emits_scoped_preferences_from_source_mix() -> None:
+    out = build_serving_user_profile(
+        user_master=_sample_user_master(),
+        preferences=[
+            {
+                "preference_edge_type": "PREFERS_KEYWORD",
+                "dst_node_id": "concept:Keyword:매트",
+                "weight": 0.8,
+                "source_mix": {
+                    "chat": 1.0,
+                    "scope_group": "makeup",
+                    "source_sections": ["chat.makeup.preferred_texture"],
+                },
+            }
+        ],
+    )
+
+    assert out["preferred_keyword_ids"] == [{"id": "concept:Keyword:매트", "weight": 0.8}]
+    assert out["scoped_preference_ids"] == [
+        {
+            "edge_type": "PREFERS_KEYWORD",
+            "id": "concept:Keyword:매트",
+            "weight": 0.8,
+            "scope_group": "makeup",
+            "source_sections": ["chat.makeup.preferred_texture"],
+        }
+    ]
+
+
 _META_COLUMNS = {"is_active", "updated_at"}
 
 

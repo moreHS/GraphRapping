@@ -1,4 +1,6 @@
 """Tests: user adapter concept mapping correctness."""
+from src.common.enums import ObjectRefKind
+from src.user.canonicalize_user_facts import canonicalize_user_facts
 from src.user.adapters.personal_agent_adapter import adapt_user_profile
 
 
@@ -44,6 +46,29 @@ def test_owns_product_is_entity_ref():
     assert len(owns) == 2
     for f in owns:
         assert f["concept_type"] == "Product"
+
+
+def test_canonicalize_preserves_purchase_entity_ref_kind():
+    profile = _make_profile()
+    purchase_features = {
+        "owned_product_ids": ["P001"],
+        "owned_family_ids": ["FAM001"],
+        "repurchased_family_ids": ["FAM002"],
+        "repurchased_brand_ids": [],
+        "recently_purchased_brand_ids": [],
+    }
+    adapted = adapt_user_profile("u1", profile, purchase_features=purchase_features)
+
+    facts = canonicalize_user_facts("u1", adapted)
+    by_predicate = {
+        fact["predicate"]: fact
+        for fact in facts
+        if fact["predicate"] in {"OWNS_PRODUCT", "OWNS_FAMILY", "REPURCHASES_FAMILY"}
+    }
+
+    assert by_predicate["OWNS_PRODUCT"]["object_ref_kind"] == ObjectRefKind.ENTITY
+    assert by_predicate["OWNS_FAMILY"]["object_ref_kind"] == ObjectRefKind.ENTITY
+    assert by_predicate["REPURCHASES_FAMILY"]["object_ref_kind"] == ObjectRefKind.ENTITY
 
 
 def test_repurchase_brand_category_split():
@@ -93,6 +118,16 @@ def test_adapter_preserves_all_purchase_brand_domains_and_basic_concerns():
 
     assert {"라네즈", "헤라", "일리윤", "려", "구딸"} <= brand_values
     assert concerns
+    scopes_by_brand = {
+        f["concept_value"]: f.get("scope_group")
+        for f in facts
+        if f["predicate"] == "PREFERS_BRAND"
+    }
+    assert scopes_by_brand["라네즈"] == "skincare"
+    assert scopes_by_brand["헤라"] == "makeup"
+    assert scopes_by_brand["일리윤"] == "bodycare"
+    assert scopes_by_brand["려"] == "haircare"
+    assert scopes_by_brand["구딸"] == "fragrance"
 
 
 def test_adapter_reads_more_chat_domains_and_scent_shape():
@@ -129,3 +164,25 @@ def test_adapter_reads_more_chat_domains_and_scent_shape():
     assert predicates.count("HAS_CONCERN") >= 3
     assert predicates.count("WANTS_GOAL") >= 3
     assert keyword_values
+    scopes = {
+        (f["predicate"], f["concept_value"]): f.get("scope_group")
+        for f in facts
+        if f["predicate"] in {"HAS_CONCERN", "WANTS_GOAL", "PREFERS_KEYWORD"}
+    }
+    assert scopes[("PREFERS_KEYWORD", "매트")] == "makeup"
+    assert scopes[("PREFERS_KEYWORD", "시트러스")] == "fragrance"
+
+
+def test_canonicalize_preserves_user_preference_scope_metadata():
+    profile = _make_profile(chat_textures=["젤"])
+    adapted = adapt_user_profile("u1", profile)
+    facts = canonicalize_user_facts("u1", adapted)
+    scoped_keyword = next(
+        fact for fact in facts
+        if fact["predicate"] == "PREFERS_KEYWORD"
+        and fact["object_value_text"] == "GelLike"
+    )
+
+    assert scoped_keyword["scope_group"] == "skincare"
+    assert scoped_keyword["source_section"] == "chat.face.preferred_texture"
+    assert scoped_keyword["provenance"]["scope_group"] == "skincare"

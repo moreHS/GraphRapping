@@ -13,6 +13,8 @@ from typing import Any, Iterable
 
 from src.common.config_loader import load_yaml
 from src.common.text_normalize import normalize_text
+from src.rec.category_groups import classify_product_category_group
+from src.rec.scoped_preferences import collect_preference_ids
 
 
 PROMOTED_EVIDENCE_FIELDS = {
@@ -57,7 +59,8 @@ class SemanticCompatibilityMatch:
         return f"semantic_{self.product_type}"
 
     def to_overlap_concept(self) -> str:
-        return f"{self.overlap_type}:{self.axis}:{self.value}:{self.product_id}"
+        strength = _bounded_strength(self.strength)
+        return f"{self.overlap_type}:{self.axis}:{self.value}:{self.product_id}|strength={strength:.4f}"
 
 
 def find_semantic_matches(
@@ -71,7 +74,7 @@ def find_semantic_matches(
     explained separately from promoted review graph relation evidence.
     """
 
-    user_ids = _collect_user_preference_ids(user_profile)
+    user_ids = _collect_user_preference_ids(user_profile, product_profile)
     if not user_ids:
         return []
 
@@ -152,10 +155,18 @@ def _load_rules() -> tuple[dict[str, Any], ...]:
     return tuple(rule for rule in rules if isinstance(rule, dict))
 
 
-def _collect_user_preference_ids(user_profile: dict[str, Any]) -> set[str]:
+def _collect_user_preference_ids(
+    user_profile: dict[str, Any],
+    product_profile: dict[str, Any],
+) -> set[str]:
+    product_group = classify_product_category_group(product_profile)
     ids: set[str] = set()
-    for key in ("preferred_keyword_ids", "preferred_bee_attr_ids", "goal_ids"):
-        ids.update(_iter_ids(user_profile.get(key) or []))
+    for legacy_field, edge_type in (
+        ("preferred_keyword_ids", "PREFERS_KEYWORD"),
+        ("preferred_bee_attr_ids", "PREFERS_BEE_ATTR"),
+        ("goal_ids", "WANTS_GOAL"),
+    ):
+        ids.update(collect_preference_ids(user_profile, legacy_field, edge_type, product_group))
     return {normalize_signal_id(value) for value in ids if normalize_signal_id(value)}
 
 
@@ -251,16 +262,6 @@ def _bounded_strength(value: Any) -> float:
     except (TypeError, ValueError):
         return 1.0
     return max(0.0, min(strength, 1.0))
-
-
-def _iter_ids(items: Iterable[Any]) -> Iterable[str]:
-    for item in items:
-        if isinstance(item, dict):
-            value = item.get("id")
-        else:
-            value = item
-        if value:
-            yield str(value)
 
 
 def _iter_signal_items(items: Iterable[Any]) -> Iterable[dict[str, Any]]:

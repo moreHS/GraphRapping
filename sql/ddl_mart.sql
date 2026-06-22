@@ -41,11 +41,12 @@ create table if not exists agg_user_preference (
                                            -- REPURCHASES_PRODUCT_OR_FAMILY
     dst_node_type text not null,
     dst_node_id text not null,
+    scope_group text not null default '',
     weight real not null default 1.0,
     confidence real,
     source_mix jsonb,                      -- {purchase: 0.6, chat: 0.4}
     updated_at timestamptz not null default now(),
-    primary key (user_id, preference_edge_type, dst_node_id)
+    primary key (user_id, preference_edge_type, dst_node_id, scope_group)
 );
 
 create index if not exists idx_aup_user on agg_user_preference(user_id);
@@ -123,6 +124,7 @@ create table if not exists serving_user_profile (
     preferred_bee_attr_ids jsonb,
     preferred_keyword_ids jsonb,
     preferred_context_ids jsonb,
+    scoped_preference_ids jsonb,
     recent_purchase_brand_ids jsonb,
     repurchase_brand_ids jsonb,
     repurchase_category_ids jsonb,
@@ -192,6 +194,7 @@ ALTER TABLE serving_user_profile ADD COLUMN IF NOT EXISTS repurchase_category_id
 ALTER TABLE serving_user_profile ADD COLUMN IF NOT EXISTS owned_product_ids jsonb;
 ALTER TABLE serving_user_profile ADD COLUMN IF NOT EXISTS owned_family_ids jsonb;
 ALTER TABLE serving_user_profile ADD COLUMN IF NOT EXISTS repurchased_family_ids jsonb;
+ALTER TABLE serving_user_profile ADD COLUMN IF NOT EXISTS scoped_preference_ids jsonb;
 
 -- Corpus promotion columns (vNext)
 ALTER TABLE agg_product_signal ADD COLUMN IF NOT EXISTS distinct_review_count int NOT NULL DEFAULT 0;
@@ -234,6 +237,9 @@ ALTER TABLE serving_product_profile ALTER COLUMN source_review_score_count_all D
 -- has fallen outside the freshness window. Re-upsert (EXCLUDED) reactivates.
 ALTER TABLE agg_product_signal ADD COLUMN IF NOT EXISTS is_active boolean NOT NULL DEFAULT true;
 ALTER TABLE agg_user_preference ADD COLUMN IF NOT EXISTS is_active boolean NOT NULL DEFAULT true;
+ALTER TABLE agg_user_preference ADD COLUMN IF NOT EXISTS scope_group text NOT NULL DEFAULT '';
+ALTER TABLE agg_user_preference DROP CONSTRAINT IF EXISTS agg_user_preference_pkey;
+ALTER TABLE agg_user_preference ADD PRIMARY KEY (user_id, preference_edge_type, dst_node_id, scope_group);
 
 -- P3-8 (Wave 3.8): partial indexes targeted at the cleanup query shape —
 -- `WHERE is_active = true AND <ts> < cutoff`. Skip dead rows entirely.

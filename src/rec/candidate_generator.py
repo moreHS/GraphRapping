@@ -24,6 +24,7 @@ from src.rec.recommendation_evidence_index import (
     build_candidate_eligibility,
 )
 from src.rec.semantic_compatibility import find_semantic_matches, normalize_signal_id
+from src.rec.scoped_preferences import collect_preference_ids
 
 
 @dataclass
@@ -66,12 +67,6 @@ def generate_candidates(
     avoided_ingredients = _extract_ids(user_profile.get("avoided_ingredient_ids", []))
     preferred_categories = _extract_ids(user_profile.get("preferred_category_ids", []))
     preferred_category_groups = category_groups_for_values(preferred_categories)
-    preferred_brands = _extract_ids(user_profile.get("preferred_brand_ids", []))
-    concern_ids = _extract_ids(user_profile.get("concern_ids", []))
-    preferred_keywords = _extract_ids(user_profile.get("preferred_keyword_ids", []))
-    preferred_bee_attrs = _extract_ids(user_profile.get("preferred_bee_attr_ids", []))
-    preferred_contexts = _extract_ids(user_profile.get("preferred_context_ids", []))
-    goal_ids = _extract_ids(user_profile.get("goal_ids", []))
     repurchase_brand_ids = _extract_ids(user_profile.get("repurchase_brand_ids", []))
     recent_purchase_brand_ids = _extract_ids(user_profile.get("recent_purchase_brand_ids", []))
     owned_product_ids_raw = _extract_ids(user_profile.get("owned_product_ids", []))
@@ -100,6 +95,32 @@ def generate_candidates(
             candidate.owned_family_match = True
         if product_family and product_family in repurchased_families:
             candidate.repurchased_family_match = True
+        product_category_group = classify_product_category_group(product)
+
+        avoided_ingredients = collect_preference_ids(
+            user_profile, "avoided_ingredient_ids", "AVOIDS_INGREDIENT", product_category_group,
+        )
+        preferred_brands = collect_preference_ids(
+            user_profile, "preferred_brand_ids", "PREFERS_BRAND", product_category_group,
+        )
+        concern_ids = collect_preference_ids(
+            user_profile, "concern_ids", "HAS_CONCERN", product_category_group,
+        )
+        preferred_keywords = collect_preference_ids(
+            user_profile, "preferred_keyword_ids", "PREFERS_KEYWORD", product_category_group,
+        )
+        preferred_bee_attrs = collect_preference_ids(
+            user_profile, "preferred_bee_attr_ids", "PREFERS_BEE_ATTR", product_category_group,
+        )
+        preferred_contexts = collect_preference_ids(
+            user_profile, "preferred_context_ids", "PREFERS_CONTEXT", product_category_group,
+        )
+        goal_ids = collect_preference_ids(
+            user_profile, "goal_ids", "WANTS_GOAL", product_category_group,
+        )
+        preferred_ingredients = collect_preference_ids(
+            user_profile, "preferred_ingredient_ids", "PREFERS_INGREDIENT", product_category_group,
+        )
 
         # Classify candidate bucket
         if candidate.already_owned:
@@ -124,7 +145,6 @@ def generate_candidates(
             product.get("category_id"),
         )
         category_matches = _matching_ids(preferred_categories, product_categories)
-        product_category_group = classify_product_category_group(product)
         category_group_matches = (
             {product_category_group}
             if product_category_group in preferred_category_groups
@@ -210,7 +230,6 @@ def generate_candidates(
             product.get("ingredient_concept_ids") or [],
             product.get("ingredient_ids") or [],
         )
-        preferred_ingredients = _extract_ids(user_profile.get("preferred_ingredient_ids", []))
         for ing in _matching_ids(preferred_ingredients, product_ingredients_concept):
             overlap.append(f"ingredient:{ing}")
 

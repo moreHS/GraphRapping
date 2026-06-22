@@ -149,9 +149,9 @@ async def batch_aggregate_product_signals_sql(
 async def upsert_agg_user_preference(uow: UnitOfWork, row: dict[str, Any]) -> None:
     await uow.execute("""
         INSERT INTO agg_user_preference (user_id, preference_edge_type,
-            dst_node_type, dst_node_id, weight, confidence, source_mix, updated_at)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-        ON CONFLICT (user_id, preference_edge_type, dst_node_id) DO UPDATE SET
+            dst_node_type, dst_node_id, scope_group, weight, confidence, source_mix, updated_at)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+        ON CONFLICT (user_id, preference_edge_type, dst_node_id, scope_group) DO UPDATE SET
             weight=EXCLUDED.weight,
             confidence=EXCLUDED.confidence,
             source_mix=EXCLUDED.source_mix,
@@ -161,6 +161,7 @@ async def upsert_agg_user_preference(uow: UnitOfWork, row: dict[str, Any]) -> No
     """,
         row["user_id"], row["preference_edge_type"],
         row.get("dst_node_type", ""), row["dst_node_id"],
+        row.get("scope_group") or "",
         row.get("weight", 1.0),
         row.get("confidence", 0.0),
         # source_mix is jsonb: asyncpg cannot bind a dict directly.
@@ -278,10 +279,11 @@ async def upsert_serving_user_profile(uow: UnitOfWork, row: dict[str, Any]) -> N
             preferred_brand_ids, preferred_category_ids, preferred_ingredient_ids,
             avoided_ingredient_ids, concern_ids, goal_ids,
             preferred_bee_attr_ids, preferred_keyword_ids, preferred_context_ids,
+            scoped_preference_ids,
             recent_purchase_brand_ids, repurchase_brand_ids, repurchase_category_ids,
             owned_product_ids, owned_family_ids, repurchased_family_ids,
             updated_at)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
         ON CONFLICT (user_id) DO UPDATE SET
             age_band=EXCLUDED.age_band,
             gender=EXCLUDED.gender,
@@ -295,6 +297,7 @@ async def upsert_serving_user_profile(uow: UnitOfWork, row: dict[str, Any]) -> N
             preferred_bee_attr_ids=EXCLUDED.preferred_bee_attr_ids,
             preferred_keyword_ids=EXCLUDED.preferred_keyword_ids,
             preferred_context_ids=EXCLUDED.preferred_context_ids,
+            scoped_preference_ids=EXCLUDED.scoped_preference_ids,
             recent_purchase_brand_ids=EXCLUDED.recent_purchase_brand_ids,
             repurchase_brand_ids=EXCLUDED.repurchase_brand_ids,
             repurchase_category_ids=EXCLUDED.repurchase_category_ids,
@@ -314,6 +317,7 @@ async def upsert_serving_user_profile(uow: UnitOfWork, row: dict[str, Any]) -> N
         json.dumps(row.get("preferred_bee_attr_ids", [])),
         json.dumps(row.get("preferred_keyword_ids", [])),
         json.dumps(row.get("preferred_context_ids", [])),
+        json.dumps(row.get("scoped_preference_ids", [])),
         json.dumps(row.get("recent_purchase_brand_ids", [])),
         json.dumps(row.get("repurchase_brand_ids", [])),
         json.dumps(row.get("repurchase_category_ids", [])),

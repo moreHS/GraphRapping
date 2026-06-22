@@ -98,3 +98,32 @@ def test_source_mix_includes_weights():
     sm = result[0]["source_mix"]
     assert "purchase" in sm
     assert "chat" in sm
+
+
+def test_scoped_preferences_do_not_collapse_same_keyword():
+    facts = [
+        {
+            "predicate": "PREFERS_KEYWORD",
+            "object_iri": "concept:Keyword:크림",
+            "confidence": 0.8,
+            "source_modalities": ["chat"],
+            "object_type": "Keyword",
+            "scope_group": "skincare",
+            "source_section": "chat.face.preferred_texture",
+        },
+        {
+            "predicate": "PREFERS_KEYWORD",
+            "object_iri": "concept:Keyword:크림",
+            "confidence": 0.8,
+            "source_modalities": ["chat"],
+            "object_type": "Keyword",
+            "scope_group": "bodycare",
+            "source_section": "chat.body.preferred_texture",
+        },
+    ]
+
+    result = refresh_user_preferences("u1", facts)
+
+    assert len(result) == 2
+    assert {row["scope_group"] for row in result} == {"skincare", "bodycare"}
+    assert all(row["source_mix"]["scope_group"] == row["scope_group"] for row in result)
