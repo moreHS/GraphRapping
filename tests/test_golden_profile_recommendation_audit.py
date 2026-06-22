@@ -76,6 +76,8 @@ def test_dense_golden_audit_has_non_empty_scenarios_and_evidence_fields(
         assert isinstance(scenario["weak_relation_hit_count"], int)
         assert isinstance(scenario["source_stats_contribution_count"], int)
         assert isinstance(scenario["owned_family_suppression_count"], int)
+        assert isinstance(scenario["purchase_path_count"], int)
+        assert isinstance(scenario["purchase_score_nonzero_count"], int)
 
         if scenario["coverage_status"] == "ok":
             assert scenario["candidate_count"] > 0

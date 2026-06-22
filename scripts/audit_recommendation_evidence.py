@@ -224,6 +224,14 @@ def _build_scenario(
             if row["feature_contributions"].get("exact_owned_penalty", 0.0) < 0
             or row["feature_contributions"].get("owned_family_penalty", 0.0) < 0
         ),
+        "purchase_path_count": sum(
+            len(row["eligibility"].get("purchase_paths", []))
+            for row in top_products
+        ),
+        "purchase_score_nonzero_count": sum(
+            1 for row in top_products
+            if _has_purchase_history_contribution(row)
+        ),
         "source_stats_only_eligibility_count": sum(
             1 for row in top_products
             if row["source_trust_score"] > 0 and not row["evidence_families"]
@@ -253,6 +261,7 @@ def _top_product_row(
         "raw_score": scored.raw_score,
         "shrinked_score": scored.shrinked_score,
         "final_score": reranked_product.final_score,
+        "rank_score": reranked_product.rank_score,
         "diversity_bonus": reranked_product.diversity_bonus,
         "support_count": scored.support_count,
         "score_layers": score_layers,
@@ -264,6 +273,18 @@ def _top_product_row(
         "evidence_families": list(candidate.eligibility.evidence_families),
         "eligibility": candidate.eligibility.to_dict(),
     }
+
+
+def _has_purchase_history_contribution(row: dict[str, Any]) -> bool:
+    purchase_history_features = {
+        "purchase_loyalty_score",
+        "exact_owned_penalty",
+        "owned_family_penalty",
+        "same_family_explore_bonus",
+        "repurchase_family_affinity",
+    }
+    contributions = row.get("feature_contributions") or {}
+    return any(abs(float(contributions.get(feature, 0.0))) > 0 for feature in purchase_history_features)
 
 
 def _fixture_dir(fixture: str) -> Path:

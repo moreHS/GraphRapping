@@ -48,6 +48,13 @@ class TestDiversityReranking:
         bonuses = [r.diversity_bonus for r in result]
         assert any(b != 0.0 for b in bonuses)
 
+    def test_diversity_rank_score_does_not_overwrite_display_score(self, scored, profiles):
+        result = rerank(scored, product_profiles=profiles, diversity_weight=0.5, top_k=4)
+        by_id = {r.product_id: r for r in result}
+
+        assert by_id["P4"].rank_score < by_id["P4"].final_score
+        assert by_id["P4"].final_score == 0.55
+
     def test_contribution_log_rows(self, scored, profiles):
         result = rerank(scored, product_profiles=profiles, top_k=4)
         log_rows = build_contribution_log_rows(result, run_id=1, user_id="u1")

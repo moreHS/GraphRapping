@@ -41,6 +41,10 @@ class Explanation:
 _EDGE_MAP = {
     "keyword": ("PREFERS_KEYWORD", "HAS_BEE_KEYWORD_SIGNAL"),
     "bee_attr": ("PREFERS_BEE_ATTR", "HAS_BEE_ATTR_SIGNAL"),
+    "semantic_keyword": ("PREFERS_KEYWORD", "HAS_BEE_KEYWORD_SIGNAL"),
+    "semantic_bee_attr": ("PREFERS_BEE_ATTR", "HAS_BEE_ATTR_SIGNAL"),
+    "weak_semantic_keyword": ("PREFERS_KEYWORD", "HAS_WEAK_BEE_KEYWORD_SIGNAL"),
+    "weak_semantic_bee_attr": ("PREFERS_BEE_ATTR", "HAS_WEAK_BEE_ATTR_SIGNAL"),
     "concern": ("HAS_CONCERN", "ADDRESSES_CONCERN_SIGNAL"),
     "concern_bridge": ("HAS_CONCERN", "HAS_BEE_ATTR_SIGNAL"),
     "context": ("PREFERS_CONTEXT", "USED_IN_CONTEXT_SIGNAL"),
@@ -73,6 +77,7 @@ def explain(
         if ":" not in concept_str:
             continue
         ctype, cid = concept_str.split(":", 1)
+        cid = cid.split("|strength=", 1)[0]
         if ctype == "catalog_validation":
             continue
         edges = _EDGE_MAP.get(ctype)
@@ -109,6 +114,10 @@ def _concept_to_feature(concept_type: str) -> str:
     mapping = {
         "keyword": "keyword_match",
         "bee_attr": "residual_bee_attr_match",
+        "semantic_keyword": "keyword_match",
+        "semantic_bee_attr": "residual_bee_attr_match",
+        "weak_semantic_keyword": "review_graph_weak_relation_match",
+        "weak_semantic_bee_attr": "review_graph_weak_relation_match",
         "concern": "concern_fit",
         "concern_bridge": "concern_bridge_fit",
         "context": "context_match",
@@ -151,6 +160,14 @@ def _generate_summary_ko(paths: list[ExplanationPath]) -> str:
                 parts.append(f"제형 선호 '{ko}' 계열과 일치")
             else:
                 parts.append(f"'{p.concept_id}' 키워드 선호와 일치")
+        elif p.concept_type == "semantic_keyword":
+            parts.append(f"리뷰 키워드 신호 '{p.concept_id}'와 의미적으로 일치")
+        elif p.concept_type == "semantic_bee_attr":
+            parts.append(f"리뷰 BEE 속성 '{p.concept_id}'와 의미적으로 일치")
+        elif p.concept_type == "weak_semantic_keyword":
+            parts.append(f"약한 리뷰 키워드 신호 '{p.concept_id}'와 의미적으로 일치")
+        elif p.concept_type == "weak_semantic_bee_attr":
+            parts.append(f"약한 리뷰 BEE 속성 '{p.concept_id}'와 의미적으로 일치")
         elif p.concept_type == "concern":
             from src.common.concept_resolver import concern_label
             label = concern_label(p.concept_id)

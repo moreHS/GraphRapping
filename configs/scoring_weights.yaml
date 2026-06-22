@@ -4,6 +4,7 @@
 features:
   keyword_match: 0.16
   residual_bee_attr_match: 0.07
+  review_graph_weak_relation_match: 0.02
   context_match: 0.08
   concern_fit: 0.08
   concern_bridge_fit: 0.04

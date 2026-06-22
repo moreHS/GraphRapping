@@ -19,6 +19,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from src.loaders.source_review_stats_loader import load_source_review_stats_snapshot
 from src.rec.category_groups import classify_product_category_group
 
 
@@ -151,7 +152,6 @@ def main() -> None:
 def build_fixture(inputs: BuildInputs) -> tuple[dict[str, Any], dict[str, Any]]:
     reviews = _load_json(inputs.review_path)
     products = _load_json(inputs.product_path)
-    stats_rows = _extract_records(_load_json(inputs.stats_path))
     users = _load_json(inputs.user_path)
 
     if not isinstance(reviews, list):
@@ -161,7 +161,7 @@ def build_fixture(inputs: BuildInputs) -> tuple[dict[str, Any], dict[str, Any]]:
     if not isinstance(users, dict):
         raise TypeError(f"{inputs.user_path} must contain a JSON object")
 
-    stats_by_product = {str(row["product_id"]): dict(row) for row in stats_rows if row.get("product_id") is not None}
+    stats_by_product = load_source_review_stats_snapshot(inputs.stats_path)
     selection = select_products(products, stats_by_product, users)
     dense_products = [copy.deepcopy(p) for p in products if str(p.get("ONLINE_PROD_SERIAL_NUMBER")) in selection.selected]
     selected_by_id = {str(p["ONLINE_PROD_SERIAL_NUMBER"]): p for p in dense_products}
@@ -750,14 +750,6 @@ def _optional_str(value: Any) -> str | None:
 
 def _load_json(path: Path) -> Any:
     return json.loads(path.read_text(encoding="utf-8"))
-
-
-def _extract_records(data: Any) -> list[dict[str, Any]]:
-    if isinstance(data, list):
-        return data
-    if isinstance(data, dict) and isinstance(data.get("records"), list):
-        return data["records"]
-    raise TypeError("Expected JSON list or object with records list")
 
 
 def _json_bytes(payload: Any) -> bytes:

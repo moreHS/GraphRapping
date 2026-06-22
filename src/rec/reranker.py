@@ -19,6 +19,7 @@ class RerankedProduct:
     original_rank: int
     final_rank: int
     final_score: float
+    rank_score: float = 0.0
     diversity_bonus: float = 0.0
     contribution_log: dict[str, float] = field(default_factory=dict)
 
@@ -85,7 +86,8 @@ def rerank(
             product_id=sp.product_id,
             original_rank=orig_rank,
             final_rank=len(selected),
-            final_score=round(best_adjusted, 4),
+            final_score=round(sp.final_score, 4),
+            rank_score=round(best_adjusted, 4),
             diversity_bonus=round(diversity_bonus, 4),
             contribution_log=sp.feature_contributions,
         ))

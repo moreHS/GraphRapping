@@ -13,7 +13,12 @@ import pytest
 
 from src.jobs.run_full_load import FullLoadConfig, run_full_load
 from src.loaders.user_loader import load_users_from_profiles
-from scripts.build_dense_golden_fixture import classify_product_group, is_noise_product
+from scripts.build_dense_golden_fixture import (
+    BuildInputs,
+    build_fixture,
+    classify_product_group,
+    is_noise_product,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -74,6 +79,24 @@ def _load_json(path: Path) -> Any:
 
 def _sha256_file(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _stats_row(product_id: str, review_count: int, channel: str, key_type: str) -> dict[str, Any]:
+    return {
+        "product_id": product_id,
+        "source_channel": channel,
+        "source_key_type": key_type,
+        "source_review_count_6m": review_count,
+        "source_review_score_count_6m": review_count,
+        "source_avg_rating_6m": 4.8,
+        "source_review_min_date_6m": "2025-12-18",
+        "source_review_max_date_6m": "2026-06-17",
+        "source_review_count_all": review_count,
+        "source_review_score_count_all": review_count,
+        "source_avg_rating_all": 4.8,
+        "source_review_min_date_all": "2025-12-18",
+        "source_review_max_date_all": "2026-06-17",
+    }
 
 
 def test_dense_builder_dry_run_does_not_write(tmp_path: Path) -> None:
@@ -185,6 +208,86 @@ def test_dense_manifest_and_selection_contract() -> None:
     assert len(anchors["resolved"]) == 1
     assert anchors["ambiguous"] == []
     assert anchors["unresolved"]
+
+
+def test_dense_builder_skips_ambiguous_source_stats_product_ids(tmp_path: Path) -> None:
+    products = [
+        {
+            "ONLINE_PROD_SERIAL_NUMBER": "DUP1",
+            "prd_nm": "중복 고리뷰 세럼",
+            "ONLINE_PROD_NAME": "중복 고리뷰 세럼",
+            "BRAND_NAME": "테스트",
+            "CTGR_L_NAME": "Beauty",
+            "CTGR_M_NAME": "스킨케어",
+            "CTGR_S_NAME": "세럼",
+            "CTGR_SS_NAME": "세럼",
+            "SOURCE_CHANNEL": "031",
+            "SOURCE_KEY_TYPE": "ecp_onln_prd_srno",
+        },
+        {
+            "ONLINE_PROD_SERIAL_NUMBER": "VALID1",
+            "prd_nm": "정상 저리뷰 세럼",
+            "ONLINE_PROD_NAME": "정상 저리뷰 세럼",
+            "BRAND_NAME": "테스트",
+            "CTGR_L_NAME": "Beauty",
+            "CTGR_M_NAME": "스킨케어",
+            "CTGR_S_NAME": "세럼",
+            "CTGR_SS_NAME": "세럼",
+            "SOURCE_CHANNEL": "031",
+            "SOURCE_KEY_TYPE": "ecp_onln_prd_srno",
+        },
+    ]
+    reviews = [
+        {
+            "review_id": "R1",
+            "source_product_id": "VALID1",
+            "prod_nm": "정상 저리뷰 세럼",
+            "brnd_nm": "테스트",
+            "channel": "031",
+            "text": "촉촉한 세럼",
+            "ner": [],
+            "bee": [],
+            "relation": [],
+        }
+    ]
+    stats = {
+        "records": [
+            _stats_row("DUP1", 9999, "031", "ecp_onln_prd_srno"),
+            _stats_row("DUP1", 9999, "036", "chn_prd_cd"),
+            _stats_row("VALID1", 1, "031", "ecp_onln_prd_srno"),
+        ]
+    }
+    users = {
+        uid: {"basic": {}, "purchase_analysis": {}, "chat": {}}
+        for uid in GOLDEN_PROFILE_IDS
+    }
+
+    review_path = tmp_path / "reviews.json"
+    product_path = tmp_path / "products.json"
+    stats_path = tmp_path / "stats.json"
+    user_path = tmp_path / "users.json"
+    for path, payload in (
+        (review_path, reviews),
+        (product_path, products),
+        (stats_path, stats),
+        (user_path, users),
+    ):
+        path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+
+    _, manifest = build_fixture(BuildInputs(
+        review_path=review_path,
+        product_path=product_path,
+        stats_path=stats_path,
+        user_path=user_path,
+        output_dir=tmp_path / "out",
+        seed=20260622,
+    ))
+
+    selected_ids = {
+        row["product_id"]
+        for row in manifest["selection"]["selected_products"]
+    }
+    assert selected_ids == {"VALID1"}
 
 
 def test_dense_review_linkage_preserves_review_annotations_and_original_fixture() -> None:
