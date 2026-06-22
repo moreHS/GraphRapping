@@ -27,6 +27,10 @@ from src.ingest.purchase_ingest import (
     purchase_features_to_adapter_dict,
 )
 from src.user.adapters.personal_agent_adapter import adapt_user_profile
+from src.user.profile_purchase_summary import (
+    derive_purchase_summary_features,
+    merge_purchase_feature_dicts,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +51,7 @@ def load_users_from_profiles(
     brand_lookup: dict[str, str] | None = None,
     category_lookup: dict[str, str] | None = None,
     family_lookup: dict[str, str] | None = None,
+    product_masters: dict[str, dict[str, Any]] | None = None,
 ) -> UserLoadResult:
     """Convert normalized user profiles to GraphRapping user artifacts.
 
@@ -63,6 +68,8 @@ def load_users_from_profiles(
         brand_lookup: product_id → brand_id (raw normalized).
         category_lookup: product_id → category_id (raw normalized).
         family_lookup: product_id → variant_family_id.
+        product_masters: optional product master map used to resolve
+            personal-agent purchase summary products by exact id/name.
 
     Returns:
         UserLoadResult with user_masters and user_adapted_facts ready for run_batch()
@@ -117,6 +124,11 @@ def load_users_from_profiles(
                 family_lookup=family_lookup,
             )
             purchase_features_dict = purchase_features_to_adapter_dict(pf)
+        summary_features_dict = derive_purchase_summary_features(profile, product_masters)
+        purchase_features_dict = merge_purchase_feature_dicts(
+            purchase_features_dict,
+            summary_features_dict,
+        )
 
         # Convert profile → adapted facts via personal_agent_adapter
         adapted_facts = adapt_user_profile(

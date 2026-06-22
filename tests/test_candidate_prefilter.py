@@ -51,6 +51,7 @@ def test_prefiltered_missing_id_skipped():
     profiles_by_id = {"p1": {"product_id": "p1"}}
     results = generate_candidates_prefiltered(
         user_profile, ["p1", "p_missing"], profiles_by_id,
+        require_evidence=False,
     )
     pids = {c.product_id for c in results}
     assert "p1" in pids

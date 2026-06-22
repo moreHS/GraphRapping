@@ -61,7 +61,9 @@ def test_same_family_detected():
 def test_no_family_graceful():
     user = _user()
     products = [_product("P002", None)]
-    candidates = generate_candidates(user, products, mode=RecommendationMode.EXPLORE)
+    candidates = generate_candidates(
+        user, products, mode=RecommendationMode.EXPLORE, require_evidence=False
+    )
     assert len(candidates) == 1
     assert candidates[0].owned_family_match is False
 
@@ -140,7 +142,9 @@ def test_repurchase_family_in_overlap_concepts():
     """Repurchased family products should have repurchased_family overlap concept."""
     user = _user(repurchased_family_ids=["FAM001"])
     products = [_product("P002", "FAM001"), _product("P003", "FAM002")]
-    candidates = generate_candidates(user, products, mode=RecommendationMode.EXPLORE)
+    candidates = generate_candidates(
+        user, products, mode=RecommendationMode.EXPLORE, require_evidence=False
+    )
     p002 = next(c for c in candidates if c.product_id == "P002")
     p003 = next(c for c in candidates if c.product_id == "P003")
     assert any("repurchased_family:" in c for c in p002.overlap_concepts)
@@ -167,7 +171,9 @@ def test_candidate_bucket_classification():
         _product("P004", "FAM002"),  # repurchased family
         _product("P005", "FAM999"),  # no family relation
     ]
-    candidates = generate_candidates(user, products, mode=RecommendationMode.EXPLORE)
+    candidates = generate_candidates(
+        user, products, mode=RecommendationMode.EXPLORE, require_evidence=False
+    )
     by_id = {c.product_id: c for c in candidates}
     # P003 is same family other variant
     assert by_id["P003"].candidate_bucket == "SAME_FAMILY_OTHER_VARIANT"

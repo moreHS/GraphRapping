@@ -11,9 +11,19 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from src.common.config_loader import get_texture_axis
 from src.common.enums import RecommendationMode
 from src.common.concept_resolver import resolve_concern_id, resolve_goal_id
 from src.rec.concern_bridge import compute_bridged_concerns
+from src.rec.category_groups import (
+    category_groups_for_values,
+    classify_product_category_group,
+)
+from src.rec.recommendation_evidence_index import (
+    CandidateEligibility,
+    build_candidate_eligibility,
+)
+from src.rec.semantic_compatibility import find_semantic_matches, normalize_signal_id
 
 
 @dataclass
@@ -21,6 +31,7 @@ class CandidateProduct:
     product_id: str
     overlap_concepts: list[str] = field(default_factory=list)
     overlap_score: float = 0.0
+    eligibility: CandidateEligibility = field(default_factory=CandidateEligibility)
     hard_filtered: bool = False
     filter_reason: str | None = None
     already_owned: bool = False
@@ -38,6 +49,8 @@ def generate_candidates(
     product_profiles: list[dict[str, Any]],
     mode: RecommendationMode = RecommendationMode.STRICT,
     max_candidates: int = 50,
+    *,
+    require_evidence: bool = True,
 ) -> list[CandidateProduct]:
     """Generate recommendation candidates.
 
@@ -46,16 +59,21 @@ def generate_candidates(
         product_profiles: list of serving_product_profile rows
         mode: Recommendation mode
         max_candidates: Max candidates to return
+        require_evidence: When True, source-only/profile-unrelated products are
+            hard-filtered after first-class evidence classification.
     """
     # Extract user signals for filtering
     avoided_ingredients = _extract_ids(user_profile.get("avoided_ingredient_ids", []))
     preferred_categories = _extract_ids(user_profile.get("preferred_category_ids", []))
+    preferred_category_groups = category_groups_for_values(preferred_categories)
     preferred_brands = _extract_ids(user_profile.get("preferred_brand_ids", []))
     concern_ids = _extract_ids(user_profile.get("concern_ids", []))
     preferred_keywords = _extract_ids(user_profile.get("preferred_keyword_ids", []))
     preferred_bee_attrs = _extract_ids(user_profile.get("preferred_bee_attr_ids", []))
     preferred_contexts = _extract_ids(user_profile.get("preferred_context_ids", []))
     goal_ids = _extract_ids(user_profile.get("goal_ids", []))
+    repurchase_brand_ids = _extract_ids(user_profile.get("repurchase_brand_ids", []))
+    recent_purchase_brand_ids = _extract_ids(user_profile.get("recent_purchase_brand_ids", []))
     owned_product_ids_raw = _extract_ids(user_profile.get("owned_product_ids", []))
     owned_family_ids_raw = _extract_ids(user_profile.get("owned_family_ids", []))
     repurchased_family_ids_raw = _extract_ids(user_profile.get("repurchased_family_ids", []))
@@ -101,11 +119,19 @@ def generate_candidates(
             continue
 
         # 2. Category mismatch (mode-dependent, via concept_id)
-        product_categories = set(product.get("category_concept_ids") or [])
-        if not product_categories:
-            product_categories = {product.get("category_id", "")} - {""}
+        product_categories = _concept_and_raw_ids(
+            product.get("category_concept_ids") or [],
+            product.get("category_id"),
+        )
+        category_matches = _matching_ids(preferred_categories, product_categories)
+        product_category_group = classify_product_category_group(product)
+        category_group_matches = (
+            {product_category_group}
+            if product_category_group in preferred_category_groups
+            else set()
+        )
         if preferred_categories and product_categories:
-            if not (preferred_categories & product_categories):
+            if not category_matches and not category_group_matches:
                 if mode == RecommendationMode.STRICT:
                     candidate.hard_filtered = True
                     candidate.filter_reason = "CATEGORY_MISMATCH_STRICT"
@@ -133,33 +159,59 @@ def generate_candidates(
         overlap = []
 
         # Brand match (concept_id join key)
-        product_brands = set(product.get("brand_concept_ids") or [])
-        for b in preferred_brands & product_brands:
+        product_brands = _concept_and_raw_ids(
+            product.get("brand_concept_ids") or [],
+            product.get("brand_id"),
+        )
+        for b in _matching_ids(preferred_brands, product_brands):
             overlap.append(f"brand:{b}")
 
         # Category match (concept_id)
-        for c in preferred_categories & product_categories:
+        for c in category_matches:
             overlap.append(f"category:{c}")
+        for group in sorted(category_group_matches):
+            overlap.append(f"category:concept:Category:{group}")
 
         # Keyword overlap
         product_keywords = _extract_signal_ids(product.get("top_keyword_ids", []))
-        for kw in preferred_keywords & product_keywords:
+        exact_keyword_keys = {_join_key(v) for v in preferred_keywords} & {_join_key(v) for v in product_keywords}
+        for kw in _matching_ids(preferred_keywords, product_keywords):
             overlap.append(f"keyword:{kw}")
 
         # BEE_ATTR overlap
         product_attrs = _extract_signal_ids(product.get("top_bee_attr_ids", []))
-        for attr in preferred_bee_attrs & product_attrs:
+        preferred_specific_attrs = _exclude_generic_bee_attrs(preferred_bee_attrs)
+        product_specific_attrs = _exclude_generic_bee_attrs(product_attrs)
+        exact_attr_keys = (
+            {_join_key(v) for v in preferred_specific_attrs}
+            & {_join_key(v) for v in product_specific_attrs}
+        )
+        for attr in _matching_ids(preferred_specific_attrs, product_specific_attrs):
             overlap.append(f"bee_attr:{attr}")
+
+        # Semantic compatibility overlap. This is value-and-polarity gated by
+        # configs/recommendation_semantic_compatibility.yaml; generic axes such
+        # as formulation/texture do not score unless a compatible value exists.
+        for match in find_semantic_matches(user_profile, product):
+            product_key = normalize_signal_id(match.product_id)
+            if match.product_type == "keyword" and product_key in exact_keyword_keys:
+                continue
+            if match.product_type == "bee_attr" and product_key in exact_attr_keys:
+                continue
+            overlap.append(match.to_overlap_concept())
 
         # Context overlap
         product_contexts = _extract_signal_ids(product.get("top_context_ids", []))
-        for ctx in preferred_contexts & product_contexts:
+        for ctx in _matching_ids(preferred_contexts, product_contexts):
             overlap.append(f"context:{ctx}")
 
         # Ingredient overlap (product truth ingredients vs user preferred ingredients)
-        product_ingredients_concept = set(product.get("ingredient_concept_ids") or [])
+        product_ingredients_concept = _concept_and_raw_ids(
+            product.get("ingredient_concept_ids") or [],
+            product.get("ingredient_ids") or [],
+        )
         preferred_ingredients = _extract_ids(user_profile.get("preferred_ingredient_ids", []))
-        for ing in preferred_ingredients & product_ingredients_concept:
+        for ing in _matching_ids(preferred_ingredients, product_ingredients_concept):
             overlap.append(f"ingredient:{ing}")
 
         # Concern overlap (with ID normalization for cross-source matching)
@@ -188,13 +240,20 @@ def generate_candidates(
         # Tool overlap (user preferred tools × product tool signals)
         preferred_tools = _extract_ids(user_profile.get("preferred_tool_ids", []))
         product_tools = _extract_signal_ids(product.get("top_tool_ids", []))
-        for t in preferred_tools & product_tools:
+        for t in _matching_ids(preferred_tools, product_tools):
             overlap.append(f"tool:{t}")
 
         # Co-used product overlap (user owned products × product co-use signals)
         product_coused = _extract_signal_ids(product.get("top_coused_product_ids", []))
         for co in owned_product_ids & product_coused:
             overlap.append(f"coused:{co}")
+
+        # Purchase-behavior brand overlaps. These qualify candidates because
+        # the match is user behavior aligned, not just product catalog presence.
+        for b in _matching_ids(repurchase_brand_ids, product_brands):
+            overlap.append(f"repurchase_brand:{b}")
+        for b in _matching_ids(recent_purchase_brand_ids, product_brands):
+            overlap.append(f"recent_purchase_brand:{b}")
 
         # Family overlap (for explanation paths)
         if candidate.owned_family_match and product_family:
@@ -204,6 +263,10 @@ def generate_candidates(
 
         candidate.overlap_concepts = overlap
         candidate.overlap_score = len(overlap)
+        candidate.eligibility = build_candidate_eligibility(overlap)
+        if require_evidence and not candidate.eligibility.eligible:
+            candidate.hard_filtered = True
+            candidate.filter_reason = "NO_USER_ALIGNED_EVIDENCE"
         candidates.append(candidate)
 
     # Sort by overlap score, filter out hard-filtered, deprioritize owned
@@ -220,6 +283,8 @@ def generate_candidates_prefiltered(
     product_profiles_by_id: dict[str, dict[str, Any]],
     mode: RecommendationMode = RecommendationMode.STRICT,
     max_candidates: int = 50,
+    *,
+    require_evidence: bool = True,
 ) -> list[CandidateProduct]:
     """Generate candidates from a pre-filtered set of product IDs.
 
@@ -231,7 +296,13 @@ def generate_candidates_prefiltered(
         for pid in prefiltered_product_ids
         if pid in product_profiles_by_id
     ]
-    return generate_candidates(user_profile, product_profiles, mode, max_candidates)
+    return generate_candidates(
+        user_profile,
+        product_profiles,
+        mode,
+        max_candidates,
+        require_evidence=require_evidence,
+    )
 
 
 def _extract_ids(items: list) -> set[str]:
@@ -248,3 +319,39 @@ def _extract_ids(items: list) -> set[str]:
 def _extract_signal_ids(items: list) -> set[str]:
     """Extract IDs from signal summary (dicts with 'id' key)."""
     return {item["id"] for item in items if isinstance(item, dict) and "id" in item}
+
+
+def _concept_and_raw_ids(concept_ids: list, raw_ids: Any = None) -> set[str]:
+    values = _extract_ids(concept_ids)
+    if raw_ids is None:
+        return values
+    if isinstance(raw_ids, (list, tuple, set)):
+        values.update(str(v) for v in raw_ids if v)
+    elif raw_ids:
+        values.add(str(raw_ids))
+    return values - {""}
+
+
+def _join_key(value: str) -> str:
+    if value.startswith("concept:"):
+        parts = value.split(":", 2)
+        if len(parts) == 3:
+            return parts[2]
+    if value.startswith("product:"):
+        return value[len("product:"):]
+    return value
+
+
+def _matching_ids(left: set[str], right: set[str]) -> list[str]:
+    """Return deterministic left-side IDs whose raw/concept join key matches."""
+    right_keys = {_join_key(v) for v in right}
+    matches = [v for v in left if _join_key(v) in right_keys]
+    return sorted(matches, key=lambda v: (_join_key(v), v))
+
+
+def _exclude_generic_bee_attrs(values: set[str]) -> set[str]:
+    generic_keys = {
+        normalize_signal_id(get_texture_axis()),
+        normalize_signal_id("concept:BEEAttr:bee_attr_texture_feel"),
+    }
+    return {value for value in values if normalize_signal_id(value) not in generic_keys}

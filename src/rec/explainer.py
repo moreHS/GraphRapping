@@ -52,6 +52,8 @@ _EDGE_MAP = {
     "coused": ("OWNS_PRODUCT", "USED_WITH_PRODUCT_SIGNAL"),
     "owned_family": ("OWNS_FAMILY", "HAS_VARIANT_FAMILY"),
     "repurchased_family": ("REPURCHASES_FAMILY", "HAS_VARIANT_FAMILY"),
+    "repurchase_brand": ("REPURCHASES_BRAND", "HAS_BRAND"),
+    "recent_purchase_brand": ("RECENTLY_PURCHASED", "HAS_BRAND"),
 }
 
 
@@ -118,6 +120,8 @@ def _concept_to_feature(concept_type: str) -> str:
         "coused": "coused_product_bonus",
         "owned_family": "owned_family_penalty",
         "repurchased_family": "repurchase_family_affinity",
+        "repurchase_brand": "purchase_loyalty_score",
+        "recent_purchase_brand": "purchase_loyalty_score",
     }
     return mapping.get(concept_type, "")
 
@@ -174,6 +178,10 @@ def _generate_summary_ko(paths: list[ExplanationPath]) -> str:
             parts.append("현재 사용 중인 제품과 같은 라인")
         elif p.concept_type == "repurchased_family":
             parts.append("같은 패밀리 재구매 성향")
+        elif p.concept_type == "repurchase_brand":
+            parts.append("반복 구매 브랜드 성향과 일치")
+        elif p.concept_type == "recent_purchase_brand":
+            parts.append("최근 구매 브랜드 성향과 일치")
         else:
             parts.append(f"'{p.concept_id}' 일치")
 

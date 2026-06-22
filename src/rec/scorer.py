@@ -7,7 +7,8 @@ Shrinkage: score * (support / (support + k))
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import math
+from dataclasses import dataclass, field
 from typing import Any
 
 from src.common.config_loader import load_yaml
@@ -24,6 +25,8 @@ SCORING_FEATURE_KEYS = (
     "goal_fit_master",
     "category_affinity",
     "freshness_boost",
+    "source_popularity_score",
+    "source_rating_score",
     "skin_type_fit",
     "purchase_loyalty_score",
     "novelty_bonus",
@@ -44,6 +47,7 @@ class ScoredProduct:
     final_score: float
     feature_contributions: dict[str, float]
     support_count: int = 0
+    score_layers: dict[str, float] = field(default_factory=dict)
 
 
 class Scorer:
@@ -94,8 +98,14 @@ class Scorer:
             overlaps_by_type[ctype] = overlaps_by_type.get(ctype, 0) + 1
 
         # Feature scoring
-        keyword_count = overlaps_by_type.get("keyword", 0)
-        bee_attr_count = overlaps_by_type.get("bee_attr", 0)
+        semantic_keyword_count = overlaps_by_type.get("semantic_keyword", 0)
+        semantic_bee_attr_count = overlaps_by_type.get("semantic_bee_attr", 0)
+        weak_relation_count = (
+            overlaps_by_type.get("weak_semantic_keyword", 0)
+            + overlaps_by_type.get("weak_semantic_bee_attr", 0)
+        )
+        keyword_count = overlaps_by_type.get("keyword", 0) + semantic_keyword_count
+        bee_attr_count = overlaps_by_type.get("bee_attr", 0) + semantic_bee_attr_count
 
         # Residual BEE_ATTR: only count attrs not already covered by keywords
         residual_attr = max(0, bee_attr_count - keyword_count)
@@ -122,6 +132,8 @@ class Scorer:
             "goal_fit_master": min(goal_master_count / 2.0, 1.0),
             "category_affinity": min(overlaps_by_type.get("category", 0), 1.0),
             "freshness_boost": _freshness_score(product_profile),
+            "source_popularity_score": _source_popularity_score(product_profile),
+            "source_rating_score": _source_rating_score(product_profile),
             "skin_type_fit": skin_type_fit_val,
             "purchase_loyalty_score": purchase_loyalty,
             "novelty_bonus": novelty,
@@ -131,14 +143,20 @@ class Scorer:
             "repurchase_family_affinity": _repurchase_family_affinity(user_profile, product_profile),
             "tool_alignment": min(overlaps_by_type.get("tool", 0) / 2.0, 1.0),
             "coused_product_bonus": min(overlaps_by_type.get("coused", 0) / 2.0, 1.0),
+            "review_graph_weak_relation_match": min(weak_relation_count / 3.0, 1.0),
         }
 
         raw_score = sum(
-            self._weights.get(feature, 0.0) * value
+            _feature_weight(feature, self._weights) * value
             for feature, value in features.items()
         )
 
-        contributions = {k: self._weights.get(k, 0.0) * v for k, v in features.items() if v != 0}
+        contributions = {
+            k: _feature_weight(k, self._weights) * v
+            for k, v in features.items()
+            if v != 0
+        }
+        score_layers = _score_layers(contributions)
 
         # Evidence shrinkage
         support_count = product_profile.get("review_count_all", 0) or 0
@@ -152,7 +170,61 @@ class Scorer:
             final_score=round(shrinked_score, 4),
             feature_contributions=contributions,
             support_count=support_count,
+            score_layers=score_layers,
         )
+
+
+def _score_layers(contributions: dict[str, float]) -> dict[str, float]:
+    groups = {
+        "master_truth_score": {
+            "brand_match_conf_weighted",
+            "category_affinity",
+            "ingredient_match",
+            "goal_fit_master",
+        },
+        "review_graph_score": {
+            "keyword_match",
+            "residual_bee_attr_match",
+            "context_match",
+            "concern_fit",
+            "concern_bridge_fit",
+            "tool_alignment",
+            "coused_product_bonus",
+        },
+        "review_graph_weak_evidence_score": {
+            "review_graph_weak_relation_match",
+        },
+        "product_activity_score": {
+            "freshness_boost",
+        },
+        "profile_fit_score": {
+            "skin_type_fit",
+        },
+        "purchase_behavior_score": {
+            "purchase_loyalty_score",
+            "novelty_bonus",
+            "exact_owned_penalty",
+            "owned_family_penalty",
+            "same_family_explore_bonus",
+            "repurchase_family_affinity",
+        },
+        "source_trust_score": {
+            "source_popularity_score",
+            "source_rating_score",
+        },
+    }
+    return {
+        layer: round(sum(contributions.get(feature, 0.0) for feature in features), 4)
+        for layer, features in groups.items()
+    }
+
+
+def _feature_weight(feature: str, weights: dict[str, float]) -> float:
+    if feature != "review_graph_weak_relation_match":
+        return weights.get(feature, 0.0)
+    if feature in weights:
+        return min(max(weights.get(feature, 0.0), 0.0), 0.05)
+    return min(max(weights.get("keyword_match", 0.0) * 0.25, 0.0), 0.04)
 
 
 def _brand_score(brand_overlap: int, brand_source: str, conf_map: dict) -> float:
@@ -183,6 +255,33 @@ def _freshness_score(product: dict) -> float:
     elif count_30d > 0:
         return 0.3
     return 0.0
+
+
+def _source_popularity_score(product: dict) -> float:
+    count = product.get("source_review_count_6m")
+    if count is None:
+        count = product.get("source_review_count_all")
+    try:
+        count_int = int(count or 0)
+    except (TypeError, ValueError):
+        count_int = 0
+    if count_int <= 0:
+        return 0.0
+    cap = 1000
+    return min(math.log1p(count_int) / math.log1p(cap), 1.0)
+
+
+def _source_rating_score(product: dict) -> float:
+    rating = product.get("source_avg_rating_6m")
+    if rating is None:
+        rating = product.get("source_avg_rating_all")
+    try:
+        rating_float = float(rating)
+    except (TypeError, ValueError):
+        return 0.0
+    if rating_float < 4.0:
+        return 0.0
+    return min(max(rating_float - 4.0, 0.0), 1.0)
 
 
 # P4-4 (Wave 3.4): skin_type → concern boost/penalty map loaded from

@@ -70,6 +70,24 @@ tr.clickable { cursor: pointer; }
 /* Mode description */
 .mode-desc { font-size: 11px; color: var(--text2); line-height: 1.5; margin-top: 6px; padding: 6px 8px; background: var(--surface2); border-radius: 4px; }
 
+/* Segmented controls */
+.recommend-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
+.segmented-tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+.segmented-tabs button {
+  background: var(--surface2);
+  color: var(--text2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-size: 12px;
+  min-height: 32px;
+  padding: 6px 10px;
+  transition: all .15s;
+}
+.segmented-tabs button:hover { color: var(--text); border-color: var(--primary-light); }
+.segmented-tabs button.active { background: var(--primary); color: white; border-color: var(--primary); }
+.segmented-tabs .tab-count { color: inherit; font-size: 11px; opacity: .78; margin-left: 4px; }
+
 /* Charts */
 .chart-container { position: relative; height: 250px; margin: 12px 0; }
 

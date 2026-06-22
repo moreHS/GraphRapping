@@ -1,0 +1,296 @@
+version: 1
+
+# Recommendation-only compatibility map.
+# A generic texture/formulation axis is intentionally absent from user_signals:
+# axis-only preferences must never score without a compatible value and polarity.
+rules:
+  - axis: moisture
+    value: moist
+    polarity: positive
+    user_signals:
+      keywords:
+        - concept:Keyword:촉촉
+        - concept:Keyword:수분
+        - concept:Keyword:보습
+        - concept:Keyword:kw_moist
+        - concept:Keyword:kw_moisturizing
+    matches:
+      keywords:
+        - id: concept:Keyword:촉촉
+          strength: 1.0
+        - id: concept:Keyword:수분
+          strength: 0.95
+        - id: concept:Keyword:보습
+          strength: 0.95
+        - id: concept:Keyword:kw_moist
+          strength: 0.95
+        - id: concept:Keyword:kw_moisturizing
+          strength: 0.95
+      bee_attrs:
+        - id: concept:BEEAttr:bee_attr_moisturizing_power
+          strength: 0.8
+    blocks:
+      values:
+        - matte
+        - oil_control
+      keywords:
+        - concept:Keyword:매트
+        - concept:Keyword:보송
+        - concept:Keyword:유분없음
+        - concept:Keyword:오일컨트롤
+      bee_attrs:
+        - concept:BEEAttr:bee_attr_oil_control
+        - concept:BEEAttr:bee_attr_matte_finish
+
+  - axis: texture
+    value: fresh
+    polarity: positive
+    user_signals:
+      keywords:
+        - concept:Keyword:산뜻
+        - concept:Keyword:흡수
+        - concept:Keyword:kw_fresh
+        - concept:Keyword:kw_absorption
+    matches:
+      keywords:
+        - id: concept:Keyword:산뜻
+          strength: 1.0
+        - id: concept:Keyword:흡수
+          strength: 0.9
+        - id: concept:Keyword:끈적임 없음
+          strength: 0.85
+        - id: concept:Keyword:끈적임없음
+          strength: 0.85
+        - id: concept:Keyword:kw_fresh
+          strength: 0.95
+        - id: concept:Keyword:kw_absorption
+          strength: 0.9
+      bee_attrs:
+        - id: concept:BEEAttr:bee_attr_absorption
+          strength: 0.75
+    blocks:
+      values:
+        - rich
+        - sticky
+      keywords:
+        - concept:Keyword:리치
+        - concept:Keyword:꾸덕
+        - concept:Keyword:끈적
+
+  - axis: performance
+    value: long_lasting
+    polarity: positive
+    user_signals:
+      keywords:
+        - concept:Keyword:지속
+        - concept:Keyword:지속력
+        - concept:Keyword:롱래스팅
+        - concept:Goal:지속력
+    matches:
+      keywords:
+        - id: concept:Keyword:지속
+          strength: 1.0
+        - id: concept:Keyword:지속력
+          strength: 1.0
+        - id: concept:Keyword:롱래스팅
+          strength: 0.95
+        - id: concept:Keyword:kw_lasting
+          strength: 0.95
+      bee_attrs:
+        - id: concept:BEEAttr:bee_attr_lasting_power
+          strength: 0.85
+
+  - axis: texture
+    value: light
+    polarity: positive
+    user_signals:
+      keywords:
+        - concept:Keyword:가벼움
+        - concept:Keyword:가벼운
+        - concept:Keyword:kw_light
+    matches:
+      keywords:
+        - id: concept:Keyword:가벼움
+          strength: 1.0
+        - id: concept:Keyword:가벼운
+          strength: 1.0
+        - id: concept:Keyword:끈적임 없음
+          strength: 0.8
+        - id: concept:Keyword:끈적임없음
+          strength: 0.8
+        - id: concept:Keyword:kw_light
+          strength: 0.95
+      bee_attrs:
+        - id: concept:BEEAttr:bee_attr_absorption
+          strength: 0.6
+    blocks:
+      values:
+        - rich
+        - sticky
+      keywords:
+        - concept:Keyword:리치
+        - concept:Keyword:무거움
+        - concept:Keyword:꾸덕
+
+  - axis: texture
+    value: non_sticky
+    polarity: positive
+    user_signals:
+      keywords:
+        - concept:Keyword:끈적임 없음
+        - concept:Keyword:끈적임없음
+        - concept:Keyword:안끈적
+        - concept:Keyword:kw_non_sticky
+    matches:
+      keywords:
+        - id: concept:Keyword:끈적임 없음
+          strength: 1.0
+        - id: concept:Keyword:끈적임없음
+          strength: 1.0
+        - id: concept:Keyword:안끈적
+          strength: 0.9
+        - id: concept:Keyword:kw_non_sticky
+          strength: 0.95
+    blocks:
+      values:
+        - sticky
+        - rich
+      keywords:
+        - concept:Keyword:끈적
+        - concept:Keyword:리치
+
+  - axis: finish
+    value: matte
+    polarity: positive
+    user_signals:
+      keywords:
+        - concept:Keyword:매트
+        - concept:Keyword:보송
+        - concept:Keyword:kw_matte
+    matches:
+      keywords:
+        - id: concept:Keyword:매트
+          strength: 1.0
+        - id: concept:Keyword:보송
+          strength: 0.95
+        - id: concept:Keyword:kw_matte
+          strength: 0.95
+      bee_attrs:
+        - id: concept:BEEAttr:bee_attr_oil_control
+          strength: 0.75
+        - id: concept:BEEAttr:bee_attr_matte_finish
+          strength: 0.8
+    blocks:
+      values:
+        - moist
+        - rich
+        - glow
+      keywords:
+        - concept:Keyword:촉촉
+        - concept:Keyword:수분
+        - concept:Keyword:보습
+        - concept:Keyword:윤기
+        - concept:Keyword:글로우
+      bee_attrs:
+        - concept:BEEAttr:bee_attr_moisturizing_power
+        - concept:BEEAttr:bee_attr_glow_finish
+
+  - axis: finish
+    value: oil_control
+    polarity: positive
+    user_signals:
+      keywords:
+        - concept:Keyword:유분없음
+        - concept:Keyword:오일컨트롤
+        - concept:Keyword:번들거림 없음
+        - concept:Keyword:kw_oil_control
+    matches:
+      keywords:
+        - id: concept:Keyword:유분없음
+          strength: 1.0
+        - id: concept:Keyword:오일컨트롤
+          strength: 0.95
+        - id: concept:Keyword:번들거림 없음
+          strength: 0.9
+        - id: concept:Keyword:kw_oil_control
+          strength: 0.95
+      bee_attrs:
+        - id: concept:BEEAttr:bee_attr_oil_control
+          strength: 0.8
+        - id: concept:BEEAttr:bee_attr_matte_finish
+          strength: 0.65
+    blocks:
+      values:
+        - moist
+        - rich
+        - glow
+      keywords:
+        - concept:Keyword:촉촉
+        - concept:Keyword:수분
+        - concept:Keyword:보습
+        - concept:Keyword:윤기
+        - concept:Keyword:글로우
+      bee_attrs:
+        - concept:BEEAttr:bee_attr_moisturizing_power
+        - concept:BEEAttr:bee_attr_glow_finish
+
+  - axis: finish
+    value: glow
+    polarity: positive
+    user_signals:
+      keywords:
+        - concept:Keyword:윤기
+        - concept:Keyword:광채
+        - concept:Keyword:글로우
+        - concept:Keyword:kw_glow
+    matches:
+      keywords:
+        - id: concept:Keyword:윤기
+          strength: 1.0
+        - id: concept:Keyword:광채
+          strength: 1.0
+        - id: concept:Keyword:글로우
+          strength: 1.0
+        - id: concept:Keyword:kw_glow
+          strength: 0.95
+      bee_attrs:
+        - id: concept:BEEAttr:bee_attr_glow_finish
+          strength: 0.8
+    blocks:
+      values:
+        - matte
+        - oil_control
+      keywords:
+        - concept:Keyword:매트
+        - concept:Keyword:보송
+        - concept:Keyword:유분없음
+
+  - axis: texture
+    value: rich
+    polarity: positive
+    user_signals:
+      keywords:
+        - concept:Keyword:리치
+        - concept:Keyword:꾸덕
+        - concept:Keyword:kw_rich
+    matches:
+      keywords:
+        - id: concept:Keyword:리치
+          strength: 1.0
+        - id: concept:Keyword:꾸덕
+          strength: 0.9
+        - id: concept:Keyword:kw_rich
+          strength: 0.95
+      bee_attrs:
+        - id: concept:BEEAttr:bee_attr_moisturizing_power
+          strength: 0.55
+    blocks:
+      values:
+        - matte
+        - light
+        - fresh
+      keywords:
+        - concept:Keyword:매트
+        - concept:Keyword:보송
+        - concept:Keyword:가벼움
+        - concept:Keyword:산뜻

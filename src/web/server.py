@@ -19,7 +19,14 @@ from src.rec.reranker import rerank
 from src.rec.explainer import explain
 from src.rec.hook_generator import generate_hooks
 from src.rec.next_question import generate_next_question
+from src.rec.category_groups import (
+    RECOMMEND_CATEGORY_DEFS,
+    RECOMMEND_CATEGORY_LABELS,
+    classify_product_category_group,
+    recommend_category_counts,
+)
 from src.common.enums import RecommendationMode
+from src.web.review_summary_sidecar import fetch_sidecar_summaries
 
 app = FastAPI(title="GraphRapping Demo", version="1.0")
 
@@ -50,6 +57,9 @@ _DEFAULT_REVIEW_PATH = os.environ.get(
     "GRAPHRAPPING_DEMO_REVIEW_PATH",
     str(_MOCKDATA_DIR / "review_triples_raw.json"),
 )
+_DEFAULT_SOURCE_REVIEW_STATS_PATH = (
+    _PROJECT_ROOT / "data/source_snapshots/product_review_stats_snowflake_latest.json"
+)
 
 
 class PipelineRunRequest(BaseModel):
@@ -57,6 +67,7 @@ class PipelineRunRequest(BaseModel):
     max_reviews: int = 5000
     source: str = "demo"
     review_format: str = "relation"
+    source_review_stats_json_path: str | None = str(_DEFAULT_SOURCE_REVIEW_STATS_PATH)
 
 
 def _check_pipeline_run_allowed(provided_token: str | None) -> None:
@@ -127,6 +138,7 @@ async def pipeline_run(
         max_reviews=req.max_reviews,
         source=req.source,
         review_format=req.review_format,
+        source_review_stats_json_path=req.source_review_stats_json_path,
     )
 
     return {
@@ -145,12 +157,22 @@ async def pipeline_run(
 @app.get("/api/dashboard/summary")
 async def dashboard_summary():
     _check_loaded()
+    source_stats_positive = sum(
+        1 for p in demo_state.serving_products
+        if _positive_number(p.get("source_review_count_6m"))
+    )
+    source_rating_present = sum(
+        1 for p in demo_state.serving_products
+        if p.get("source_avg_rating_6m") is not None
+    )
     return {
         "reviews_processed": demo_state.review_count,
         "total_signals": demo_state.batch_result.get("total_signals", 0),
         "total_quarantined": sum(demo_state.quarantine_stats.values()),
         "serving_products": len(demo_state.serving_products),
         "serving_users": len(demo_state.serving_users),
+        "source_review_stats_products": source_stats_positive,
+        "source_avg_rating_products": source_rating_present,
         "loaded": demo_state.loaded,
     }
 
@@ -204,7 +226,13 @@ async def get_product(product_id: str):
         raise HTTPException(404, "Product not found")
     master = demo_state.product_masters.get(product_id, {})
     links = demo_state.concept_links.get(f"product:{product_id}", [])
-    return {"serving_profile": product, "master": master, "concept_links": links}
+    summaries = await fetch_sidecar_summaries([product_id])
+    return {
+        "serving_profile": product,
+        "master": master,
+        "concept_links": links,
+        "review_summary": summaries.get(product_id),
+    }
 
 
 @app.get("/api/users")
@@ -226,9 +254,26 @@ async def get_user(user_id: str):
 # Recommendation
 # =============================================================================
 
+@app.get("/api/recommend/categories")
+async def recommend_categories():
+    _check_loaded()
+    counts = recommend_category_counts(demo_state.serving_products)
+    return {
+        "items": [
+            {
+                "group": str(item["group"]),
+                "label": str(item["label"]),
+                "count": counts.get(str(item["group"]), 0),
+            }
+            for item in RECOMMEND_CATEGORY_DEFS
+        ]
+    }
+
+
 class RecommendRequest(BaseModel):
     user_id: str
     mode: str = "explore"
+    category_group: str = "all"
     top_k: int = 10
     weights: dict[str, float] | None = None
     shrinkage_k: float = 10.0
@@ -247,9 +292,18 @@ async def recommend(req: RecommendRequest):
 
     # SQL-first: use prefiltered path as default (avoids Python full-scan of all products)
     product_map = {p["product_id"]: p for p in demo_state.serving_products}
+    requested_category_group = req.category_group if req.category_group in RECOMMEND_CATEGORY_LABELS else "all"
+    if requested_category_group == "all":
+        prefiltered_product_ids = list(product_map.keys())
+    else:
+        prefiltered_product_ids = [
+            pid
+            for pid, product in product_map.items()
+            if classify_product_category_group(product) == requested_category_group
+        ]
     candidates = generate_candidates_prefiltered(
         user_profile=user,
-        prefiltered_product_ids=list(product_map.keys()),
+        prefiltered_product_ids=prefiltered_product_ids,
         product_profiles_by_id=product_map,
         mode=mode,
         max_candidates=50,
@@ -273,18 +327,20 @@ async def recommend(req: RecommendRequest):
 
     reranked = rerank([s for _, s in scored], product_profiles=product_map,
                       diversity_weight=req.diversity_weight, top_k=req.top_k)
+    summary_by_product = await fetch_sidecar_summaries([r.product_id for r in reranked])
 
     results = []
     for r in reranked:
         candidate = next((candidate for candidate, scored_product in scored if scored_product.product_id == r.product_id), None)
         scored_product = next((scored_product for _, scored_product in scored if scored_product.product_id == r.product_id), None)
         if candidate is not None and scored_product is not None:
+            product_profile = product_map.get(r.product_id, {})
             exp = explain(scored_product, candidate.overlap_concepts, top_n=5)
-            hooks = generate_hooks(exp)
+            hooks = generate_hooks(exp, product_profile=product_profile)
             results.append({
                 "rank": r.final_rank + 1,
                 "product_id": r.product_id,
-                "product": product_map.get(r.product_id, {}),
+                "product": product_profile,
                 "overlap_concepts": candidate.overlap_concepts,
                 "raw_score": scored_product.raw_score,
                 "shrinked_score": scored_product.shrinked_score,
@@ -292,6 +348,10 @@ async def recommend(req: RecommendRequest):
                 "diversity_bonus": r.diversity_bonus,
                 "support_count": scored_product.support_count,
                 "feature_contributions": scored_product.feature_contributions,
+                "score_layers": scored_product.score_layers,
+                "eligibility": candidate.eligibility.to_dict(),
+                "review_summary": summary_by_product.get(r.product_id),
+                "source_trust": _source_trust(product_profile),
                 "explanation": exp.summary_ko,
                 "explanation_paths": [{"type": p.concept_type, "id": p.concept_id,
                                        "user_edge": p.user_edge, "product_edge": p.product_edge,
@@ -305,6 +365,10 @@ async def recommend(req: RecommendRequest):
     return {
         "user_id": req.user_id,
         "mode": req.mode,
+        "category_group": requested_category_group,
+        "category_label": RECOMMEND_CATEGORY_LABELS[requested_category_group],
+        "category_filtered_count": len(prefiltered_product_ids),
+        "total_product_count": len(product_map),
         "candidate_count": len(candidates),
         "results": results,
         "next_question": {"question": nq.question_ko, "axis": nq.uncertainty_axis, "options": nq.options} if nq else None,
@@ -541,6 +605,22 @@ def _check_loaded():
 
 def _sorted_counts(counts: dict, limit: int = 50) -> list[dict]:
     return [{"name": k, "count": v} for k, v in sorted(counts.items(), key=lambda x: -x[1])[:limit]]
+
+
+def _positive_number(value: object) -> bool:
+    try:
+        return float(value or 0) > 0
+    except (TypeError, ValueError):
+        return False
+
+
+def _source_trust(product: dict) -> dict:
+    return {
+        "review_count_6m": product.get("source_review_count_6m"),
+        "avg_rating_6m": product.get("source_avg_rating_6m"),
+        "review_count_all": product.get("source_review_count_all"),
+        "avg_rating_all": product.get("source_avg_rating_all"),
+    }
 
 
 def _review_summary(r: dict) -> dict:

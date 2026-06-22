@@ -55,22 +55,32 @@ def adapt_user_profile(
     if basic.get("skin_tone"):
         facts.append(_make_pref("HAS_SKIN_TONE", ConceptType.SKIN_TONE, basic["skin_tone"],
                                 user_id, "basic", last_seen_at=basic_ts))
+    if basic.get("skin_concerns"):
+        from src.common.concept_resolver import resolve_concern_id
+        for concern in _as_list(basic.get("skin_concerns")):
+            facts.append(_make_pref("HAS_CONCERN", ConceptType.CONCERN, resolve_concern_id(concern),
+                                    user_id, "basic", last_seen_at=basic_ts))
 
     # Purchase-based brand preferences
-    for brand in purchase.get("preferred_skincare_brand", []):
-        facts.append(_make_pref("PREFERS_BRAND", ConceptType.BRAND, brand,
-                                user_id, "purchase", last_seen_at=purchase_ts))
-    for brand in purchase.get("preferred_makeup_brand", []):
-        facts.append(_make_pref("PREFERS_BRAND", ConceptType.BRAND, brand,
-                                user_id, "purchase", last_seen_at=purchase_ts))
+    for field_name in (
+        "preferred_brand",
+        "preferred_skincare_brand",
+        "preferred_makeup_brand",
+        "preferred_bodycare_brand",
+        "preferred_hair_brand",
+        "preferred_perfume_brand",
+    ):
+        for brand in _as_list(purchase.get(field_name)):
+            facts.append(_make_pref("PREFERS_BRAND", ConceptType.BRAND, brand,
+                                    user_id, "purchase", last_seen_at=purchase_ts))
 
     # Purchase-based category preferences
-    for cat in purchase.get("active_product_category", []):
+    for cat in _as_list(purchase.get("active_product_category")):
         facts.append(_make_pref("PREFERS_CATEGORY", ConceptType.CATEGORY, cat,
                                 user_id, "purchase", last_seen_at=purchase_ts))
 
     # Repurchase categories (Fix C: split from REPURCHASES_PRODUCT_OR_FAMILY)
-    for cat in purchase.get("preferred_repurchase_category", []):
+    for cat in _as_list(purchase.get("preferred_repurchase_category")):
         facts.append(_make_pref("REPURCHASES_CATEGORY", ConceptType.CATEGORY, cat,
                                 user_id, "purchase", last_seen_at=purchase_ts))
 
@@ -91,39 +101,59 @@ def adapt_user_profile(
         # Face profile (concern/goal → canonical IDs via resolver)
         from src.common.concept_resolver import resolve_concern_id, resolve_goal_id
         face = chat.get("face", {})
-        for concern in face.get("skin_concerns", []):
+        for concern in _as_list(face.get("skin_concerns")):
             canonical = resolve_concern_id(concern)
             facts.append(_make_pref("HAS_CONCERN", ConceptType.CONCERN, canonical,
                                     user_id, "chat", last_seen_at=chat_ts))
-        for goal in face.get("skincare_goals", []):
+        for goal in _as_list(face.get("skincare_goals")):
             canonical = resolve_goal_id(goal)
             facts.append(_make_pref("WANTS_GOAL", ConceptType.GOAL, canonical,
                                     user_id, "chat", last_seen_at=chat_ts))
 
         # Fix B: texture → axis-level BEE_ATTR + specific KEYWORD
-        textures = face.get("preferred_texture", [])
-        if textures:
-            # Axis-level: emit once regardless of how many textures
-            facts.append(_make_pref("PREFERS_BEE_ATTR", ConceptType.BEE_ATTR, get_texture_axis(),
-                                    user_id, "chat", last_seen_at=chat_ts))
-            texture_map = get_texture_surface_to_keyword()
-            for texture in textures:
-                keyword = texture_map.get(texture.replace(" ", ""), texture)
-                facts.append(_make_pref("PREFERS_KEYWORD", ConceptType.KEYWORD, keyword,
-                                        user_id, "chat", last_seen_at=chat_ts))
+        _append_texture_preferences(facts, user_id, _as_list(face.get("preferred_texture")), chat_ts)
 
         # Hair profile (concern/goal → canonical IDs via resolver)
         hair = chat.get("hair", {})
-        for concern in hair.get("hair_concerns", []):
+        for concern in _as_list(hair.get("hair_concerns")):
             facts.append(_make_pref("HAS_CONCERN", ConceptType.CONCERN, resolve_concern_id(concern),
                                     user_id, "chat", last_seen_at=chat_ts))
-        for goal in hair.get("haircare_goals", []):
+        for goal in _as_list(hair.get("haircare_goals")):
+            facts.append(_make_pref("WANTS_GOAL", ConceptType.GOAL, resolve_goal_id(goal),
+                                    user_id, "chat", last_seen_at=chat_ts))
+        _append_texture_preferences(facts, user_id, _as_list(hair.get("preferred_texture")), chat_ts)
+
+        # Body / scalp / makeup profiles from personal-agent's richer chat shape.
+        body = chat.get("body", {})
+        for concern in _as_list(body.get("body_concerns")):
+            facts.append(_make_pref("HAS_CONCERN", ConceptType.CONCERN, resolve_concern_id(concern),
+                                    user_id, "chat", last_seen_at=chat_ts))
+        for goal in _as_list(body.get("bodycare_goals")):
+            facts.append(_make_pref("WANTS_GOAL", ConceptType.GOAL, resolve_goal_id(goal),
+                                    user_id, "chat", last_seen_at=chat_ts))
+        _append_texture_preferences(facts, user_id, _as_list(body.get("preferred_texture")), chat_ts)
+
+        scalp = chat.get("scalp", {})
+        for concern in _as_list(scalp.get("scalp_concerns")):
+            facts.append(_make_pref("HAS_CONCERN", ConceptType.CONCERN, resolve_concern_id(concern),
+                                    user_id, "chat", last_seen_at=chat_ts))
+        for goal in _as_list(scalp.get("scalpcare_goals")):
             facts.append(_make_pref("WANTS_GOAL", ConceptType.GOAL, resolve_goal_id(goal),
                                     user_id, "chat", last_seen_at=chat_ts))
 
+        makeup = chat.get("makeup", {})
+        for concern in _as_list(makeup.get("makeup_concerns")):
+            facts.append(_make_pref("HAS_CONCERN", ConceptType.CONCERN, resolve_concern_id(concern),
+                                    user_id, "chat", last_seen_at=chat_ts))
+        for goal in _as_list(makeup.get("makeup_goals")):
+            facts.append(_make_pref("WANTS_GOAL", ConceptType.GOAL, resolve_goal_id(goal),
+                                    user_id, "chat", last_seen_at=chat_ts))
+        _append_texture_preferences(facts, user_id, _as_list(makeup.get("preferred_texture")), chat_ts)
+
         # Scent preferences
         scent = chat.get("scent", {})
-        for pref in scent.get("preferences", []):
+        scent_values = _as_list(scent.get("preferences")) + _as_list(scent.get("preferred_scent"))
+        for pref in scent_values:
             facts.append(_make_pref("PREFERS_KEYWORD", ConceptType.KEYWORD, pref,
                                     user_id, "chat", last_seen_at=chat_ts))
 
@@ -166,6 +196,31 @@ def _make_pref(
     }
     result["last_seen_at"] = last_seen_at
     return result
+
+
+def _as_list(value: Any) -> list[str]:
+    if isinstance(value, list):
+        return [str(v).strip() for v in value if v is not None and str(v).strip()]
+    if isinstance(value, str) and value.strip():
+        return [value.strip()]
+    return []
+
+
+def _append_texture_preferences(
+    facts: list[dict[str, Any]],
+    user_id: str,
+    textures: list[str],
+    last_seen_at: str | None,
+) -> None:
+    if not textures:
+        return
+    facts.append(_make_pref("PREFERS_BEE_ATTR", ConceptType.BEE_ATTR, get_texture_axis(),
+                            user_id, "chat", last_seen_at=last_seen_at))
+    texture_map = get_texture_surface_to_keyword()
+    for texture in textures:
+        keyword = texture_map.get(texture.replace(" ", ""), texture)
+        facts.append(_make_pref("PREFERS_KEYWORD", ConceptType.KEYWORD, keyword,
+                                user_id, "chat", last_seen_at=last_seen_at))
 
 
 def _make_product_ref(

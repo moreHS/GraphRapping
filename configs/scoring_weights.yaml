@@ -2,16 +2,18 @@
 # Sum should be ~1.0 (before shrinkage)
 
 features:
-  keyword_match: 0.17
+  keyword_match: 0.16
   residual_bee_attr_match: 0.07
-  context_match: 0.09
-  concern_fit: 0.09
+  context_match: 0.08
+  concern_fit: 0.08
   concern_bridge_fit: 0.04
   ingredient_match: 0.07
-  brand_match_conf_weighted: 0.07
+  brand_match_conf_weighted: 0.06
   goal_fit_master: 0.05
   category_affinity: 0.05
   freshness_boost: 0.04
+  source_popularity_score: 0.03
+  source_rating_score: 0.02
   skin_type_fit: 0.06
   purchase_loyalty_score: 0.04
   novelty_bonus: 0.02

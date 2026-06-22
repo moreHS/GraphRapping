@@ -8,7 +8,14 @@ and quarantine entries for browsing and recommendation testing.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
+
+
+_PROJECT_ROOT = Path(__file__).resolve().parents[2]
+_DEFAULT_SOURCE_REVIEW_STATS_PATH = (
+    _PROJECT_ROOT / "data/source_snapshots/product_review_stats_snowflake_latest.json"
+)
 
 
 @dataclass
@@ -70,6 +77,8 @@ def load_demo_data(
     *,
     purchase_events_by_user: dict[str, list] | None = None,
     kg_mode: str | None = None,
+    source_review_stats_by_product: dict[str, dict[str, Any]] | None = None,
+    source_review_stats_json_path: str | None = str(_DEFAULT_SOURCE_REVIEW_STATS_PATH),
 ) -> DemoState:
     """Load data and run pipeline, populating demo_state.
 
@@ -91,6 +100,7 @@ def load_demo_data(
     from src.normalize.relation_canonicalizer import RelationCanonicalizer
     from src.normalize.tool_concern_segment_deriver import ToolConcernSegmentDeriver
     from src.qa.quarantine_handler import QuarantineHandler
+    from src.rec.product_profile_enrichment import enrich_product_profiles_by_master
     from src.wrap.projection_registry import ProjectionRegistry
 
     global demo_state
@@ -110,6 +120,11 @@ def load_demo_data(
     demo_state.product_masters = product_result.product_masters
     demo_state.concept_links = product_result.concept_links
     demo_state.product_count = product_result.product_count
+    source_review_stats = _resolve_demo_source_review_stats(
+        source_review_stats_by_product=source_review_stats_by_product,
+        source_review_stats_json_path=source_review_stats_json_path,
+        product_ids=set(product_result.product_masters),
+    )
 
     # Product-id lookups for purchase feature derivation (raw normalized ids).
     brand_lookup, category_lookup, family_lookup = build_product_lookups_from_masters(
@@ -123,6 +138,7 @@ def load_demo_data(
         brand_lookup=brand_lookup,
         category_lookup=category_lookup,
         family_lookup=family_lookup,
+        product_masters=product_result.product_masters,
     )
     demo_state.user_count = user_result.user_count
     demo_state.user_adapted_facts = user_result.user_adapted_facts
@@ -171,12 +187,16 @@ def load_demo_data(
         predicate_contracts=predicate_contracts,
         purchase_events_by_user=purchase_events_by_user,
         kg_mode=kg_mode_resolved,
+        source_review_stats_by_product=source_review_stats,
     )
 
     demo_state.batch_result = batch_result
     if demo_state.input_contract_stats:
         demo_state.batch_result["input_contract_stats"] = demo_state.input_contract_stats
-    demo_state.serving_products = batch_result.get("serving_products", [])
+    demo_state.serving_products = enrich_product_profiles_by_master(
+        batch_result.get("serving_products", []),
+        product_result.product_masters,
+    )
     demo_state.serving_users = batch_result.get("serving_users", [])
 
     # Collect bundles and stats
@@ -216,3 +236,32 @@ def load_demo_data(
 
     demo_state.loaded = True
     return demo_state
+
+
+def _resolve_demo_source_review_stats(
+    *,
+    source_review_stats_by_product: dict[str, dict[str, Any]] | None,
+    source_review_stats_json_path: str | None,
+    product_ids: set[str],
+) -> dict[str, dict[str, Any]]:
+    if source_review_stats_by_product is not None:
+        return {
+            str(pid): row
+            for pid, row in source_review_stats_by_product.items()
+            if str(pid) in product_ids
+        }
+    if source_review_stats_json_path is None:
+        return {}
+
+    path = Path(source_review_stats_json_path)
+    if not path.is_absolute():
+        path = _PROJECT_ROOT / path
+    if not path.exists():
+        if path == _DEFAULT_SOURCE_REVIEW_STATS_PATH:
+            return {}
+        raise FileNotFoundError(f"source review stats snapshot not found: {path}")
+
+    from src.loaders.source_review_stats_loader import load_source_review_stats_snapshot
+
+    stats = load_source_review_stats_snapshot(path)
+    return {pid: row for pid, row in stats.items() if pid in product_ids}

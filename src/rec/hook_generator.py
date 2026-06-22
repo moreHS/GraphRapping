@@ -48,6 +48,13 @@ def generate_hooks(
     consideration = _build_consideration(consideration_parts)
     conversion = _build_conversion(conversion_parts)
 
+    source_count = _int_or_zero((product_profile or {}).get("source_review_count_6m"))
+    source_rating = _float_or_none((product_profile or {}).get("source_avg_rating_6m"))
+    if source_count >= 500 and source_rating is not None and source_rating >= 4.5:
+        conversion = f"최근 리뷰 {source_count:,}건, 평균 {source_rating:.1f}점으로 반응이 안정적인 편이에요"
+    elif source_count >= 500:
+        conversion = f"최근 리뷰 {source_count:,}건으로 충분히 검증된 편이에요"
+
     return HookCopy(
         discovery=discovery,
         consideration=consideration,
@@ -74,3 +81,17 @@ def _build_conversion(concepts: list[str]) -> str:
         return "평소 루틴과 잘 어울려요"
     joined = ", ".join(concepts[:2])
     return f"평소 선호하는 {joined}과(와) 잘 맞는 편이에요"
+
+
+def _int_or_zero(value: Any) -> int:
+    try:
+        return int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _float_or_none(value: Any) -> float | None:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None

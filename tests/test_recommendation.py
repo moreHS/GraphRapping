@@ -92,10 +92,10 @@ class TestCandidateGeneration:
         product_ids = {c.product_id for c in candidates}
         assert "P003" not in product_ids  # lipstick ≠ cushion
 
-    def test_explore_mode_allows_category(self, user_profile, product_profiles):
+    def test_explore_mode_requires_evidence_for_category_drift(self, user_profile, product_profiles):
         candidates = generate_candidates(user_profile, product_profiles, mode=RecommendationMode.EXPLORE)
         product_ids = {c.product_id for c in candidates}
-        assert "P003" in product_ids  # explore allows category mismatch
+        assert "P003" not in product_ids  # explore no longer admits empty-evidence drift
 
     def test_overlap_scoring(self, user_profile, product_profiles):
         candidates = generate_candidates(user_profile, product_profiles)
@@ -170,6 +170,20 @@ class TestHookGenerator:
         assert hooks.discovery
         assert hooks.consideration
         assert hooks.conversion
+
+    def test_hooks_include_source_trust_when_product_profile_has_recent_volume(self):
+        from src.rec.explainer import Explanation
+
+        hooks = generate_hooks(
+            Explanation(product_id="P1", paths=[], summary_ko=""),
+            product_profile={
+                "source_review_count_6m": 1200,
+                "source_avg_rating_6m": 4.8,
+            },
+        )
+
+        assert "최근 리뷰" in hooks.conversion
+        assert "4.8" in hooks.conversion
 
 
 class TestNextQuestion:

@@ -1,0 +1,228 @@
+from src.common.enums import RecommendationMode
+from src.rec.candidate_generator import generate_candidates
+from src.rec.recommendation_evidence_index import build_candidate_eligibility
+from src.rec.scorer import Scorer
+from src.rec.semantic_compatibility import find_semantic_matches
+
+
+def _user(**overrides):
+    base = {
+        "user_id": "u1",
+        "preferred_brand_ids": [],
+        "preferred_category_ids": [],
+        "preferred_ingredient_ids": [],
+        "avoided_ingredient_ids": [],
+        "concern_ids": [],
+        "goal_ids": [],
+        "preferred_bee_attr_ids": [],
+        "preferred_keyword_ids": [],
+        "preferred_context_ids": [],
+        "owned_product_ids": [],
+        "owned_family_ids": [],
+        "repurchased_family_ids": [],
+        "recent_purchase_brand_ids": [],
+        "repurchase_brand_ids": [],
+    }
+    base.update(overrides)
+    return base
+
+
+def _product(pid="P1", **overrides):
+    base = {
+        "product_id": pid,
+        "brand_id": "brand_a",
+        "category_id": "cat_a",
+        "ingredient_ids": [],
+        "main_benefit_ids": [],
+        "brand_concept_ids": [],
+        "category_concept_ids": [],
+        "ingredient_concept_ids": [],
+        "main_benefit_concept_ids": [],
+        "top_bee_attr_ids": [],
+        "top_keyword_ids": [],
+        "top_context_ids": [],
+        "top_concern_pos_ids": [],
+        "top_concern_neg_ids": [],
+        "top_tool_ids": [],
+        "top_comparison_product_ids": [],
+        "top_coused_product_ids": [],
+        "review_count_all": 100,
+        "source_review_count_6m": 5000,
+        "source_avg_rating_6m": 4.9,
+    }
+    base.update(overrides)
+    return base
+
+
+def test_axis_only_texture_or_formulation_preference_does_not_score():
+    user = _user(
+        preferred_bee_attr_ids=[
+            {"id": "concept:BEEAttr:bee_attr_formulation", "weight": 1.0},
+        ]
+    )
+    product = _product(
+        top_bee_attr_ids=[
+            {"id": "concept:BEEAttr:bee_attr_texture_feel", "score": 0.9, "review_cnt": 8},
+        ]
+    )
+
+    assert find_semantic_matches(user, product) == []
+
+    candidates = generate_candidates(user, [product], mode=RecommendationMode.EXPLORE)
+
+    assert candidates == []
+
+
+def test_exact_generic_formulation_axis_does_not_qualify_candidate():
+    user = _user(
+        preferred_bee_attr_ids=[
+            {"id": "concept:BEEAttr:bee_attr_formulation", "weight": 1.0},
+        ]
+    )
+    product = _product(
+        top_bee_attr_ids=[
+            {"id": "concept:BEEAttr:bee_attr_formulation", "score": 0.9, "review_cnt": 8},
+        ]
+    )
+
+    assert find_semantic_matches(user, product) == []
+    assert generate_candidates(user, [product], mode=RecommendationMode.EXPLORE) == []
+
+
+def test_goal_intent_can_match_review_graph_keyword_semantically():
+    user = _user(goal_ids=[{"id": "concept:Goal:보습", "weight": 1.0}])
+    product = _product(
+        top_keyword_ids=[
+            {"id": "concept:Keyword:kw_moist", "score": 0.9, "review_cnt": 8},
+        ]
+    )
+
+    matches = find_semantic_matches(user, product)
+    assert [m.product_id for m in matches] == ["concept:Keyword:kw_moist"]
+
+    candidates = generate_candidates(user, [product], mode=RecommendationMode.EXPLORE)
+    assert len(candidates) == 1
+    assert any(c.startswith("semantic_keyword:moisture:moist") for c in candidates[0].overlap_concepts)
+    assert candidates[0].eligibility.review_graph_paths
+
+
+def test_lasting_goal_can_match_review_graph_lasting_attr_semantically():
+    user = _user(goal_ids=[{"id": "concept:Goal:지속력", "weight": 1.0}])
+    product = _product(
+        top_bee_attr_ids=[
+            {"id": "concept:BEEAttr:bee_attr_lasting_power", "score": 0.9, "review_cnt": 8},
+        ]
+    )
+
+    candidates = generate_candidates(user, [product], mode=RecommendationMode.EXPLORE)
+
+    assert len(candidates) == 1
+    assert any(c.startswith("semantic_bee_attr:performance:long_lasting") for c in candidates[0].overlap_concepts)
+    assert candidates[0].eligibility.review_graph_paths
+
+
+def test_moist_preference_does_not_match_matte_or_oil_control_evidence():
+    user = _user(preferred_keyword_ids=[{"id": "concept:Keyword:촉촉", "weight": 1.0}])
+    product = _product(
+        top_keyword_ids=[
+            {"id": "concept:Keyword:매트", "score": 0.9, "review_cnt": 8},
+            {"id": "concept:Keyword:오일컨트롤", "score": 0.8, "review_cnt": 6},
+        ],
+        top_bee_attr_ids=[
+            {"id": "concept:BEEAttr:bee_attr_oil_control", "score": 0.9, "review_cnt": 7},
+        ],
+    )
+
+    assert find_semantic_matches(user, product) == []
+    assert generate_candidates(user, [product], mode=RecommendationMode.EXPLORE) == []
+
+
+def test_matte_preference_does_not_get_bonus_from_moist_or_glow_evidence():
+    user = _user(preferred_keyword_ids=[{"id": "concept:Keyword:매트", "weight": 1.0}])
+    product = _product(
+        top_keyword_ids=[
+            {"id": "concept:Keyword:촉촉", "score": 0.9, "review_cnt": 8},
+            {"id": "concept:Keyword:글로우", "score": 0.8, "review_cnt": 6},
+        ],
+        top_bee_attr_ids=[
+            {"id": "concept:BEEAttr:bee_attr_moisturizing_power", "score": 0.9, "review_cnt": 7},
+        ],
+    )
+
+    assert find_semantic_matches(user, product) == []
+    assert generate_candidates(user, [product], mode=RecommendationMode.EXPLORE) == []
+
+
+def test_compatible_moist_value_evidence_contributes_to_review_graph_score():
+    user = _user(preferred_keyword_ids=[{"id": "concept:Keyword:촉촉", "weight": 1.0}])
+    product = _product(
+        top_keyword_ids=[
+            {"id": "concept:Keyword:보습", "score": 0.9, "review_cnt": 8},
+        ],
+        top_bee_attr_ids=[
+            {"id": "concept:BEEAttr:bee_attr_moisturizing_power", "score": 0.85, "review_cnt": 7},
+        ],
+    )
+
+    candidates = generate_candidates(user, [product], mode=RecommendationMode.EXPLORE)
+
+    assert len(candidates) == 1
+    assert any(c.startswith("semantic_keyword:") for c in candidates[0].overlap_concepts)
+    assert any(c.startswith("semantic_bee_attr:") for c in candidates[0].overlap_concepts)
+    assert "REVIEW_GRAPH_RELATION" in candidates[0].eligibility.evidence_families
+
+    scorer = Scorer()
+    scorer.load_from_dict({"keyword_match": 1.0, "residual_bee_attr_match": 1.0}, shrinkage_k=10)
+    scored = scorer.score(user, product, candidates[0].overlap_concepts)
+
+    assert scored.score_layers["review_graph_score"] > 0
+    assert scored.score_layers["review_graph_weak_evidence_score"] == 0
+
+
+def test_fresh_light_value_evidence_can_match_absorption_and_non_sticky_language():
+    user = _user(preferred_keyword_ids=[{"id": "concept:Keyword:산뜻", "weight": 1.0}])
+    product = _product(
+        top_keyword_ids=[
+            {"id": "concept:Keyword:끈적임 없음", "score": 0.9, "review_cnt": 8},
+        ],
+        top_bee_attr_ids=[
+            {"id": "concept:BEEAttr:bee_attr_absorption", "score": 0.85, "review_cnt": 7},
+        ],
+    )
+
+    candidates = generate_candidates(user, [product], mode=RecommendationMode.EXPLORE)
+
+    assert len(candidates) == 1
+    assert any(c.startswith("semantic_keyword:") for c in candidates[0].overlap_concepts)
+    assert any(c.startswith("semantic_bee_attr:") for c in candidates[0].overlap_concepts)
+
+
+def test_weak_semantic_relation_is_separated_from_promoted_review_graph_score():
+    user = _user(preferred_keyword_ids=[{"id": "concept:Keyword:산뜻", "weight": 1.0}])
+    product = _product(
+        weak_keyword_ids=[
+            {"id": "concept:Keyword:흡수", "score": 0.5, "review_cnt": 1},
+        ],
+    )
+
+    candidates = generate_candidates(user, [product], mode=RecommendationMode.EXPLORE)
+
+    assert len(candidates) == 1
+    candidate = candidates[0]
+    assert candidate.eligibility.review_graph_paths == []
+    assert candidate.eligibility.weak_review_graph_paths
+    assert "REVIEW_GRAPH_WEAK_RELATION" in candidate.eligibility.evidence_families
+
+    scorer = Scorer()
+    scorer.load_from_dict({"keyword_match": 1.0}, shrinkage_k=10)
+    scored = scorer.score(user, product, candidate.overlap_concepts)
+
+    assert scored.score_layers["review_graph_score"] == 0
+    assert scored.score_layers["review_graph_weak_evidence_score"] > 0
+
+
+def test_source_review_stats_are_not_eligibility_evidence():
+    eligibility = build_candidate_eligibility(["source_review_stats:source_review_count_6m"])
+
+    assert eligibility.eligible is False
+    assert eligibility.evidence_families == []

@@ -36,6 +36,16 @@ def test_frontend_default_weights_match_yaml_features():
     assert frontend_weights == yaml_features
 
 
+def test_frontend_escapes_sidecar_summary_and_detail_json():
+    js = Path("src/static/app.js").read_text(encoding="utf-8")
+
+    assert "function escapeHtml" in js
+    assert "<p>${displayText(summaryText)}</p>" in js
+    assert "<pre>${jsonHtml(d)}</pre>" in js
+    assert "<p>${summary.short_summary" not in js
+    assert "<pre>${JSON.stringify(d" not in js
+
+
 def test_negative_contribution_is_retained_and_explainable():
     user = {"owned_family_ids": [{"id": "FAM001"}]}
     product = {"product_id": "P2", "variant_family_id": "FAM001", "review_count_all": 50}

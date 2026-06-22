@@ -108,7 +108,9 @@ def test_no_bridge_for_unmapped_attr():
     products = [_product("P1", top_bee_attr_ids=[
         {"id": "concept:BEEAttr:bee_attr_scent", "score": 0.9, "review_cnt": 30}  # 향 — no bridge
     ])]
-    candidates = generate_candidates(user, products, mode=RecommendationMode.EXPLORE)
+    candidates = generate_candidates(
+        user, products, mode=RecommendationMode.EXPLORE, require_evidence=False
+    )
     p1 = next(c for c in candidates if c.product_id == "P1")
     bridge = [c for c in p1.overlap_concepts if c.startswith("concern_bridge:")]
     assert len(bridge) == 0

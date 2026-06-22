@@ -307,7 +307,7 @@ async def test_sql_python_avoided_equivalence(pg_pool) -> None:
         for p in products_data
     ]
     from src.rec.candidate_generator import generate_candidates
-    py_candidates = generate_candidates(user_profile, python_products)
+    py_candidates = generate_candidates(user_profile, python_products, require_evidence=False)
     py_result = {c.product_id for c in py_candidates if not c.hard_filtered}
 
     assert "P_bad" not in sql_result
@@ -368,6 +368,7 @@ async def test_sql_python_mixed_domain_divergence(pg_pool) -> None:
             "ingredient_ids": ["badx"],
             "ingredient_concept_ids": ["concept:Ingredient:other"],
         }],
+        require_evidence=False,
     )
     py_surviving = {c.product_id for c in py_candidates if not c.hard_filtered}
     assert "P_mixed" not in py_surviving, (

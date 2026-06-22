@@ -61,6 +61,8 @@ function renderKPI(d) {
     <div class="kpi-card"><div class="label">격리 건수</div><div class="value ${d.total_quarantined > 0 ? 'yellow' : 'green'}">${d.total_quarantined}</div></div>
     <div class="kpi-card"><div class="label">서빙 상품</div><div class="value">${d.serving_products}</div></div>
     <div class="kpi-card"><div class="label">서빙 유저</div><div class="value">${d.serving_users}</div></div>
+    <div class="kpi-card"><div class="label">원천 리뷰통계</div><div class="value blue">${fmtCount(d.source_review_stats_products || 0)}</div></div>
+    <div class="kpi-card"><div class="label">원천 평점 커버</div><div class="value green">${fmtCount(d.source_avg_rating_products || 0)}</div></div>
   `;
 }
 
@@ -87,6 +89,30 @@ function renderBarChart(canvasId, data, label, color) {
   });
 }
 
+function escapeHtml(value) {
+  if (value === null || value === undefined) return '';
+  return String(value).replace(/[&<>"']/g, ch => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',
+  }[ch]));
+}
+
+function displayText(value, fallback = '-') {
+  if (value === null || value === undefined || value === '') return escapeHtml(fallback);
+  return escapeHtml(value);
+}
+
+function jsonHtml(value) {
+  return escapeHtml(JSON.stringify(value, null, 2));
+}
+
+function jsStringArg(value) {
+  return escapeHtml(JSON.stringify(String(value ?? '')));
+}
+
 // =============================================================================
 // Data Explorer
 // =============================================================================
@@ -98,12 +124,12 @@ async function loadReviews() {
   panel.innerHTML = `<table><thead><tr>
     <th>Review ID</th><th>매칭</th><th>상품</th><th>Entity</th><th>Fact</th><th>Signal</th><th>격리</th>
   </tr></thead><tbody>${data.items.map(r => `
-    <tr class="clickable" onclick="showReviewDetail('${r.review_id}')">
-      <td style="font-size:11px">${r.review_id.substring(0,30)}...</td>
-      <td><span class="chip ${r.match_status === 'QUARANTINE' ? 'neg' : 'pos'}">${r.match_status || '-'}</span></td>
-      <td>${r.matched_product_id || '-'}</td>
-      <td>${r.entity_count}</td><td>${r.fact_count}</td><td>${r.signal_count}</td>
-      <td>${r.quarantine_count}</td>
+    <tr class="clickable" onclick="showReviewDetail(${jsStringArg(r.review_id)})">
+      <td style="font-size:11px">${displayText(String(r.review_id || '').substring(0,30))}...</td>
+      <td><span class="chip ${r.match_status === 'QUARANTINE' ? 'neg' : 'pos'}">${displayText(r.match_status)}</span></td>
+      <td>${displayText(r.matched_product_id)}</td>
+      <td>${fmtCount(r.entity_count)}</td><td>${fmtCount(r.fact_count)}</td><td>${fmtCount(r.signal_count)}</td>
+      <td>${fmtCount(r.quarantine_count)}</td>
     </tr>`).join('')}</tbody></table>`;
 }
 
@@ -112,7 +138,7 @@ async function showReviewDetail(id) {
   const d = await res.json();
   const dp = document.getElementById('explorerDetail');
   dp.style.display = 'block';
-  dp.innerHTML = `<h3>리뷰 상세: ${id.substring(0,40)}...</h3><pre>${JSON.stringify(d, null, 2)}</pre>`;
+  dp.innerHTML = `<h3>리뷰 상세: ${displayText(id.substring(0,40))}...</h3><pre>${jsonHtml(d)}</pre>`;
 }
 
 async function loadProducts() {
@@ -120,23 +146,40 @@ async function loadProducts() {
   const data = await res.json();
   const panel = document.getElementById('explorerContent');
   panel.innerHTML = `<table><thead><tr>
-    <th>상품명</th><th>브랜드</th><th>카테고리</th><th>리뷰수(all)</th><th>Top BEE</th>
+    <th>상품명</th><th>브랜드</th><th>카테고리</th><th>원천 6M 리뷰</th><th>원천 평점</th><th>그래프 근거</th><th>Top BEE</th>
   </tr></thead><tbody>${data.items.map(p => `
-    <tr class="clickable" onclick="showProductDetail('${p.product_id}')">
-      <td>${productDisplayName(p)}</td><td>${p.brand_name || '-'}</td><td>${p.category_name || '-'}</td>
-      <td>${p.review_count_all || 0}</td>
-      <td>${(p.top_bee_attr_ids||[]).slice(0,2).map(a => a.id ? a.id.split(':').pop() : '').join(', ')}</td>
+    <tr class="clickable" onclick="showProductDetail(${jsStringArg(p.product_id)})">
+      <td>${displayText(productDisplayName(p))}</td><td>${displayText(p.brand_name)}</td><td>${displayText(p.category_name)}</td>
+      <td>${fmtCount(p.source_review_count_6m)}</td>
+      <td>${fmtRating(p.source_avg_rating_6m)}</td>
+      <td>${fmtCount(p.review_count_all || 0)}</td>
+      <td>${displayText((p.top_bee_attr_ids||[]).slice(0,2).map(a => a.id ? a.id.split(':').pop() : '').join(', '))}</td>
     </tr>`).join('')}</tbody></table>`;
 }
 
 async function showProductDetail(id) {
-  const res = await fetch(API + '/api/products/' + id);
+  const res = await fetch(API + '/api/products/' + encodeURIComponent(id));
   const d = await res.json();
   const dp = document.getElementById('explorerDetail');
   dp.style.display = 'block';
   const sp = d.serving_profile || {};
   const name = sp.representative_product_name ? `${sp.brand_name || ''} ${sp.representative_product_name}` : id;
-  dp.innerHTML = `<h3>상품 상세: ${name}</h3><pre>${JSON.stringify(d, null, 2)}</pre>`;
+  const summary = d.review_summary;
+  const summaryText = summary ? (summary.short_summary || summary.long_summary || '-') : '-';
+  dp.innerHTML = `
+    <h3>상품 상세: ${displayText(name)}</h3>
+    <div class="kpi-grid">
+      <div class="kpi-card"><div class="label">원천 6M 리뷰</div><div class="value blue">${fmtCount(sp.source_review_count_6m)}</div></div>
+      <div class="kpi-card"><div class="label">원천 6M 평점</div><div class="value green">${fmtRating(sp.source_avg_rating_6m)}</div></div>
+      <div class="kpi-card"><div class="label">그래프 근거 리뷰</div><div class="value">${fmtCount(sp.review_count_all || 0)}</div></div>
+      <div class="kpi-card"><div class="label">리뷰 요약</div><div class="value" style="font-size:13px">${displayText(summaryStatusLabel(summary))}</div></div>
+    </div>
+    ${summary ? `<div class="panel" style="margin-top:12px">
+      <h2>리뷰 요약</h2>
+      <p>${displayText(summaryText)}</p>
+    </div>` : ''}
+    <pre>${jsonHtml(d)}</pre>
+  `;
 }
 
 async function loadUsers() {
@@ -146,11 +189,11 @@ async function loadUsers() {
   panel.innerHTML = `<table><thead><tr>
     <th>User ID</th><th>연령대</th><th>성별</th><th>피부타입</th><th>고민</th><th>선호 브랜드</th>
   </tr></thead><tbody>${data.items.map(u => `
-    <tr class="clickable" onclick="showUserDetail('${u.user_id}')">
-      <td>${u.user_id}</td><td>${u.age_band || '-'}</td><td>${u.gender || '-'}</td>
-      <td>${u.skin_type || '-'}</td>
-      <td>${(u.concern_ids||[]).slice(0,2).map(c => c.id ? c.id.split(':').pop() : '').join(', ')}</td>
-      <td>${(u.preferred_brand_ids||[]).slice(0,2).map(b => b.id ? b.id.split(':').pop() : '').join(', ')}</td>
+    <tr class="clickable" onclick="showUserDetail(${jsStringArg(u.user_id)})">
+      <td>${displayText(u.user_id)}</td><td>${displayText(u.age_band)}</td><td>${displayText(u.gender)}</td>
+      <td>${displayText(u.skin_type)}</td>
+      <td>${displayText((u.concern_ids||[]).slice(0,2).map(c => c.id ? c.id.split(':').pop() : '').join(', '))}</td>
+      <td>${displayText((u.preferred_brand_ids||[]).slice(0,2).map(b => b.id ? b.id.split(':').pop() : '').join(', '))}</td>
     </tr>`).join('')}</tbody></table>`;
 }
 
@@ -159,7 +202,7 @@ async function showUserDetail(id) {
   const d = await res.json();
   const dp = document.getElementById('explorerDetail');
   dp.style.display = 'block';
-  dp.innerHTML = `<h3>유저 상세: ${id}</h3><pre>${JSON.stringify(d, null, 2)}</pre>`;
+  dp.innerHTML = `<h3>유저 상세: ${displayText(id)}</h3><pre>${jsonHtml(d)}</pre>`;
 }
 
 // =============================================================================
@@ -173,15 +216,37 @@ function productDisplayName(p) {
   return p.product_id;
 }
 
+function fmtCount(v) {
+  if (v === null || v === undefined || v === '' || Number.isNaN(Number(v))) return '-';
+  return Number(v).toLocaleString('ko-KR');
+}
+
+function fmtRating(v) {
+  if (v === null || v === undefined || v === '' || Number.isNaN(Number(v))) return '-';
+  return Number(v).toFixed(2);
+}
+
+function fmtScore(v) {
+  if (v === null || v === undefined || v === '' || Number.isNaN(Number(v))) return '-';
+  return Number(v).toFixed(4);
+}
+
+function summaryStatusLabel(summary) {
+  if (!summary) return '요약 없음';
+  if (summary.match_status === 'exact_category') return '요약 있음';
+  return summary.match_status || '요약 있음';
+}
+
 // =============================================================================
 // Recommendation Tester
 // =============================================================================
 const DEFAULT_WEIGHTS = {
-  keyword_match: 0.17, residual_bee_attr_match: 0.07, context_match: 0.09,
-  concern_fit: 0.09, concern_bridge_fit: 0.04,
-  ingredient_match: 0.07, brand_match_conf_weighted: 0.07,
+  keyword_match: 0.16, residual_bee_attr_match: 0.07, context_match: 0.08,
+  concern_fit: 0.08, concern_bridge_fit: 0.04,
+  ingredient_match: 0.07, brand_match_conf_weighted: 0.06,
   goal_fit_master: 0.05,
   category_affinity: 0.05, freshness_boost: 0.04,
+  source_popularity_score: 0.03, source_rating_score: 0.02,
   skin_type_fit: 0.06, purchase_loyalty_score: 0.04, novelty_bonus: 0.02,
   exact_owned_penalty: 0.05, owned_family_penalty: 0.03,
   same_family_explore_bonus: 0.02, repurchase_family_affinity: 0.03,
@@ -198,6 +263,8 @@ const WEIGHT_META = {
   goal_fit_master:            { label: '목표(제품truth)',  group: 'core',    desc: '제품 마스터 데이터에 등록된 주요 효능(보습, 미백 등)과 유저 케어 목표의 일치.' },
   category_affinity:          { label: '카테고리',        group: 'core',    desc: '유저 선호 카테고리(에센스, 크림, 쿠션 등)와 제품 카테고리 일치.' },
   freshness_boost:            { label: '최신성',          group: 'meta',    desc: '최근 30일 리뷰 수 기반. 리뷰가 활발한 제품에 가산점. (10건↑=1.0, 3건↑=0.6, 1건↑=0.3)' },
+  source_popularity_score:    { label: '원천 리뷰량',      group: 'meta',    desc: 'Snowflake 원천 기준 최근 6개월 리뷰 수를 낮은 가중치로 반영. 그래프 표본이 작은 제품의 외부 검증 신호.' },
+  source_rating_score:        { label: '원천 평점',        group: 'meta',    desc: 'Snowflake 원천 기준 최근 6개월 평균 평점. 4.0점 이하는 가산하지 않고 4.0~5.0 구간만 완만하게 반영.' },
   skin_type_fit:              { label: '피부타입 적합',    group: 'meta',    desc: '유저 피부타입(건성/지성/복합/민감)과 제품 리뷰의 고민 시그널 간 궁합. 건성에 보습 긍정 → 가산, 끈적 부정 → 감점.' },
   purchase_loyalty_score:     { label: '구매 충성도',      group: 'personal', desc: '유저가 해당 브랜드 제품을 재구매한 이력이 있으면 1.0, 최근 구매면 0.5.' },
   novelty_bonus:              { label: '신규성 보너스',    group: 'personal', desc: '유저가 아직 모르는 브랜드/제품일수록 높은 점수. 이미 보유한 제품=0, 같은 패밀리=0.2, 아는 브랜드=0.5, 처음=1.0.' },
@@ -215,17 +282,32 @@ const GROUP_LABELS = {
   coused: '함께쓰기 (루틴/번들)',
 };
 const MODE_DESC = {
-  explore: '카테고리 불일치 시 감점만 적용 (penalty 0.3). 다양한 카테고리 탐색 가능. 기본 모드.',
-  strict: '유저 선호 카테고리와 불일치하면 점수를 0으로 만듦. 정확한 카테고리 내에서만 추천.',
-  compare: '카테고리 제한 없음. 비교/대안 추천용. 다른 카테고리 제품도 자유롭게 노출.',
+  explore: 'Evidence-qualified 탐색 모드. 상품마스터 truth, 리뷰 relation, 구매 행동 중 하나 이상이 유저와 맞아야 노출.',
+  strict: '선호 카테고리 불일치 상품을 제외하고, evidence-qualified 후보만 추천.',
+  compare: '비교/대안 확인용. 카테고리 폭은 넓히되 evidence-qualified 후보만 정상 추천으로 노출.',
 };
+const RECOMMEND_CATEGORY_TABS = [
+  { group: 'all', label: '전체', count: 0 },
+  { group: 'skincare', label: '스킨케어', count: 0 },
+  { group: 'makeup', label: '메이크업', count: 0 },
+  { group: 'bodycare', label: '바디', count: 0 },
+  { group: 'haircare', label: '헤어', count: 0 },
+  { group: 'fragrance', label: '향수', count: 0 },
+  { group: 'other', label: '기타', count: 0 },
+];
+let recommendCategoryTabs = RECOMMEND_CATEGORY_TABS;
+let activeRecommendCategory = 'all';
+let recommendHasRun = false;
 
 async function initRecommendPanel() {
   try {
     const users = await fetch(API + '/api/users').then(r => r.json());
     const sel = document.getElementById('recUser');
-    sel.innerHTML = users.items.map(u => `<option value="${u.user_id}">${u.user_id} (${u.skin_type||''}/${u.gender||''})</option>`).join('');
+    sel.innerHTML = users.items.map(u => (
+      `<option value="${displayText(u.user_id)}">${displayText(u.user_id)} (${displayText(u.skin_type, '')}/${displayText(u.gender, '')})</option>`
+    )).join('');
   } catch(e) {}
+  await loadRecommendCategories();
   // Mode description
   const modeDesc = document.getElementById('modeDesc');
   const modeSelect = document.getElementById('recMode');
@@ -243,20 +325,54 @@ async function initRecommendPanel() {
   }
   container.innerHTML = Object.entries(groups).map(([g, items]) => `
     <div class="weight-group">
-      <div class="weight-group-label">${GROUP_LABELS[g] || g}</div>
+      <div class="weight-group-label">${displayText(GROUP_LABELS[g] || g)}</div>
       ${items.map(({ key, value, meta }) => `
-        <div class="slider-group" title="${meta.desc || ''}">
+        <div class="slider-group" title="${displayText(meta.desc, '')}">
           <label>
-            <span class="weight-name">${meta.label || key}</span>
+            <span class="weight-name">${displayText(meta.label || key)}</span>
             <span id="w_${key}_val">${value.toFixed(2)}</span>
           </label>
           <input type="range" min="0" max="50" value="${Math.round(value*100)}" id="w_${key}"
             oninput="document.getElementById('w_${key}_val').textContent=(this.value/100).toFixed(2); showWeightDesc('${key}')">
-          <div class="weight-desc" id="desc_${key}" style="display:none">${meta.desc || ''}</div>
+          <div class="weight-desc" id="desc_${key}" style="display:none">${displayText(meta.desc, '')}</div>
         </div>
       `).join('')}
     </div>
   `).join('');
+}
+
+async function loadRecommendCategories() {
+  try {
+    const payload = await fetch(API + '/api/recommend/categories').then(r => r.json());
+    if (Array.isArray(payload.items) && payload.items.length) {
+      recommendCategoryTabs = payload.items;
+    }
+  } catch(e) {
+    recommendCategoryTabs = RECOMMEND_CATEGORY_TABS;
+  }
+  renderRecommendCategoryTabs();
+}
+
+function renderRecommendCategoryTabs() {
+  const container = document.getElementById('recCategoryTabs');
+  if (!container) return;
+  container.innerHTML = recommendCategoryTabs.map(tab => {
+    const active = tab.group === activeRecommendCategory ? ' active' : '';
+    const count = Number(tab.count);
+    const countText = Number.isNaN(count) ? '-' : count.toLocaleString('ko-KR');
+    return `
+      <button class="category-tab${active}" type="button" onclick="setRecommendCategory(${jsStringArg(tab.group)})">
+        ${displayText(tab.label || tab.group)}
+        <span class="tab-count">${displayText(countText)}</span>
+      </button>
+    `;
+  }).join('');
+}
+
+function setRecommendCategory(group) {
+  activeRecommendCategory = group || 'all';
+  renderRecommendCategoryTabs();
+  if (recommendHasRun) runRecommend();
 }
 
 function showWeightDesc(key) {
@@ -282,6 +398,7 @@ async function runRecommend() {
   const body = {
     user_id: userId,
     mode: document.getElementById('recMode').value,
+    category_group: activeRecommendCategory,
     top_k: 10,
     weights: customized ? weights : null,  // null → server uses YAML config
     shrinkage_k: parseFloat(document.getElementById('shrinkageK').value),
@@ -292,48 +409,97 @@ async function runRecommend() {
     method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body),
   });
   const data = await res.json();
+  recommendHasRun = true;
   renderRecommendResults(data);
 }
 
 function renderRecommendResults(data) {
+  const results = data.results || [];
+  const categoryLabel = data.category_label || (
+    recommendCategoryTabs.find(tab => tab.group === activeRecommendCategory)?.label || activeRecommendCategory
+  );
   document.getElementById('recMeta').innerHTML = `
     <div class="kpi-grid">
-      <div class="kpi-card"><div class="label">후보군</div><div class="value blue">${data.candidate_count}</div></div>
-      <div class="kpi-card"><div class="label">최종 결과</div><div class="value green">${data.results.length}</div></div>
-      <div class="kpi-card"><div class="label">다음 질문</div><div class="value" style="font-size:13px">${data.next_question ? data.next_question.question : '-'}</div></div>
+      <div class="kpi-card"><div class="label">카테고리</div><div class="value" style="font-size:18px">${displayText(categoryLabel)}</div></div>
+      <div class="kpi-card"><div class="label">탭 후보군</div><div class="value blue">${fmtCount(data.category_filtered_count)}</div></div>
+      <div class="kpi-card"><div class="label">후보군</div><div class="value blue">${fmtCount(data.candidate_count)}</div></div>
+      <div class="kpi-card"><div class="label">최종 결과</div><div class="value green">${results.length}</div></div>
+      <div class="kpi-card"><div class="label">다음 질문</div><div class="value" style="font-size:13px">${data.next_question ? displayText(data.next_question.question) : '-'}</div></div>
     </div>`;
 
   const container = document.getElementById('recResults');
-  if (!data.results.length) {
-    container.innerHTML = '<div class="empty">추천 결과 없음 (concept overlap 부족)</div>';
+  if (!results.length) {
+    container.innerHTML = '<div class="empty">추천 결과 없음 (유저와 정렬된 상품마스터/리뷰그래프/구매 evidence 부족)</div>';
     return;
   }
-  container.innerHTML = data.results.map(r => `
-    <div class="rec-card">
-      <div class="rank">#${r.rank}</div>
-      <div>
-        <strong>${r.product.representative_product_name ? (r.product.brand_name || '') + ' ' + r.product.representative_product_name : r.product_id}</strong>
-        <span class="score">점수: ${r.final_score.toFixed(4)} (raw: ${r.raw_score.toFixed(4)}, shrink: ${r.shrinked_score.toFixed(4)}, diversity: ${r.diversity_bonus >= 0 ? '+' : ''}${r.diversity_bonus.toFixed(4)})</span>
-        <div class="explanation">${r.explanation || '설명 없음'}</div>
-        ${r.explanation_paths.length ? '<h3 style="margin-top:8px">설명 경로</h3>' + r.explanation_paths.map(p => `
-          <div class="path-row">
-            <span class="chip ner">${p.user_edge}</span>
-            <span class="arrow">→</span>
-            <span class="chip bee">${p.id.split(':').pop()}</span>
-            <span class="arrow">→</span>
-            <span class="chip rel">${p.product_edge}</span>
-            <span style="margin-left:8px;color:${p.contribution < 0 ? 'var(--red)' : 'var(--green)'}">(${p.contribution >= 0 ? '+' : ''}${p.contribution.toFixed(3)})</span>
+  container.innerHTML = results.map(r => {
+    const product = r.product || {};
+    const sourceTrust = r.source_trust || {};
+    const eligibility = r.eligibility || {};
+    const evidenceFamilies = eligibility.evidence_families || [];
+    const scoreLayers = r.score_layers || {};
+    const paths = r.explanation_paths || [];
+    const hooks = r.hooks || {};
+    const overlap = r.overlap_concepts || [];
+    const productName = product.representative_product_name
+      ? [product.brand_name, product.representative_product_name].filter(Boolean).join(' ')
+      : (r.product_id || product.product_id || '-');
+    const finalScore = fmtScore(r.final_score);
+    const rawScore = fmtScore(r.raw_score);
+    const shrinkedScore = fmtScore(r.shrinked_score);
+    const diversity = Number(r.diversity_bonus);
+    const diversityText = Number.isNaN(diversity)
+      ? '-'
+      : `${diversity >= 0 ? '+' : ''}${diversity.toFixed(4)}`;
+    return `
+      <div class="rec-card">
+        <div class="rank">#${r.rank || '-'}</div>
+        <div>
+          <strong>${displayText(productName)}</strong>
+          <span class="score">점수: ${finalScore} (raw: ${rawScore}, shrink: ${shrinkedScore}, diversity: ${diversityText})</span>
+          <div class="explanation">${displayText(r.explanation, '설명 없음')}</div>
+          <div class="hooks" style="margin-top:8px">
+            <span><span class="label">Evidence:</span> ${evidenceFamilies.length ? evidenceFamilies.map(f => `<span class="chip rel">${displayText(f)}</span>`).join(' ') : '없음'}</span>
           </div>
-        `).join('') : ''}
-        <div class="hooks" style="margin-top:8px">
-          <span><span class="label">🔍 탐색:</span> ${r.hooks.discovery}</span>
-          <span><span class="label">🤔 고려:</span> ${r.hooks.consideration}</span>
-          <span><span class="label">🎯 전환:</span> ${r.hooks.conversion}</span>
+          <div class="hooks" style="margin-top:8px">
+            <span><span class="label">상품마스터:</span> ${fmtScore(scoreLayers.master_truth_score)}</span>
+            <span><span class="label">리뷰그래프:</span> ${fmtScore(scoreLayers.review_graph_score)}</span>
+            <span><span class="label">리뷰활동:</span> ${fmtScore(scoreLayers.product_activity_score)}</span>
+            <span><span class="label">구매행동:</span> ${fmtScore(scoreLayers.purchase_behavior_score)}</span>
+            <span><span class="label">Source trust:</span> ${fmtScore(scoreLayers.source_trust_score)}</span>
+          </div>
+          <div class="hooks" style="margin-top:8px">
+            <span><span class="label">원천 6M 리뷰:</span> ${fmtCount(sourceTrust.review_count_6m)}</span>
+            <span><span class="label">원천 평점:</span> ${fmtRating(sourceTrust.avg_rating_6m)}</span>
+            <span><span class="label">요약:</span> ${displayText(summaryStatusLabel(r.review_summary))}</span>
+          </div>
+          ${paths.length ? '<h3 style="margin-top:8px">설명 경로</h3>' + paths.map(p => {
+            const contribution = Number(p.contribution);
+            const contributionText = Number.isNaN(contribution)
+              ? '-'
+              : `${contribution >= 0 ? '+' : ''}${contribution.toFixed(3)}`;
+            const concept = p.id ? p.id.split(':').pop() : '-';
+            return `
+              <div class="path-row">
+                <span class="chip ner">${displayText(p.user_edge)}</span>
+                <span class="arrow">→</span>
+                <span class="chip bee">${displayText(concept)}</span>
+                <span class="arrow">→</span>
+                <span class="chip rel">${displayText(p.product_edge)}</span>
+                <span style="margin-left:8px;color:${contribution < 0 ? 'var(--red)' : 'var(--green)'}">(${contributionText})</span>
+              </div>
+            `;
+          }).join('') : ''}
+          <div class="hooks" style="margin-top:8px">
+            <span><span class="label">🔍 탐색:</span> ${displayText(hooks.discovery)}</span>
+            <span><span class="label">🤔 고려:</span> ${displayText(hooks.consideration)}</span>
+            <span><span class="label">🎯 전환:</span> ${displayText(hooks.conversion)}</span>
+          </div>
+          ${overlap.length ? `<div style="margin-top:8px">${overlap.map(c => `<span class="chip bee">${displayText(c)}</span>`).join('')}</div>` : ''}
         </div>
-        ${r.overlap_concepts.length ? `<div style="margin-top:8px">${r.overlap_concepts.map(c => `<span class="chip bee">${c}</span>`).join('')}</div>` : ''}
       </div>
-    </div>
-  `).join('');
+    `;
+  }).join('');
 }
 
 // =============================================================================
@@ -347,8 +513,8 @@ async function initGraphPanel() {
     ]);
     const sel = document.getElementById('graphTarget');
     sel.innerHTML = '<option value="">대상 선택...</option>'
-      + products.items.map(p => `<option value="product:${p.product_id}">🏷️ ${productDisplayName(p)}</option>`).join('')
-      + users.items.map(u => `<option value="user:${u.user_id}">👤 ${u.user_id}</option>`).join('');
+      + products.items.map(p => `<option value="product:${displayText(p.product_id)}">🏷️ ${displayText(productDisplayName(p))}</option>`).join('')
+      + users.items.map(u => `<option value="user:${displayText(u.user_id)}">👤 ${displayText(u.user_id)}</option>`).join('');
   } catch(e) {}
 }
 
@@ -445,7 +611,7 @@ async function loadQuarantine() {
     const kpi = document.getElementById('quarantineKpi');
     const byTable = summary.by_table || {};
     kpi.innerHTML = Object.entries(byTable).map(([k, v]) => `
-      <div class="kpi-card"><div class="label">${k.replace('quarantine_','')}</div><div class="value yellow">${v}</div></div>
+      <div class="kpi-card"><div class="label">${displayText(k.replace('quarantine_',''))}</div><div class="value yellow">${fmtCount(v)}</div></div>
     `).join('') || '<div class="kpi-card"><div class="label">격리 없음</div><div class="value green">0</div></div>';
 
     const list = document.getElementById('quarantineList');
@@ -454,10 +620,10 @@ async function loadQuarantine() {
     } else {
       list.innerHTML = `<table><thead><tr><th>타입</th><th>사유</th><th>상태</th><th>상세</th></tr></thead>
         <tbody>${entries.items.map(e => `<tr>
-          <td><span class="chip rel">${(e.table||'').replace('quarantine_','')}</span></td>
-          <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis">${e.reason || '-'}</td>
-          <td>${e.status || '-'}</td>
-          <td><button class="btn btn-sm" onclick='alert(JSON.stringify(${JSON.stringify(e)},null,2))'>JSON</button></td>
+          <td><span class="chip rel">${displayText((e.table||'').replace('quarantine_',''))}</span></td>
+          <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis">${displayText(e.reason)}</td>
+          <td>${displayText(e.status)}</td>
+          <td><button class="btn btn-sm" onclick="alert(${jsStringArg(JSON.stringify(e, null, 2))})">JSON</button></td>
         </tr>`).join('')}</tbody></table>`;
     }
   } catch(e) {
