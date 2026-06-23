@@ -85,6 +85,7 @@ SERVING_USER_PROFILE_COLUMNS: tuple[str, ...] = (
     "skin_tone",
     # Preference summaries (from agg_user_preference)
     "preferred_brand_ids",
+    "active_category_ids",
     "preferred_category_ids",
     "preferred_ingredient_ids",
     "avoided_ingredient_ids",
@@ -166,6 +167,7 @@ class ServingUserProfile(TypedDict, total=False):
     skin_type: str | None
     skin_tone: str | None
     preferred_brand_ids: list[dict]
+    active_category_ids: list[dict]
     preferred_category_ids: list[dict]
     preferred_ingredient_ids: list[dict]
     avoided_ingredient_ids: list[dict]

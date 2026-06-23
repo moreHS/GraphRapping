@@ -229,6 +229,7 @@ def build_serving_user_profile(
         "skin_type": user_master.get("skin_type"),
         "skin_tone": user_master.get("skin_tone"),
         "preferred_brand_ids": _collect("PREFERS_BRAND"),
+        "active_category_ids": _collect("ACTIVE_IN_CATEGORY"),
         "preferred_category_ids": _collect("PREFERS_CATEGORY"),
         "preferred_ingredient_ids": _collect("PREFERS_INGREDIENT"),
         "avoided_ingredient_ids": _collect("AVOIDS_INGREDIENT"),

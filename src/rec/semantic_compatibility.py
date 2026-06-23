@@ -46,6 +46,7 @@ class SemanticCompatibilityMatch:
     value: str
     polarity: str
     user_id: str
+    user_edge_type: str
     product_id: str
     product_key: str
     product_type: str
@@ -60,7 +61,10 @@ class SemanticCompatibilityMatch:
 
     def to_overlap_concept(self) -> str:
         strength = _bounded_strength(self.strength)
-        return f"{self.overlap_type}:{self.axis}:{self.value}:{self.product_id}|strength={strength:.4f}"
+        return (
+            f"{self.overlap_type}:{self.axis}:{self.value}:{self.product_id}"
+            f"|user_edge={self.user_edge_type}|strength={strength:.4f}"
+        )
 
 
 def find_semantic_matches(
@@ -74,7 +78,8 @@ def find_semantic_matches(
     explained separately from promoted review graph relation evidence.
     """
 
-    user_ids = _collect_user_preference_ids(user_profile, product_profile)
+    user_ids_by_key = _collect_user_preference_ids(user_profile, product_profile)
+    user_ids = set(user_ids_by_key)
     if not user_ids:
         return []
 
@@ -122,6 +127,7 @@ def find_semantic_matches(
                     value=str(rule.get("value") or ""),
                     polarity=rule_polarity,
                     user_id=triggered_user_ids[0],
+                    user_edge_type=user_ids_by_key.get(triggered_user_ids[0], "PREFERS_KEYWORD"),
                     product_id=evidence["id"],
                     product_key=evidence["key"],
                     product_type=evidence["type"],
@@ -158,16 +164,19 @@ def _load_rules() -> tuple[dict[str, Any], ...]:
 def _collect_user_preference_ids(
     user_profile: dict[str, Any],
     product_profile: dict[str, Any],
-) -> set[str]:
+) -> dict[str, str]:
     product_group = classify_product_category_group(product_profile)
-    ids: set[str] = set()
+    ids: dict[str, str] = {}
     for legacy_field, edge_type in (
         ("preferred_keyword_ids", "PREFERS_KEYWORD"),
         ("preferred_bee_attr_ids", "PREFERS_BEE_ATTR"),
         ("goal_ids", "WANTS_GOAL"),
     ):
-        ids.update(collect_preference_ids(user_profile, legacy_field, edge_type, product_group))
-    return {normalize_signal_id(value) for value in ids if normalize_signal_id(value)}
+        for value in collect_preference_ids(user_profile, legacy_field, edge_type, product_group):
+            key = normalize_signal_id(value)
+            if key:
+                ids.setdefault(key, edge_type)
+    return ids
 
 
 def _collect_product_evidence(

@@ -1,17 +1,20 @@
 # Scoring weights for recommendation engine
-# Sum should be ~1.0 (before shrinkage)
+# Weights are additive feature weights before shrinkage, not a strict
+# probability-normalized distribution.
 
 features:
   keyword_match: 0.16
   residual_bee_attr_match: 0.07
   review_graph_weak_relation_match: 0.02
   context_match: 0.08
+  catalog_keyword_match: 0.04
   concern_fit: 0.08
   concern_bridge_fit: 0.04
   ingredient_match: 0.07
   brand_match_conf_weighted: 0.06
   goal_fit_master: 0.05
   category_affinity: 0.05
+  active_category_affinity: 0.02
   freshness_boost: 0.04
   source_popularity_score: 0.03
   source_rating_score: 0.02
@@ -23,6 +26,7 @@ features:
   owned_family_penalty: 0.03
   same_family_explore_bonus: 0.02
   repurchase_family_affinity: 0.03
+  repurchase_category_affinity: 0.03
   tool_alignment: 0.02
   coused_product_bonus: 0.02
 

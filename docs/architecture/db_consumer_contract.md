@@ -178,9 +178,13 @@ row 가 0 을 제공한 경우에만 유효하다.
 `user_id, age_band, gender, skin_type, skin_tone`
 
 **Preferences (agg_user_preference 기원)**:
-`preferred_brand_ids, preferred_category_ids, preferred_ingredient_ids,
+`preferred_brand_ids, active_category_ids, preferred_category_ids, preferred_ingredient_ids,
 avoided_ingredient_ids, concern_ids, goal_ids, preferred_bee_attr_ids,
 preferred_keyword_ids, preferred_context_ids`
+
+`active_category_ids`는 구매 활동 카테고리 컨텍스트(`ACTIVE_IN_CATEGORY`)이다.
+명시 선호(`PREFERS_CATEGORY`)가 아니므로 추천 explanation에서 선호
+카테고리로 표시하지 않는다.
 
 **Behavior (purchase 기원)**:
 `recent_purchase_brand_ids, repurchase_brand_ids, repurchase_category_ids,

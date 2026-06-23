@@ -60,10 +60,10 @@ def test_source_type_weight():
     assert result_purchase[0]["weight"] > result_basic[0]["weight"]
 
 
-def test_purchase_boost_extends_to_category():
-    """Purchase brand confidence boost should also apply to PREFERS_CATEGORY."""
+def test_purchase_boost_extends_to_active_category():
+    """Purchase confidence boost should apply to active category context."""
     facts = [
-        {"predicate": "PREFERS_CATEGORY", "object_iri": "skincare", "confidence": 0.5,
+        {"predicate": "ACTIVE_IN_CATEGORY", "object_iri": "skincare", "confidence": 0.5,
          "source_modalities": ["chat"], "object_type": "Category"},
     ]
     purchase_conf = {"skincare": 0.95}

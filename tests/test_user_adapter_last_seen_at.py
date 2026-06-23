@@ -68,7 +68,7 @@ def test_basic_facts_carry_chat_updated_at() -> None:
 
 def test_purchase_analysis_facts_carry_purchase_features_last_seen() -> None:
     facts = adapt_user_profile("u1", _profile(), purchase_features=_purchase_features())
-    for predicate in ("PREFERS_BRAND", "PREFERS_CATEGORY", "REPURCHASES_CATEGORY"):
+    for predicate in ("PREFERS_BRAND", "ACTIVE_IN_CATEGORY", "REPURCHASES_CATEGORY"):
         rows = _by_predicate(facts, predicate)
         assert rows, f"{predicate} missing"
         for f in rows:
@@ -103,7 +103,7 @@ def test_chat_updated_at_absent_results_in_none_for_chat_and_basic() -> None:
 
 def test_purchase_features_absent_results_in_none_for_purchase_analysis() -> None:
     facts = adapt_user_profile("u1", _profile())  # no purchase_features
-    for predicate in ("PREFERS_BRAND", "PREFERS_CATEGORY", "REPURCHASES_CATEGORY"):
+    for predicate in ("PREFERS_BRAND", "ACTIVE_IN_CATEGORY", "REPURCHASES_CATEGORY"):
         rows = _by_predicate(facts, predicate)
         assert rows, f"{predicate} missing"
         for f in rows:

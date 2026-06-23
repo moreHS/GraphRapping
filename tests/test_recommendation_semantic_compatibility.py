@@ -122,6 +122,25 @@ def test_lasting_goal_can_match_review_graph_lasting_attr_semantically():
     assert candidates[0].eligibility.review_graph_paths
 
 
+def test_semantic_explanation_preserves_triggering_user_edge():
+    user = _user(goal_ids=[{"id": "concept:Goal:지속력", "weight": 1.0}])
+    product = _product(
+        top_bee_attr_ids=[
+            {"id": "concept:BEEAttr:bee_attr_lasting_power", "score": 0.9, "review_cnt": 8},
+        ]
+    )
+    candidate = generate_candidates(user, [product], mode=RecommendationMode.EXPLORE)[0]
+
+    scorer = Scorer()
+    scorer.load_from_dict({"residual_bee_attr_match": 1.0}, shrinkage_k=0)
+    scored = scorer.score(user, product, candidate.overlap_concepts)
+    explanation = explain(scored, candidate.overlap_concepts)
+
+    assert explanation.paths
+    assert explanation.paths[0].concept_type == "semantic_bee_attr"
+    assert explanation.paths[0].user_edge == "WANTS_GOAL"
+
+
 def test_moist_preference_does_not_match_matte_or_oil_control_evidence():
     user = _user(preferred_keyword_ids=[{"id": "concept:Keyword:촉촉", "weight": 1.0}])
     product = _product(

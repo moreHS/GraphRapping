@@ -116,6 +116,7 @@ create table if not exists serving_user_profile (
     skin_tone text,
     -- preference summaries (from agg_user_preference)
     preferred_brand_ids jsonb,
+    active_category_ids jsonb,
     preferred_category_ids jsonb,
     preferred_ingredient_ids jsonb,
     avoided_ingredient_ids jsonb,
@@ -189,6 +190,7 @@ create table if not exists review_summary_manifest (
 ALTER TABLE serving_product_profile ADD COLUMN IF NOT EXISTS variant_family_id text;
 ALTER TABLE serving_product_profile ADD COLUMN IF NOT EXISTS representative_product_name text;
 ALTER TABLE serving_user_profile ADD COLUMN IF NOT EXISTS recent_purchase_brand_ids jsonb;
+ALTER TABLE serving_user_profile ADD COLUMN IF NOT EXISTS active_category_ids jsonb;
 ALTER TABLE serving_user_profile ADD COLUMN IF NOT EXISTS repurchase_brand_ids jsonb;
 ALTER TABLE serving_user_profile ADD COLUMN IF NOT EXISTS repurchase_category_ids jsonb;
 ALTER TABLE serving_user_profile ADD COLUMN IF NOT EXISTS owned_product_ids jsonb;

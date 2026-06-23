@@ -18,6 +18,7 @@ from src.rec.concern_bridge import compute_bridged_concerns
 from src.rec.category_groups import (
     category_groups_for_values,
     classify_product_category_group,
+    product_category_text,
 )
 from src.rec.recommendation_evidence_index import (
     CandidateEligibility,
@@ -65,9 +66,8 @@ def generate_candidates(
     """
     # Extract user signals for filtering
     avoided_ingredients = _extract_ids(user_profile.get("avoided_ingredient_ids", []))
-    preferred_categories = _extract_ids(user_profile.get("preferred_category_ids", []))
-    preferred_category_groups = category_groups_for_values(preferred_categories)
     repurchase_brand_ids = _extract_ids(user_profile.get("repurchase_brand_ids", []))
+    repurchase_category_ids = _extract_ids(user_profile.get("repurchase_category_ids", []))
     recent_purchase_brand_ids = _extract_ids(user_profile.get("recent_purchase_brand_ids", []))
     owned_product_ids_raw = _extract_ids(user_profile.get("owned_product_ids", []))
     owned_family_ids_raw = _extract_ids(user_profile.get("owned_family_ids", []))
@@ -96,6 +96,7 @@ def generate_candidates(
         if product_family and product_family in repurchased_families:
             candidate.repurchased_family_match = True
         product_category_group = classify_product_category_group(product)
+        product_catalog_text = product_category_text(product)
 
         avoided_ingredients = collect_preference_ids(
             user_profile, "avoided_ingredient_ids", "AVOIDS_INGREDIENT", product_category_group,
@@ -121,6 +122,14 @@ def generate_candidates(
         preferred_ingredients = collect_preference_ids(
             user_profile, "preferred_ingredient_ids", "PREFERS_INGREDIENT", product_category_group,
         )
+        active_categories = collect_preference_ids(
+            user_profile, "active_category_ids", "ACTIVE_IN_CATEGORY", product_category_group,
+        )
+        preferred_categories = collect_preference_ids(
+            user_profile, "preferred_category_ids", "PREFERS_CATEGORY", product_category_group,
+        )
+        active_category_groups = category_groups_for_values(active_categories)
+        preferred_category_groups = category_groups_for_values(preferred_categories)
 
         # Classify candidate bucket
         if candidate.already_owned:
@@ -144,14 +153,14 @@ def generate_candidates(
             product.get("category_concept_ids") or [],
             product.get("category_id"),
         )
-        category_matches = _matching_ids(preferred_categories, product_categories)
-        category_group_matches = (
+        preferred_category_matches = _matching_ids(preferred_categories, product_categories)
+        preferred_category_group_matches = (
             {product_category_group}
             if product_category_group in preferred_category_groups
             else set()
         )
         if preferred_categories and product_categories:
-            if not category_matches and not category_group_matches:
+            if not preferred_category_matches and not preferred_category_group_matches:
                 if mode == RecommendationMode.STRICT:
                     candidate.hard_filtered = True
                     candidate.filter_reason = "CATEGORY_MISMATCH_STRICT"
@@ -187,10 +196,28 @@ def generate_candidates(
             overlap.append(f"brand:{b}")
 
         # Category match (concept_id)
-        for c in category_matches:
+        for c in preferred_category_matches:
             overlap.append(f"category:{c}")
-        for group in sorted(category_group_matches):
+        for group in sorted(preferred_category_group_matches):
             overlap.append(f"category:concept:Category:{group}")
+        active_category_matches = _matching_ids(active_categories, product_categories)
+        active_category_group_matches = (
+            {product_category_group}
+            if product_category_group in active_category_groups
+            else set()
+        )
+        for c in active_category_matches:
+            overlap.append(f"active_category:{c}")
+        for group in sorted(active_category_group_matches):
+            overlap.append(f"active_category:concept:Category:{group}")
+
+        # Product-master taxonomy/name keyword overlap. This uses catalog truth
+        # only when the user's keyword/category value is present in product
+        # category/name text; it is separate from review graph keyword evidence.
+        for kw in _catalog_text_matches(preferred_keywords, product_catalog_text):
+            overlap.append(f"catalog_keyword:{kw}")
+        for c in _catalog_text_matches(repurchase_category_ids, product_catalog_text):
+            overlap.append(f"repurchase_category:{c}")
 
         # Keyword overlap
         product_keywords = _extract_signal_ids(product.get("top_keyword_ids", []))
@@ -366,6 +393,17 @@ def _matching_ids(left: set[str], right: set[str]) -> list[str]:
     right_keys = {_join_key(v) for v in right}
     matches = [v for v in left if _join_key(v) in right_keys]
     return sorted(matches, key=lambda v: (_join_key(v), v))
+
+
+def _catalog_text_matches(values: set[str], catalog_text: str) -> list[str]:
+    if not catalog_text:
+        return []
+    matches = [
+        value
+        for value in values
+        if (key := normalize_signal_id(value)) and key in catalog_text
+    ]
+    return sorted(matches, key=lambda v: (normalize_signal_id(v), v))
 
 
 def _exclude_generic_bee_attrs(values: set[str]) -> set[str]:

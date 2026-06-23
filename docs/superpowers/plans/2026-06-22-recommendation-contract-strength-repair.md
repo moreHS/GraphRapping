@@ -21,6 +21,18 @@ Implemented on 2026-06-22.
 - Dense golden fixture generation now uses `load_source_review_stats_snapshot()` so ambiguous source stats product ids are skipped consistently.
 - Recommendation audit now reports purchase path count and purchase-history contribution count without treating `novelty_bonus` as purchase history.
 - Reranker now separates displayed `final_score` from diversity-adjusted `rank_score`; ranking can still use diversity while UI/API match scores do not become negative.
+- 2026-06-23 follow-up: `purchase_analysis.active_product_category` is now
+  `ACTIVE_IN_CATEGORY`, not `PREFERS_CATEGORY`. It can add weak
+  `active_category_affinity` under `profile_fit_score`, but is excluded from
+  evidence eligibility and is shown separately in explanations/user graphs.
+- 2026-06-23 follow-up: recommendation tester labels `final_score` as
+  recommendation score and `rank_score` as diversity-adjusted sorting score, so
+  visible score/rank differences are intentional and traceable.
+- 2026-06-23 follow-up: user keyword preferences can now match product-master
+  name/category text via `catalog_keyword_match`; repurchase category behavior
+  can match the same catalog text via `repurchase_category_affinity`. This
+  repairs a measured gap where makeup preferences such as `틴트` existed in the
+  user profile and product taxonomy/name, but not in promoted review keywords.
 
 Fresh verification:
 

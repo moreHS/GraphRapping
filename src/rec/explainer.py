@@ -23,7 +23,7 @@ class ProvenanceProvider(Protocol):
 
 @dataclass
 class ExplanationPath:
-    concept_type: str    # keyword|bee_attr|concern|context|brand|category|goal|ingredient
+    concept_type: str    # keyword|bee_attr|concern|context|brand|category|active_category|goal|ingredient
     concept_id: str
     user_edge: str       # PREFERS_KEYWORD|HAS_CONCERN|...
     product_edge: str    # HAS_BEE_KEYWORD_SIGNAL|ADDRESSES_CONCERN_SIGNAL|...
@@ -48,8 +48,10 @@ _EDGE_MAP = {
     "concern": ("HAS_CONCERN", "ADDRESSES_CONCERN_SIGNAL"),
     "concern_bridge": ("HAS_CONCERN", "HAS_BEE_ATTR_SIGNAL"),
     "context": ("PREFERS_CONTEXT", "USED_IN_CONTEXT_SIGNAL"),
+    "catalog_keyword": ("PREFERS_KEYWORD", "HAS_CATALOG_KEYWORD"),
     "brand": ("PREFERS_BRAND", "HAS_BRAND"),
     "category": ("PREFERS_CATEGORY", "IN_CATEGORY"),
+    "active_category": ("ACTIVE_IN_CATEGORY", "IN_CATEGORY"),
     "goal_master": ("WANTS_GOAL", "HAS_MAIN_BENEFIT"),
     "ingredient": ("PREFERS_INGREDIENT", "HAS_INGREDIENT"),
     "tool": ("PREFERS_TOOL", "USED_WITH_TOOL_SIGNAL"),
@@ -57,6 +59,7 @@ _EDGE_MAP = {
     "owned_family": ("OWNS_FAMILY", "HAS_VARIANT_FAMILY"),
     "repurchased_family": ("REPURCHASES_FAMILY", "HAS_VARIANT_FAMILY"),
     "repurchase_brand": ("REPURCHASES_BRAND", "HAS_BRAND"),
+    "repurchase_category": ("REPURCHASES_CATEGORY", "IN_CATEGORY"),
     "recent_purchase_brand": ("RECENTLY_PURCHASED", "HAS_BRAND"),
 }
 
@@ -77,7 +80,7 @@ def explain(
         if ":" not in concept_str:
             continue
         ctype, cid = concept_str.split(":", 1)
-        cid = cid.split("|strength=", 1)[0]
+        cid, meta = _split_concept_metadata(cid)
         if ctype == "catalog_validation":
             continue
         edges = _EDGE_MAP.get(ctype)
@@ -91,7 +94,7 @@ def explain(
             paths.append(ExplanationPath(
                 concept_type=ctype,
                 concept_id=cid,
-                user_edge=edges[0],
+                user_edge=meta.get("user_edge") or edges[0],
                 product_edge=edges[1],
                 contribution=contribution,
             ))
@@ -121,8 +124,10 @@ def _concept_to_feature(concept_type: str) -> str:
         "concern": "concern_fit",
         "concern_bridge": "concern_bridge_fit",
         "context": "context_match",
+        "catalog_keyword": "catalog_keyword_match",
         "brand": "brand_match_conf_weighted",
         "category": "category_affinity",
+        "active_category": "active_category_affinity",
         "goal_master": "goal_fit_master",
         "ingredient": "ingredient_match",
         "tool": "tool_alignment",
@@ -130,9 +135,23 @@ def _concept_to_feature(concept_type: str) -> str:
         "owned_family": "owned_family_penalty",
         "repurchased_family": "repurchase_family_affinity",
         "repurchase_brand": "purchase_loyalty_score",
+        "repurchase_category": "repurchase_category_affinity",
         "recent_purchase_brand": "purchase_loyalty_score",
     }
     return mapping.get(concept_type, "")
+
+
+def _split_concept_metadata(value: str) -> tuple[str, dict[str, str]]:
+    parts = value.split("|")
+    concept_id = parts[0]
+    meta: dict[str, str] = {}
+    for part in parts[1:]:
+        if "=" not in part:
+            continue
+        key, raw_value = part.split("=", 1)
+        if key:
+            meta[key] = raw_value
+    return concept_id, meta
 
 
 def _get_texture_keywords() -> set[str]:
@@ -178,8 +197,12 @@ def _generate_summary_ko(paths: list[ExplanationPath]) -> str:
             parts.append(f"BEE 속성 기반 '{label}' 대응 추정")
         elif p.concept_type == "context":
             parts.append(f"'{p.concept_id}' 사용 맥락과 일치")
+        elif p.concept_type == "catalog_keyword":
+            parts.append(f"상품명/카테고리의 '{p.concept_id}'와 선호 키워드 일치")
         elif p.concept_type == "brand":
             parts.append(f"선호 브랜드 '{p.concept_id}' 일치")
+        elif p.concept_type == "active_category":
+            parts.append(f"활동 카테고리 '{p.concept_id}'와 일치")
         elif p.concept_type == "bee_attr":
             if "formulation" in p.concept_id.lower() or "texture" in p.concept_id.lower():
                 parts.append("제형 축 선호와 일치")
@@ -197,6 +220,8 @@ def _generate_summary_ko(paths: list[ExplanationPath]) -> str:
             parts.append("같은 패밀리 재구매 성향")
         elif p.concept_type == "repurchase_brand":
             parts.append("반복 구매 브랜드 성향과 일치")
+        elif p.concept_type == "repurchase_category":
+            parts.append(f"반복 구매 카테고리 '{p.concept_id}'와 일치")
         elif p.concept_type == "recent_purchase_brand":
             parts.append("최근 구매 브랜드 성향과 일치")
         else:

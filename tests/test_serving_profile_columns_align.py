@@ -159,6 +159,22 @@ def test_user_builder_emits_scoped_preferences_from_source_mix() -> None:
     ]
 
 
+def test_user_builder_keeps_active_category_separate_from_preferred_category() -> None:
+    out = build_serving_user_profile(
+        user_master=_sample_user_master(),
+        preferences=[
+            {
+                "preference_edge_type": "ACTIVE_IN_CATEGORY",
+                "dst_node_id": "concept:Category:skincare",
+                "weight": 0.7,
+            }
+        ],
+    )
+
+    assert out["active_category_ids"] == [{"id": "concept:Category:skincare", "weight": 0.7}]
+    assert out["preferred_category_ids"] == []
+
+
 _META_COLUMNS = {"is_active", "updated_at"}
 
 

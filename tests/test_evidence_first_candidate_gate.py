@@ -8,6 +8,7 @@ def _user(**overrides):
     base = {
         "user_id": "u1",
         "preferred_brand_ids": [],
+        "active_category_ids": [],
         "preferred_category_ids": [],
         "preferred_ingredient_ids": [],
         "avoided_ingredient_ids": [],
@@ -21,6 +22,7 @@ def _user(**overrides):
         "repurchased_family_ids": [],
         "recent_purchase_brand_ids": [],
         "repurchase_brand_ids": [],
+        "repurchase_category_ids": [],
     }
     base.update(overrides)
     return base
@@ -101,6 +103,53 @@ def test_product_master_category_group_alias_is_first_class_evidence():
     assert len(candidates) == 1
     assert "category:concept:Category:fragrance" in candidates[0].overlap_concepts
     assert candidates[0].eligibility.master_truth_paths
+
+
+def test_catalog_keyword_from_product_master_text_is_first_class_evidence():
+    user = _user(preferred_keyword_ids=[{"id": "concept:Keyword:틴트", "weight": 1.0}])
+    products = [
+        _product(
+            category_name="립 틴트",
+            product_name="주스팝 립틴트",
+        )
+    ]
+
+    candidates = generate_candidates(user, products, mode=RecommendationMode.EXPLORE)
+
+    assert len(candidates) == 1
+    assert "catalog_keyword:concept:Keyword:틴트" in candidates[0].overlap_concepts
+    assert candidates[0].eligibility.master_truth_paths
+
+
+def test_repurchase_category_matches_product_master_text_as_purchase_evidence():
+    user = _user(repurchase_category_ids=[{"id": "concept:Category:틴트", "weight": 1.0}])
+    products = [
+        _product(
+            category_name="립 틴트",
+            product_name="주스팝 립틴트",
+        )
+    ]
+
+    candidates = generate_candidates(user, products, mode=RecommendationMode.EXPLORE)
+
+    assert len(candidates) == 1
+    assert "repurchase_category:concept:Category:틴트" in candidates[0].overlap_concepts
+    assert candidates[0].eligibility.purchase_paths
+
+
+def test_active_category_context_alone_is_not_first_class_evidence():
+    user = _user(active_category_ids=[{"id": "concept:Category:skincare", "weight": 1.0}])
+    products = [
+        _product(
+            category_id="스킨케어",
+            category_name="스킨케어",
+            product_name="수분 크림",
+        )
+    ]
+
+    candidates = generate_candidates(user, products, mode=RecommendationMode.EXPLORE)
+
+    assert candidates == []
 
 
 def test_review_relation_evidence_is_first_class_evidence():

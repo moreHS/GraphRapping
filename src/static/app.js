@@ -264,14 +264,16 @@ function summaryStatusLabel(summary) {
 const DEFAULT_WEIGHTS = {
   keyword_match: 0.16, residual_bee_attr_match: 0.07, context_match: 0.08,
   review_graph_weak_relation_match: 0.02,
+  catalog_keyword_match: 0.04,
   concern_fit: 0.08, concern_bridge_fit: 0.04,
   ingredient_match: 0.07, brand_match_conf_weighted: 0.06,
   goal_fit_master: 0.05,
-  category_affinity: 0.05, freshness_boost: 0.04,
+  category_affinity: 0.05, active_category_affinity: 0.02, freshness_boost: 0.04,
   source_popularity_score: 0.03, source_rating_score: 0.02,
   skin_type_fit: 0.06, purchase_loyalty_score: 0.04, novelty_bonus: 0.02,
   exact_owned_penalty: 0.05, owned_family_penalty: 0.03,
   same_family_explore_bonus: 0.02, repurchase_family_affinity: 0.03,
+  repurchase_category_affinity: 0.03,
   tool_alignment: 0.02, coused_product_bonus: 0.02,
 };
 const WEIGHT_META = {
@@ -279,12 +281,14 @@ const WEIGHT_META = {
   residual_bee_attr_match:    { label: '잔여 BEE속성',    group: 'core',    desc: '키워드로 이미 커버되지 않은 상위 BEE 속성(제형, 발림성 등)의 추가 매칭. 키워드와 중복 카운트를 방지하는 잔여분만 반영.' },
   review_graph_weak_relation_match: { label: '약한 리뷰관계', group: 'core', desc: '승격되지 않은 long-tail 리뷰 신호가 유저 선호와 의미적으로 맞을 때만 낮은 가중치로 반영.' },
   context_match:              { label: '맥락 일치',       group: 'core',    desc: '사용 맥락(아침, 세안 후, 여름 등)이 유저 선호 맥락과 겹치는 정도.' },
+  catalog_keyword_match:      { label: '상품명/카테고리', group: 'core',    desc: '유저 키워드가 상품마스터의 제품명/카테고리명에 직접 포함될 때 반영. 리뷰그래프 키워드와 분리된 상품마스터 truth 신호.' },
   concern_fit:                { label: '고민 적합도',      group: 'core',    desc: '유저 피부 고민(건조, 모공, 트러블 등)을 제품 리뷰 시그널이 얼마나 다루는지.' },
   concern_bridge_fit:         { label: '고민 브릿지',      group: 'core',    desc: '직접 고민 시그널이 없어도 BEE 속성에서 고민 대응 가능성을 추정한 간접 매칭.' },
   ingredient_match:           { label: '성분 일치',       group: 'core',    desc: '유저가 선호하는 성분(히알루론산, 나이아신아마이드 등)이 제품에 포함된 정도.' },
   brand_match_conf_weighted:  { label: '브랜드 신뢰',      group: 'core',    desc: '유저 선호 브랜드와 제품 브랜드 일치 여부. 구매 이력 기반이면 더 강한 신뢰도 반영.' },
   goal_fit_master:            { label: '목표(제품truth)',  group: 'core',    desc: '제품 마스터 데이터에 등록된 주요 효능(보습, 미백 등)과 유저 케어 목표의 일치.' },
-  category_affinity:          { label: '카테고리',        group: 'core',    desc: '유저 선호 카테고리(에센스, 크림, 쿠션 등)와 제품 카테고리 일치.' },
+  category_affinity:          { label: '명시 카테고리',    group: 'core',    desc: '명시 카테고리 선호와 제품 카테고리 일치. 활동 카테고리는 여기 포함하지 않음.' },
+  active_category_affinity:   { label: '활동 카테고리',    group: 'meta',    desc: '구매/활동 카테고리 컨텍스트와 제품 카테고리 일치. 약한 보조 신호이며 단독 추천 근거가 아님.' },
   freshness_boost:            { label: '최신성',          group: 'meta',    desc: '최근 30일 리뷰 수 기반. 리뷰가 활발한 제품에 가산점. (10건↑=1.0, 3건↑=0.6, 1건↑=0.3)' },
   source_popularity_score:    { label: '원천 리뷰량',      group: 'meta',    desc: 'Snowflake 원천 기준 최근 6개월 리뷰 수를 낮은 가중치로 반영. 그래프 표본이 작은 제품의 외부 검증 신호.' },
   source_rating_score:        { label: '원천 평점',        group: 'meta',    desc: 'Snowflake 원천 기준 최근 6개월 평균 평점. 4.0점 이하는 가산하지 않고 4.0~5.0 구간만 완만하게 반영.' },
@@ -295,6 +299,7 @@ const WEIGHT_META = {
   owned_family_penalty:       { label: '보유패밀리 감점',  group: 'personal', desc: '유저가 이미 같은 variant family(같은 제품군의 다른 호수/용량) 제품을 보유하면 감점. 중복 추천 방지.' },
   same_family_explore_bonus:  { label: '패밀리탐색 가산',  group: 'personal', desc: '같은 제품군의 다른 옵션을 탐색할 때 소폭 가산. 익숙한 라인 내 확장 추천.' },
   repurchase_family_affinity: { label: '재구매패밀리 가산', group: 'personal', desc: '유저가 재구매한 패밀리의 다른 SKU에 가산. "이 라인 좋아하시네요" 식의 확장 추천.' },
+  repurchase_category_affinity: { label: '재구매카테고리', group: 'personal', desc: '반복 구매한 카테고리 값이 제품명/카테고리명에 직접 닿을 때 가산. 상품마스터 taxonomy 기반 구매행동 신호.' },
   tool_alignment:             { label: '도구 일치',       group: 'coused',  desc: '제품과 함께 언급되는 도구(퍼프, 브러시 등)가 유저 선호 도구와 겹칠 때 가산.' },
   coused_product_bonus:       { label: '함께쓰는제품',     group: 'coused',  desc: '유저가 보유한 제품과 자주 함께 쓰이는 제품에 가산. 루틴/번들 추천 근거.' },
 };
@@ -480,7 +485,7 @@ function renderRecommendResults(data) {
         <div class="rank">#${r.rank || '-'}</div>
         <div>
           <strong>${displayText(productName)}</strong>
-          <span class="score">점수: ${finalScore} (rank: ${rankScore}, raw: ${rawScore}, shrink: ${shrinkedScore}, diversity: ${diversityText})</span>
+          <span class="score">추천점수: ${finalScore} / 정렬점수: ${rankScore} (raw: ${rawScore}, shrink: ${shrinkedScore}, diversity: ${diversityText})</span>
           <div class="explanation">${displayText(r.explanation, '설명 없음')}</div>
           <div class="hooks" style="margin-top:8px">
             <span><span class="label">Evidence:</span> ${evidenceFamilies.length ? evidenceFamilies.map(f => `<span class="chip rel">${displayText(f)}</span>`).join(' ') : '없음'}</span>
@@ -488,6 +493,7 @@ function renderRecommendResults(data) {
           <div class="hooks" style="margin-top:8px">
             <span><span class="label">상품마스터:</span> ${fmtScore(scoreLayers.master_truth_score)}</span>
             <span><span class="label">리뷰그래프:</span> ${fmtScore(scoreLayers.review_graph_score)}</span>
+            <span><span class="label">프로필:</span> ${fmtScore(scoreLayers.profile_fit_score)}</span>
             <span><span class="label">리뷰활동:</span> ${fmtScore(scoreLayers.product_activity_score)}</span>
             <span><span class="label">구매행동:</span> ${fmtScore(scoreLayers.purchase_behavior_score)}</span>
             <span><span class="label">Source trust:</span> ${fmtScore(scoreLayers.source_trust_score)}</span>

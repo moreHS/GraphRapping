@@ -40,7 +40,10 @@ Implemented in `src/user/adapters/personal_agent_adapter.py`:
   - `preferred_bodycare_brand`
   - `preferred_hair_brand`
   - `preferred_perfume_brand`
-- `purchase_analysis.active_product_category` -> `PREFERS_CATEGORY`
+- `purchase_analysis.active_product_category` -> `ACTIVE_IN_CATEGORY`
+  - 활동 카테고리 컨텍스트이며 명시 선호가 아니다.
+  - 추천에서는 약한 category affinity로만 사용하고, 단독 evidence나
+    `PREFERS_CATEGORY` 설명 근거로 승격하지 않는다.
 - `purchase_analysis.preferred_repurchase_category` -> `REPURCHASES_CATEGORY`
 - chat ingredients -> `PREFERS_INGREDIENT` / `AVOIDS_INGREDIENT`
 - chat face/hair/body/scalp/makeup concerns -> `HAS_CONCERN`

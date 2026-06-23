@@ -79,9 +79,10 @@ def adapt_user_profile(
                                     scope_group=scope_group,
                                     source_section=f"purchase.{field_name}"))
 
-    # Purchase-based category preferences
+    # Purchase-based active category context. This is not an explicit category
+    # preference; it represents product groups/categories the user is active in.
     for cat in _as_list(purchase.get("active_product_category")):
-        facts.append(_make_pref("PREFERS_CATEGORY", ConceptType.CATEGORY, cat,
+        facts.append(_make_pref("ACTIVE_IN_CATEGORY", ConceptType.CATEGORY, cat,
                                 user_id, "purchase", last_seen_at=purchase_ts,
                                 source_section="purchase.active_product_category"))
 

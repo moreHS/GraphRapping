@@ -19,12 +19,14 @@ SCORING_FEATURE_KEYS = (
     "residual_bee_attr_match",
     "review_graph_weak_relation_match",
     "context_match",
+    "catalog_keyword_match",
     "concern_fit",
     "concern_bridge_fit",
     "ingredient_match",
     "brand_match_conf_weighted",
     "goal_fit_master",
     "category_affinity",
+    "active_category_affinity",
     "freshness_boost",
     "source_popularity_score",
     "source_rating_score",
@@ -35,6 +37,7 @@ SCORING_FEATURE_KEYS = (
     "owned_family_penalty",
     "same_family_explore_bonus",
     "repurchase_family_affinity",
+    "repurchase_category_affinity",
     "tool_alignment",
     "coused_product_bonus",
 )
@@ -116,6 +119,8 @@ class Scorer:
         # Goal match uses product truth/main benefit only; concern_bridge covers
         # indirect review evidence without crossing concept planes.
         goal_master_count = overlaps_by_type.get("goal_master", 0) + overlaps_by_type.get("goal", 0)
+        category_score_units = overlaps_by_type.get("category", 0)
+        active_category_score_units = overlaps_by_type.get("active_category", 0)
 
         # skin_type_fit: user skin_type × product concern signals
         skin_type_fit_val = _skin_type_fit(user_profile, product_profile)
@@ -128,12 +133,14 @@ class Scorer:
             "keyword_match": min(keyword_score_units / 3.0, 1.0),
             "residual_bee_attr_match": min(residual_attr / 2.0, 1.0),
             "context_match": min(overlaps_by_type.get("context", 0) / 2.0, 1.0),
+            "catalog_keyword_match": min(overlaps_by_type.get("catalog_keyword", 0) / 2.0, 1.0),
             "concern_fit": min(overlaps_by_type.get("concern", 0) / 2.0, 1.0),
             "concern_bridge_fit": _concern_bridge_score(overlaps_by_type.get("concern_bridge", 0), product_profile),
             "ingredient_match": min(overlaps_by_type.get("ingredient", 0) / 3.0, 1.0),
             "brand_match_conf_weighted": _brand_score(overlaps_by_type.get("brand", 0), brand_source, self._brand_confidence),
             "goal_fit_master": min(goal_master_count / 2.0, 1.0),
-            "category_affinity": min(overlaps_by_type.get("category", 0), 1.0),
+            "category_affinity": min(category_score_units, 1.0),
+            "active_category_affinity": min(active_category_score_units * 0.5, 1.0),
             "freshness_boost": _freshness_score(product_profile),
             "source_popularity_score": _source_popularity_score(product_profile),
             "source_rating_score": _source_rating_score(product_profile),
@@ -144,6 +151,7 @@ class Scorer:
             "owned_family_penalty": _owned_family_penalty(user_profile, product_profile),
             "same_family_explore_bonus": _same_family_explore_bonus(user_profile, product_profile),
             "repurchase_family_affinity": _repurchase_family_affinity(user_profile, product_profile),
+            "repurchase_category_affinity": min(overlaps_by_type.get("repurchase_category", 0) / 2.0, 1.0),
             "tool_alignment": min(overlaps_by_type.get("tool", 0) / 2.0, 1.0),
             "coused_product_bonus": min(overlaps_by_type.get("coused", 0) / 2.0, 1.0),
             "review_graph_weak_relation_match": min(weak_relation_strength / 3.0, 1.0),
@@ -182,6 +190,7 @@ def _score_layers(contributions: dict[str, float]) -> dict[str, float]:
         "master_truth_score": {
             "brand_match_conf_weighted",
             "category_affinity",
+            "catalog_keyword_match",
             "ingredient_match",
             "goal_fit_master",
         },
@@ -202,6 +211,7 @@ def _score_layers(contributions: dict[str, float]) -> dict[str, float]:
         },
         "profile_fit_score": {
             "skin_type_fit",
+            "active_category_affinity",
         },
         "purchase_behavior_score": {
             "purchase_loyalty_score",
@@ -210,6 +220,7 @@ def _score_layers(contributions: dict[str, float]) -> dict[str, float]:
             "owned_family_penalty",
             "same_family_explore_bonus",
             "repurchase_family_affinity",
+            "repurchase_category_affinity",
         },
         "source_trust_score": {
             "source_popularity_score",

@@ -46,3 +46,45 @@ def test_freshness_is_product_activity_not_review_relation_layer():
 
     assert scored.score_layers["review_graph_score"] == 0
     assert scored.score_layers["product_activity_score"] > 0
+
+
+def test_active_category_affinity_is_profile_fit_not_master_truth():
+    scorer = Scorer()
+    scorer.load_from_dict(
+        {
+            "category_affinity": 0.05,
+            "active_category_affinity": 0.02,
+        },
+        shrinkage_k=10,
+    )
+
+    scored = scorer.score(
+        {},
+        {"product_id": "P1", "review_count_all": 100},
+        ["active_category:concept:Category:skincare"],
+    )
+
+    assert scored.feature_contributions["active_category_affinity"] > 0
+    assert "category_affinity" not in scored.feature_contributions
+    assert scored.score_layers["master_truth_score"] == 0
+    assert scored.score_layers["profile_fit_score"] > 0
+
+
+def test_catalog_keyword_and_repurchase_category_layers_are_separate():
+    scorer = Scorer()
+    scorer.load_from_dict(
+        {
+            "catalog_keyword_match": 0.04,
+            "repurchase_category_affinity": 0.03,
+        },
+        shrinkage_k=10,
+    )
+
+    scored = scorer.score(
+        {},
+        {"product_id": "P1", "review_count_all": 100},
+        ["catalog_keyword:concept:Keyword:틴트", "repurchase_category:concept:Category:틴트"],
+    )
+
+    assert scored.score_layers["master_truth_score"] > 0
+    assert scored.score_layers["purchase_behavior_score"] > 0

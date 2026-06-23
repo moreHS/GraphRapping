@@ -598,6 +598,7 @@ async def user_graph(user_id: str):
 
     for field_key, edge_label, node_type in [
         ("preferred_brand_ids", "PREFERS_BRAND", "brand"),
+        ("active_category_ids", "ACTIVE_IN_CATEGORY", "category"),
         ("preferred_category_ids", "PREFERS_CATEGORY", "category"),
         ("preferred_ingredient_ids", "PREFERS_INGREDIENT", "ingredient"),
         ("avoided_ingredient_ids", "AVOIDS_INGREDIENT", "avoid_ingredient"),

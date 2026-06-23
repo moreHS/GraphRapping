@@ -211,6 +211,7 @@ SELECT
   um.skin_type,
   um.skin_tone,
   sup.preferred_brand_ids,
+  sup.active_category_ids,
   sup.preferred_category_ids,
   sup.preferred_ingredient_ids,
   sup.avoided_ingredient_ids,

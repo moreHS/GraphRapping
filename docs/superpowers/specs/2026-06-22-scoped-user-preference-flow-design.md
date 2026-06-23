@@ -111,11 +111,19 @@ Global hard filters such as `AVOIDS_INGREDIENT` stay global.
 Category preference filtering remains group-aware through the existing
 `preferred_category_ids` and `category_groups_for_values()` path.
 
+`purchase_analysis.active_product_category` is **not** `PREFERS_CATEGORY`.
+It is projected as `ACTIVE_IN_CATEGORY` and stored in `active_category_ids`.
+Recommendation may use it as a weak category affinity/context signal, but it
+must not qualify a product by itself and must not be shown as a category
+preference in explanations. Its scoring feature is `active_category_affinity`,
+which belongs to `profile_fit_score`, not `master_truth_score`.
+
 ## Serving Contract
 
 `serving_user_profile` keeps existing arrays for compatibility:
 
 - `preferred_brand_ids`
+- `active_category_ids`
 - `preferred_keyword_ids`
 - `preferred_bee_attr_ids`
 - `concern_ids`

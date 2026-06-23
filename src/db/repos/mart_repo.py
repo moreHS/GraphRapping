@@ -276,20 +276,21 @@ async def upsert_serving_product_profile(uow: UnitOfWork, row: dict[str, Any]) -
 async def upsert_serving_user_profile(uow: UnitOfWork, row: dict[str, Any]) -> None:
     await uow.execute("""
         INSERT INTO serving_user_profile (user_id, age_band, gender, skin_type, skin_tone,
-            preferred_brand_ids, preferred_category_ids, preferred_ingredient_ids,
+            preferred_brand_ids, active_category_ids, preferred_category_ids, preferred_ingredient_ids,
             avoided_ingredient_ids, concern_ids, goal_ids,
             preferred_bee_attr_ids, preferred_keyword_ids, preferred_context_ids,
             scoped_preference_ids,
             recent_purchase_brand_ids, repurchase_brand_ids, repurchase_category_ids,
             owned_product_ids, owned_family_ids, repurchased_family_ids,
             updated_at)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)
         ON CONFLICT (user_id) DO UPDATE SET
             age_band=EXCLUDED.age_band,
             gender=EXCLUDED.gender,
             skin_type=EXCLUDED.skin_type,
             skin_tone=EXCLUDED.skin_tone,
             preferred_brand_ids=EXCLUDED.preferred_brand_ids,
+            active_category_ids=EXCLUDED.active_category_ids,
             preferred_category_ids=EXCLUDED.preferred_category_ids,
             preferred_ingredient_ids=EXCLUDED.preferred_ingredient_ids,
             avoided_ingredient_ids=EXCLUDED.avoided_ingredient_ids,
@@ -309,6 +310,7 @@ async def upsert_serving_user_profile(uow: UnitOfWork, row: dict[str, Any]) -> N
         row["user_id"], row.get("age_band"), row.get("gender"),
         row.get("skin_type"), row.get("skin_tone"),
         json.dumps(row.get("preferred_brand_ids", [])),
+        json.dumps(row.get("active_category_ids", [])),
         json.dumps(row.get("preferred_category_ids", [])),
         json.dumps(row.get("preferred_ingredient_ids", [])),
         json.dumps(row.get("avoided_ingredient_ids", [])),

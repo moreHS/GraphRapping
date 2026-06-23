@@ -13,9 +13,13 @@ from dataclasses import dataclass, field
 MASTER_TRUTH_TYPES = frozenset({
     "brand",
     "category",
+    "catalog_keyword",
     "ingredient",
     "goal_master",
 })
+# ACTIVE_IN_CATEGORY is intentionally excluded. It is profile context/affinity,
+# not explicit preference or product master truth strong enough to qualify a
+# recommendation by itself.
 
 REVIEW_GRAPH_TYPES = frozenset({
     "keyword",
@@ -39,6 +43,7 @@ PURCHASE_BEHAVIOR_TYPES = frozenset({
     "owned_family",
     "repurchased_family",
     "repurchase_brand",
+    "repurchase_category",
     "recent_purchase_brand",
 })
 

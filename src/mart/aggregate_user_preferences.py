@@ -131,7 +131,7 @@ def refresh_user_preferences(
     if purchase_brand_confidence:
         for key, row in grouped.items():
             predicate, dst_id, _scope_group_value = key
-            if predicate in ("PREFERS_BRAND", "PREFERS_CATEGORY"):
+            if predicate in ("PREFERS_BRAND", "ACTIVE_IN_CATEGORY", "PREFERS_CATEGORY"):
                 brand_conf = purchase_brand_confidence.get(dst_id)
                 if brand_conf:
                     row["max_confidence"] = max(row["max_confidence"], brand_conf)
