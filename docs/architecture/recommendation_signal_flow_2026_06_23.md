@@ -1,43 +1,44 @@
-# Recommendation Signal Flow
+# 추천 신호 흐름 정리
 
-Last verified: 2026-06-23
+최종 확인일: 2026-06-23
 
-This document maps recommendation signals from source fields through
-GraphRapping layers into candidate evidence, score features, score layers, and
-UI explanations.
+이 문서는 추천에 사용되는 신호가 원천 필드에서 시작해 GraphRapping의
+레이어를 거치며 어떻게 후보 근거, 점수 feature, 점수 layer, UI 설명으로
+이어지는지 정리한 문서다.
 
-The goal is reviewability: if a signal looks conceptually wrong, it should be
-easy to point to the row where it is created or promoted.
+목적은 검토 가능성이다. 어떤 신호 흐름이 이상해 보이면, 어느 단계에서
+생성되거나 승격되는지 바로 짚을 수 있어야 한다.
 
-## Current Fixture Baseline
+## 현재 기준 데이터
 
-Dense golden fixture as loaded through the local web API:
+로컬 웹 API에서 dense golden fixture를 로드했을 때 기준값:
 
-- reviews: 906
-- serving products: 32
-- serving users: 6
-- graph signals: 2767
+- 리뷰: 906개
+- 서빙 상품: 32개
+- 서빙 유저: 6명
+- 그래프 신호: 2767개
 
-Observed important behavior:
+중요한 현재 동작:
 
-- `ACTIVE_IN_CATEGORY` is separated from `PREFERS_CATEGORY`.
-- `ACTIVE_IN_CATEGORY` contributes only weak `active_category_affinity` under
-  `profile_fit_score`.
-- `ACTIVE_IN_CATEGORY` does not qualify a product by itself.
-- `source_review_*` stats contribute source trust only and never eligibility.
-- review summary sidecar is attached to API/UI output but is not used for
-  candidate eligibility or score.
+- `ACTIVE_IN_CATEGORY`는 `PREFERS_CATEGORY`와 분리되어 있다.
+- `ACTIVE_IN_CATEGORY`는 `profile_fit_score` 아래의 약한
+  `active_category_affinity`로만 반영된다.
+- `ACTIVE_IN_CATEGORY`만으로는 상품이 추천 후보 자격을 얻지 못한다.
+- `source_review_*` 통계는 source trust 점수로만 쓰이며, 추천 자격 근거가
+  되지 않는다.
+- `review_summary_sidecar`는 API/UI 표시용으로 붙지만, 현재 후보 생성이나
+  점수에는 쓰지 않는다.
 
-## End-To-End View
+## 전체 흐름
 
 ```mermaid
 flowchart LR
-    subgraph U["User Source"]
+    subgraph U["유저 원천"]
         PA["personal-agent profile"]
         PF["purchase_features"]
     end
 
-    subgraph P["Product And Review Source"]
+    subgraph P["상품/리뷰 원천"]
         PM["product_master"]
         AGG["agg_product_signal"]
         SRC["source_review_stats"]
@@ -53,7 +54,7 @@ flowchart LR
     PM --> SPP["serving_product_profile"]
     AGG --> SPP
     SRC --> SPP
-    SUM -. "display attach only" .-> API["recommend API"]
+    SUM -. "표시용으로만 결합" .-> API["recommend API"]
 
     SUP --> CG["candidate_generator"]
     SPP --> CG
@@ -63,89 +64,90 @@ flowchart LR
     EI --> EL["eligibility families"]
     SC --> SL["score_layers"]
     SL --> RR["reranker"]
-    EL --> UI["recommendation tester UI"]
+    EL --> UI["추천 테스터 UI"]
     RR --> UI
     API --> UI
 ```
 
-## User Signal Projection
+## 유저 신호 변환
 
-Source fields are adapted in `src/user/adapters/personal_agent_adapter.py`, then
-aggregated into `agg_user_preference`, then summarized into
-`serving_user_profile`.
+유저 원천 필드는 `src/user/adapters/personal_agent_adapter.py`에서 fact로
+변환되고, `agg_user_preference`로 집계된 뒤 `serving_user_profile`에
+요약된다.
 
-| Source field | User edge | Scope behavior | Serving field | Main downstream use |
+| 원천 필드 | 유저 edge | scope 처리 | 서빙 필드 | 주요 downstream 사용 |
 | --- | --- | --- | --- | --- |
-| `basic.skin_type` | `HAS_SKIN_TYPE` | global | `skin_type` | `skin_type_fit` via product concern pos/neg |
-| `basic.skin_tone` | `HAS_SKIN_TONE` | global | `skin_tone` | stored/display only in current recommendation |
-| `basic.skin_concerns` | `HAS_CONCERN` | global | `concern_ids`, `scoped_preference_ids` | review concern match / concern bridge |
-| `purchase_analysis.preferred_brand` | `PREFERS_BRAND` | global | `preferred_brand_ids` | product brand match |
-| `purchase_analysis.preferred_skincare_brand` | `PREFERS_BRAND` | `skincare` | `preferred_brand_ids`, `scoped_preference_ids` | scoped product brand match |
-| `purchase_analysis.preferred_makeup_brand` | `PREFERS_BRAND` | `makeup` | same | scoped product brand match |
-| `purchase_analysis.preferred_bodycare_brand` | `PREFERS_BRAND` | `bodycare` | same | scoped product brand match |
-| `purchase_analysis.preferred_hair_brand` | `PREFERS_BRAND` | `haircare` | same | scoped product brand match |
-| `purchase_analysis.preferred_perfume_brand` | `PREFERS_BRAND` | `fragrance` | same | scoped product brand match |
-| `purchase_analysis.active_product_category` | `ACTIVE_IN_CATEGORY` | global | `active_category_ids` | weak active category affinity only |
-| `purchase_analysis.preferred_repurchase_category` | `REPURCHASES_CATEGORY` | global | `repurchase_category_ids` | product catalog text repurchase category match |
-| `chat.ingredients.preferred` | `PREFERS_INGREDIENT` | global | `preferred_ingredient_ids` | product ingredient truth match |
+| `basic.skin_type` | `HAS_SKIN_TYPE` | global | `skin_type` | 제품 concern 긍/부정과 결합해 `skin_type_fit` |
+| `basic.skin_tone` | `HAS_SKIN_TONE` | global | `skin_tone` | 현재 추천 점수에는 미사용, 보관/표시용 |
+| `basic.skin_concerns` | `HAS_CONCERN` | global | `concern_ids`, `scoped_preference_ids` | 리뷰 concern 직접 매칭 / concern bridge |
+| `purchase_analysis.preferred_brand` | `PREFERS_BRAND` | global | `preferred_brand_ids` | 상품 브랜드 매칭 |
+| `purchase_analysis.preferred_skincare_brand` | `PREFERS_BRAND` | `skincare` | `preferred_brand_ids`, `scoped_preference_ids` | 스킨케어 범위 브랜드 매칭 |
+| `purchase_analysis.preferred_makeup_brand` | `PREFERS_BRAND` | `makeup` | 동일 | 메이크업 범위 브랜드 매칭 |
+| `purchase_analysis.preferred_bodycare_brand` | `PREFERS_BRAND` | `bodycare` | 동일 | 바디 범위 브랜드 매칭 |
+| `purchase_analysis.preferred_hair_brand` | `PREFERS_BRAND` | `haircare` | 동일 | 헤어 범위 브랜드 매칭 |
+| `purchase_analysis.preferred_perfume_brand` | `PREFERS_BRAND` | `fragrance` | 동일 | 향수 범위 브랜드 매칭 |
+| `purchase_analysis.active_product_category` | `ACTIVE_IN_CATEGORY` | global | `active_category_ids` | 약한 활동 카테고리 affinity |
+| `purchase_analysis.preferred_repurchase_category` | `REPURCHASES_CATEGORY` | global | `repurchase_category_ids` | 상품명/카테고리 text와 재구매 카테고리 매칭 |
+| `chat.ingredients.preferred` | `PREFERS_INGREDIENT` | global | `preferred_ingredient_ids` | 상품 성분 truth 매칭 |
 | `chat.ingredients.avoid` | `AVOIDS_INGREDIENT` | global | `avoided_ingredient_ids` | hard filter |
-| `chat.ingredients.allergy` | `AVOIDS_INGREDIENT` | global | `avoided_ingredient_ids` | hard filter with higher confidence |
-| `chat.face.skin_concerns` | `HAS_CONCERN` | `skincare` | `concern_ids`, `scoped_preference_ids` | scoped concern match / concern bridge |
-| `chat.face.skincare_goals` | `WANTS_GOAL` | `skincare` | `goal_ids`, `scoped_preference_ids` | main benefit match / semantic review match |
-| `chat.face.preferred_texture` | `PREFERS_BEE_ATTR` + `PREFERS_KEYWORD` | `skincare` | `preferred_bee_attr_ids`, `preferred_keyword_ids` | exact/semantic review match, catalog keyword |
-| `chat.hair.hair_concerns` | `HAS_CONCERN` | `haircare` | `concern_ids`, `scoped_preference_ids` | scoped concern match / bridge |
-| `chat.hair.haircare_goals` | `WANTS_GOAL` | `haircare` | `goal_ids`, `scoped_preference_ids` | scoped goal match |
-| `chat.hair.preferred_texture` | `PREFERS_BEE_ATTR` + `PREFERS_KEYWORD` | `haircare` | same | scoped texture/keyword match |
-| `chat.body.body_concerns` | `HAS_CONCERN` | `bodycare` | `concern_ids`, `scoped_preference_ids` | scoped concern match / bridge |
-| `chat.body.bodycare_goals` | `WANTS_GOAL` | `bodycare` | `goal_ids`, `scoped_preference_ids` | scoped goal match |
-| `chat.body.preferred_texture` | `PREFERS_BEE_ATTR` + `PREFERS_KEYWORD` | `bodycare` | same | scoped texture/keyword match |
-| `chat.scalp.scalp_concerns` | `HAS_CONCERN` | `haircare` | `concern_ids`, `scoped_preference_ids` | scoped scalp concern match |
-| `chat.scalp.scalpcare_goals` | `WANTS_GOAL` | `haircare` | `goal_ids`, `scoped_preference_ids` | scoped scalp goal match |
-| `chat.makeup.makeup_concerns` | `HAS_CONCERN` | `makeup` | `concern_ids`, `scoped_preference_ids` | scoped makeup concern match |
-| `chat.makeup.makeup_goals` | `WANTS_GOAL` | `makeup` | `goal_ids`, `scoped_preference_ids` | scoped makeup goal match / semantic review match |
-| `chat.makeup.preferred_texture` | `PREFERS_BEE_ATTR` + `PREFERS_KEYWORD` | `makeup` | same | scoped makeup texture/keyword match |
-| `chat.makeup.preferred_finish` | `PREFERS_KEYWORD` | `makeup` | `preferred_keyword_ids`, `scoped_preference_ids` | scoped finish keyword / semantic match / catalog keyword |
-| `chat.makeup.color_preference` | `PREFERS_KEYWORD` | `makeup` | `preferred_keyword_ids`, `scoped_preference_ids` | scoped color keyword / catalog keyword |
-| `chat.scent.preferences` | `PREFERS_KEYWORD` | `fragrance` | `preferred_keyword_ids`, `scoped_preference_ids` | scoped scent keyword |
-| `purchase_features.owned_product_ids` | `OWNS_PRODUCT` | global | `owned_product_ids` | exact SKU suppression, co-used product match |
-| `purchase_features.owned_family_ids` | `OWNS_FAMILY` | global | `owned_family_ids` | owned family suppression / penalty |
-| `purchase_features.repurchased_family_ids` | `REPURCHASES_FAMILY` | global | `repurchased_family_ids` | repurchased family affinity |
-| `purchase_features.repurchased_brand_ids` | `REPURCHASES_BRAND` | global | `repurchase_brand_ids` | repurchase brand overlap / purchase loyalty |
-| `purchase_features.recently_purchased_brand_ids` | `RECENTLY_PURCHASED` | global | `recent_purchase_brand_ids` | recent brand overlap / purchase loyalty |
+| `chat.ingredients.allergy` | `AVOIDS_INGREDIENT` | global | `avoided_ingredient_ids` | 더 높은 confidence의 hard filter |
+| `chat.face.skin_concerns` | `HAS_CONCERN` | `skincare` | `concern_ids`, `scoped_preference_ids` | 스킨케어 범위 concern 매칭 / bridge |
+| `chat.face.skincare_goals` | `WANTS_GOAL` | `skincare` | `goal_ids`, `scoped_preference_ids` | 제품 효능 truth 매칭 / semantic review 매칭 |
+| `chat.face.preferred_texture` | `PREFERS_BEE_ATTR` + `PREFERS_KEYWORD` | `skincare` | `preferred_bee_attr_ids`, `preferred_keyword_ids` | 정확/semantic 리뷰 매칭, catalog keyword |
+| `chat.hair.hair_concerns` | `HAS_CONCERN` | `haircare` | `concern_ids`, `scoped_preference_ids` | 헤어 범위 concern 매칭 / bridge |
+| `chat.hair.haircare_goals` | `WANTS_GOAL` | `haircare` | `goal_ids`, `scoped_preference_ids` | 헤어 범위 goal 매칭 |
+| `chat.hair.preferred_texture` | `PREFERS_BEE_ATTR` + `PREFERS_KEYWORD` | `haircare` | 동일 | 헤어 범위 제형/키워드 매칭 |
+| `chat.body.body_concerns` | `HAS_CONCERN` | `bodycare` | `concern_ids`, `scoped_preference_ids` | 바디 범위 concern 매칭 / bridge |
+| `chat.body.bodycare_goals` | `WANTS_GOAL` | `bodycare` | `goal_ids`, `scoped_preference_ids` | 바디 범위 goal 매칭 |
+| `chat.body.preferred_texture` | `PREFERS_BEE_ATTR` + `PREFERS_KEYWORD` | `bodycare` | 동일 | 바디 범위 제형/키워드 매칭 |
+| `chat.scalp.scalp_concerns` | `HAS_CONCERN` | `haircare` | `concern_ids`, `scoped_preference_ids` | 두피 concern 매칭 |
+| `chat.scalp.scalpcare_goals` | `WANTS_GOAL` | `haircare` | `goal_ids`, `scoped_preference_ids` | 두피 goal 매칭 |
+| `chat.makeup.makeup_concerns` | `HAS_CONCERN` | `makeup` | `concern_ids`, `scoped_preference_ids` | 메이크업 concern 매칭 |
+| `chat.makeup.makeup_goals` | `WANTS_GOAL` | `makeup` | `goal_ids`, `scoped_preference_ids` | 메이크업 goal 매칭 / semantic review 매칭 |
+| `chat.makeup.preferred_texture` | `PREFERS_BEE_ATTR` + `PREFERS_KEYWORD` | `makeup` | 동일 | 메이크업 제형/키워드 매칭 |
+| `chat.makeup.preferred_finish` | `PREFERS_KEYWORD` | `makeup` | `preferred_keyword_ids`, `scoped_preference_ids` | 메이크업 finish 키워드 / semantic / catalog keyword |
+| `chat.makeup.color_preference` | `PREFERS_KEYWORD` | `makeup` | `preferred_keyword_ids`, `scoped_preference_ids` | 색상 키워드 / catalog keyword |
+| `chat.scent.preferences` | `PREFERS_KEYWORD` | `fragrance` | `preferred_keyword_ids`, `scoped_preference_ids` | 향 선호 키워드 |
+| `purchase_features.owned_product_ids` | `OWNS_PRODUCT` | global | `owned_product_ids` | 동일 SKU 억제, co-used product 매칭 |
+| `purchase_features.owned_family_ids` | `OWNS_FAMILY` | global | `owned_family_ids` | 보유 family 억제 / penalty |
+| `purchase_features.repurchased_family_ids` | `REPURCHASES_FAMILY` | global | `repurchased_family_ids` | 재구매 family affinity |
+| `purchase_features.repurchased_brand_ids` | `REPURCHASES_BRAND` | global | `repurchase_brand_ids` | 재구매 브랜드 overlap / purchase loyalty |
+| `purchase_features.recently_purchased_brand_ids` | `RECENTLY_PURCHASED` | global | `recent_purchase_brand_ids` | 최근 구매 브랜드 overlap / purchase loyalty |
 
-## Product And Review Signal Projection
+## 상품/리뷰 신호 변환
 
-Product-side fields are exposed through `serving_product_profile`.
+상품 쪽 필드는 `serving_product_profile`을 통해 후보 생성과 점수 계산에
+전달된다.
 
-| Source / serving field | Product-side meaning | Candidate overlap created | Evidence family | Score feature |
+| 원천/서빙 필드 | 상품 쪽 의미 | 생성되는 candidate overlap | evidence family | score feature |
 | --- | --- | --- | --- | --- |
-| `brand_id`, `brand_concept_ids` | product master brand truth | `brand:*` | `PRODUCT_MASTER_TRUTH` | `brand_match_conf_weighted` |
-| `category_id`, `category_concept_ids` | product master category truth | `category:*` only for explicit `PREFERS_CATEGORY` | `PRODUCT_MASTER_TRUTH` | `category_affinity` |
-| `category_id`, `category_concept_ids` | active category context | `active_category:*` | none | `active_category_affinity` |
-| `category_name`, `product_name`, `representative_product_name` | product master taxonomy/name text | `catalog_keyword:*` | `PRODUCT_MASTER_TRUTH` | `catalog_keyword_match` |
-| `category_name`, `product_name`, `representative_product_name` | product master taxonomy/name text plus repurchase category | `repurchase_category:*` | `PURCHASE_BEHAVIOR` | `repurchase_category_affinity` |
-| `ingredient_ids`, `ingredient_concept_ids` | product master ingredient truth | `ingredient:*` | `PRODUCT_MASTER_TRUTH` | `ingredient_match` |
-| `ingredient_ids`, `ingredient_concept_ids` | avoid/allergy check | hard filter on `AVOIDS_INGREDIENT` | none | zero-out before scoring |
-| `main_benefit_ids`, `main_benefit_concept_ids` | product master main benefit truth | `goal_master:*` | `PRODUCT_MASTER_TRUTH` | `goal_fit_master` |
-| `variant_family_id` | product family truth | `owned_family:*`, `repurchased_family:*` | `PURCHASE_BEHAVIOR` | family penalty/affinity features |
-| `top_keyword_ids` | promoted review keyword graph signal | `keyword:*` | `REVIEW_GRAPH_RELATION` | `keyword_match` |
-| `top_keyword_ids` + semantic rules | promoted review keyword semantic match | `semantic_keyword:*` | `REVIEW_GRAPH_RELATION` | `keyword_match` with strength |
-| `top_bee_attr_ids` | promoted review BEE graph signal | `bee_attr:*` | `REVIEW_GRAPH_RELATION` | `residual_bee_attr_match` |
-| `top_bee_attr_ids` + semantic rules | promoted review BEE semantic match | `semantic_bee_attr:*` | `REVIEW_GRAPH_RELATION` | `residual_bee_attr_match` with strength |
-| optional weak keyword fields | long-tail review keyword signal | `weak_semantic_keyword:*` | `REVIEW_GRAPH_WEAK_RELATION` | `review_graph_weak_relation_match` |
-| optional weak BEE fields | long-tail review BEE signal | `weak_semantic_bee_attr:*` | `REVIEW_GRAPH_WEAK_RELATION` | `review_graph_weak_relation_match` |
-| `top_context_ids` | review usage context signal | `context:*` | `REVIEW_GRAPH_RELATION` | `context_match` |
-| `top_concern_pos_ids` | review concern-positive signal | `concern:*` | `REVIEW_GRAPH_RELATION` | `concern_fit` |
-| `top_bee_attr_ids` via concern bridge | BEE-derived concern inference | `concern_bridge:*` | `REVIEW_GRAPH_RELATION` | `concern_bridge_fit` |
-| `top_tool_ids` | tool co-mention signal | `tool:*` | `REVIEW_GRAPH_RELATION` | `tool_alignment` |
-| `top_coused_product_ids` | co-used product graph signal | `coused:*` | `REVIEW_GRAPH_RELATION` | `coused_product_bonus` |
-| `review_count_30d` | graph product activity | no overlap | none | `freshness_boost` |
-| `review_count_all` | graph support count | no overlap | none | shrinkage denominator |
-| `source_review_count_6m`, `source_review_count_all` | source review volume | no overlap | none | `source_popularity_score` |
-| `source_avg_rating_6m`, `source_avg_rating_all` | source rating | no overlap | none | `source_rating_score` |
-| `review_summary_sidecar` | summary text / gender / age / status sidecar | no overlap | none | currently display only |
+| `brand_id`, `brand_concept_ids` | 상품마스터 브랜드 truth | `brand:*` | `PRODUCT_MASTER_TRUTH` | `brand_match_conf_weighted` |
+| `category_id`, `category_concept_ids` | 상품마스터 카테고리 truth | 명시 `PREFERS_CATEGORY`가 있을 때만 `category:*` | `PRODUCT_MASTER_TRUTH` | `category_affinity` |
+| `category_id`, `category_concept_ids` | 활동 카테고리 context | `active_category:*` | 없음 | `active_category_affinity` |
+| `category_name`, `product_name`, `representative_product_name` | 상품마스터 taxonomy/name text | `catalog_keyword:*` | `PRODUCT_MASTER_TRUTH` | `catalog_keyword_match` |
+| `category_name`, `product_name`, `representative_product_name` | 상품마스터 taxonomy/name text와 재구매 카테고리 | `repurchase_category:*` | `PURCHASE_BEHAVIOR` | `repurchase_category_affinity` |
+| `ingredient_ids`, `ingredient_concept_ids` | 상품마스터 성분 truth | `ingredient:*` | `PRODUCT_MASTER_TRUTH` | `ingredient_match` |
+| `ingredient_ids`, `ingredient_concept_ids` | 회피/알러지 체크 | `AVOIDS_INGREDIENT`와 충돌 시 hard filter | 없음 | 점수 계산 전 제외 |
+| `main_benefit_ids`, `main_benefit_concept_ids` | 상품마스터 주요 효능 truth | `goal_master:*` | `PRODUCT_MASTER_TRUTH` | `goal_fit_master` |
+| `variant_family_id` | 상품 family truth | `owned_family:*`, `repurchased_family:*` | `PURCHASE_BEHAVIOR` | family penalty/affinity 계열 |
+| `top_keyword_ids` | 승격된 리뷰 키워드 그래프 신호 | `keyword:*` | `REVIEW_GRAPH_RELATION` | `keyword_match` |
+| `top_keyword_ids` + semantic rule | 승격된 리뷰 키워드 semantic 매칭 | `semantic_keyword:*` | `REVIEW_GRAPH_RELATION` | strength 반영 `keyword_match` |
+| `top_bee_attr_ids` | 승격된 리뷰 BEE 그래프 신호 | `bee_attr:*` | `REVIEW_GRAPH_RELATION` | `residual_bee_attr_match` |
+| `top_bee_attr_ids` + semantic rule | 승격된 리뷰 BEE semantic 매칭 | `semantic_bee_attr:*` | `REVIEW_GRAPH_RELATION` | strength 반영 `residual_bee_attr_match` |
+| optional weak keyword fields | long-tail 리뷰 키워드 신호 | `weak_semantic_keyword:*` | `REVIEW_GRAPH_WEAK_RELATION` | `review_graph_weak_relation_match` |
+| optional weak BEE fields | long-tail 리뷰 BEE 신호 | `weak_semantic_bee_attr:*` | `REVIEW_GRAPH_WEAK_RELATION` | `review_graph_weak_relation_match` |
+| `top_context_ids` | 리뷰 사용 맥락 신호 | `context:*` | `REVIEW_GRAPH_RELATION` | `context_match` |
+| `top_concern_pos_ids` | 리뷰 concern positive 신호 | `concern:*` | `REVIEW_GRAPH_RELATION` | `concern_fit` |
+| `top_bee_attr_ids` via concern bridge | BEE 기반 concern 추정 | `concern_bridge:*` | `REVIEW_GRAPH_RELATION` | `concern_bridge_fit` |
+| `top_tool_ids` | 도구 co-mention 신호 | `tool:*` | `REVIEW_GRAPH_RELATION` | `tool_alignment` |
+| `top_coused_product_ids` | 함께 쓰는 제품 그래프 신호 | `coused:*` | `REVIEW_GRAPH_RELATION` | `coused_product_bonus` |
+| `review_count_30d` | 그래프 기준 제품 활동성 | overlap 없음 | 없음 | `freshness_boost` |
+| `review_count_all` | 그래프 support count | overlap 없음 | 없음 | shrinkage 분모 |
+| `source_review_count_6m`, `source_review_count_all` | 원천 리뷰량 | overlap 없음 | 없음 | `source_popularity_score` |
+| `source_avg_rating_6m`, `source_avg_rating_all` | 원천 평점 | overlap 없음 | 없음 | `source_rating_score` |
+| `review_summary_sidecar` | 요약 텍스트 / 성별 / 연령 / 상태 sidecar | overlap 없음 | 없음 | 현재 표시용 |
 
-## Candidate Overlap To Evidence
+## Candidate Overlap에서 Evidence로
 
 ```mermaid
 flowchart TD
@@ -159,15 +161,15 @@ flowchart TD
     M -->|"source_review_* review_summary"| NA["not eligibility"]
 ```
 
-Important exclusions:
+중요한 제외 규칙:
 
-- `active_category:*` is not `PRODUCT_MASTER_TRUTH`.
-- `source_review_*` is not an evidence family.
-- `review_summary_sidecar` is not an evidence family.
+- `active_category:*`는 `PRODUCT_MASTER_TRUTH`가 아니다.
+- `source_review_*`는 evidence family가 아니다.
+- `review_summary_sidecar`는 evidence family가 아니다.
 
-## Score Feature To Layer
+## Score Feature에서 Score Layer로
 
-| Score layer | Features |
+| score layer | 포함 feature |
 | --- | --- |
 | `master_truth_score` | `brand_match_conf_weighted`, `category_affinity`, `catalog_keyword_match`, `ingredient_match`, `goal_fit_master` |
 | `review_graph_score` | `keyword_match`, `residual_bee_attr_match`, `context_match`, `concern_fit`, `concern_bridge_fit`, `tool_alignment`, `coused_product_bonus` |
@@ -177,22 +179,22 @@ Important exclusions:
 | `purchase_behavior_score` | `purchase_loyalty_score`, `novelty_bonus`, `exact_owned_penalty`, `owned_family_penalty`, `same_family_explore_bonus`, `repurchase_family_affinity`, `repurchase_category_affinity` |
 | `source_trust_score` | `source_popularity_score`, `source_rating_score` |
 
-## Common Match Paths
+## 주요 매칭 경로
 
-### Explicit Brand
+### 명시 브랜드
 
 ```mermaid
 flowchart LR
     A["purchase preferred brand"] --> B["PREFERS_BRAND"]
     B --> C["serving_user_profile preferred_brand_ids"]
-    C --> D["product brand_id or brand_concept_ids"]
+    C --> D["product brand_id 또는 brand_concept_ids"]
     D --> E["overlap brand:*"]
     E --> F["PRODUCT_MASTER_TRUTH"]
     E --> G["brand_match_conf_weighted"]
     G --> H["master_truth_score"]
 ```
 
-### Active Category
+### 활동 카테고리
 
 ```mermaid
 flowchart LR
@@ -200,16 +202,16 @@ flowchart LR
     B --> C["active_category_ids"]
     C --> D["product category group"]
     D --> E["overlap active_category:*"]
-    E --> F["no eligibility"]
+    E --> F["추천 자격 근거 아님"]
     E --> G["active_category_affinity"]
     G --> H["profile_fit_score"]
 ```
 
-### Makeup Keyword From Product Master Text
+### 상품마스터 text 기반 메이크업 키워드
 
 ```mermaid
 flowchart LR
-    A["chat makeup preferred_finish or texture"] --> B["PREFERS_KEYWORD"]
+    A["chat makeup preferred_finish 또는 texture"] --> B["PREFERS_KEYWORD"]
     B --> C["scoped_preference_ids makeup"]
     C --> D["product name/category text"]
     D --> E["overlap catalog_keyword:*"]
@@ -218,7 +220,7 @@ flowchart LR
     G --> H["master_truth_score"]
 ```
 
-### Repurchase Category
+### 재구매 카테고리
 
 ```mermaid
 flowchart LR
@@ -231,11 +233,11 @@ flowchart LR
     G --> H["purchase_behavior_score"]
 ```
 
-### Review Graph Keyword
+### 리뷰 그래프 키워드
 
 ```mermaid
 flowchart LR
-    A["chat goal or keyword"] --> B["WANTS_GOAL or PREFERS_KEYWORD"]
+    A["chat goal 또는 keyword"] --> B["WANTS_GOAL 또는 PREFERS_KEYWORD"]
     B --> C["semantic compatibility rules"]
     C --> D["product top_keyword_ids"]
     D --> E["overlap semantic_keyword:*"]
@@ -244,11 +246,11 @@ flowchart LR
     G --> H["review_graph_score"]
 ```
 
-### Review Graph BEE
+### 리뷰 그래프 BEE
 
 ```mermaid
 flowchart LR
-    A["chat goal or keyword"] --> B["WANTS_GOAL or PREFERS_KEYWORD"]
+    A["chat goal 또는 keyword"] --> B["WANTS_GOAL 또는 PREFERS_KEYWORD"]
     B --> C["semantic compatibility rules"]
     C --> D["product top_bee_attr_ids"]
     D --> E["overlap semantic_bee_attr:*"]
@@ -279,46 +281,46 @@ flowchart LR
     B --> C["serving_product_profile"]
     C --> D["source_popularity_score / source_rating_score"]
     D --> E["source_trust_score"]
-    E --> F["score only, no eligibility"]
+    E --> F["점수에만 반영, 추천 자격 근거 아님"]
 ```
 
-## Current Observed Broad Semantic Case
+## 현재 관측된 Broad Semantic 케이스
 
-For `user_makeup_matte_50m` in the `skincare` tab, the current dense fixture
-still produces repeated paths:
+`user_makeup_matte_50m`을 `skincare` 탭에서 추천할 때, 현재 dense fixture는
+아래 경로를 여러 제품에서 반복 생성한다.
 
 ```text
 active_category:concept:Category:skincare
 semantic_bee_attr:performance:long_lasting:concept:BEEAttr:bee_attr_lasting_power|user_edge=WANTS_GOAL|strength=0.8500
 ```
 
-What this means:
+이 의미는 다음과 같다.
 
-- User source has `WANTS_GOAL:지속력`.
-- Semantic compatibility maps `지속력` to review-side
-  `bee_attr_lasting_power`.
-- Multiple skincare products have `top_bee_attr_ids` containing
-  `bee_attr_lasting_power`.
-- The user's makeup-specific keywords such as `파우더`, `틴트`, `매트`,
-  `세미매트` are scoped to `makeup`, so they correctly do not score in the
-  skincare tab.
-- The result is not a `PREFERS_CATEGORY` leak. It is a broad review graph
-  semantic match with limited competing skincare-specific evidence.
+- 유저 원천에는 `WANTS_GOAL:지속력`이 있다.
+- semantic compatibility 규칙이 `지속력`을 리뷰 쪽
+  `bee_attr_lasting_power`와 연결한다.
+- 여러 스킨케어 제품의 `top_bee_attr_ids`에 `bee_attr_lasting_power`가 있다.
+- 유저의 메이크업 전용 키워드인 `파우더`, `틴트`, `매트`, `세미매트`는
+  `makeup` scope라서 스킨케어 탭 점수에 들어가지 않는다. 이것은 정상이다.
+- 따라서 이 현상은 `PREFERS_CATEGORY` 누수가 아니다. 경쟁할 만한
+  스킨케어 전용 근거가 적은 상태에서 broad review graph semantic match가
+  반복되는 상태다.
 
-Observed repeated score shape:
+반복되는 score shape:
 
-| Layer | Typical value | Meaning |
+| layer | 대표값 | 의미 |
 | --- | ---: | --- |
-| `master_truth_score` | 0 | no explicit product-master match for this user/product pair |
-| `review_graph_score` | 0.0298 | repeated `지속력 -> lasting_power` semantic BEE match |
-| `profile_fit_score` | 0.01 | weak active skincare category context |
-| `product_activity_score` | 0.04 | review activity |
-| `purchase_behavior_score` | 0.02 | mostly novelty, not strong purchase history |
-| `source_trust_score` | varies around 0.046-0.048 | source review volume/rating tie-break |
+| `master_truth_score` | 0 | 해당 유저/상품 조합에서 명시 product-master 매칭 없음 |
+| `review_graph_score` | 0.0298 | `지속력 -> lasting_power` semantic BEE 매칭 반복 |
+| `profile_fit_score` | 0.01 | 약한 활동 스킨케어 카테고리 context |
+| `product_activity_score` | 0.04 | 리뷰 활동성 |
+| `purchase_behavior_score` | 0.02 | 대부분 novelty, 강한 구매 이력 신호는 아님 |
+| `source_trust_score` | 약 0.046-0.048 | 원천 리뷰량/평점 기반 tie-break |
 
-## Current Observed Improved Makeup Case
+## 현재 관측된 개선된 메이크업 케이스
 
-For `user_makeup_matte_50m` in the `makeup` tab, the top tint products now get:
+`user_makeup_matte_50m`을 `makeup` 탭에서 추천할 때, 상위 틴트 제품은
+아래 신호들을 함께 받는다.
 
 ```text
 active_category:concept:Category:makeup
@@ -327,30 +329,30 @@ repurchase_category:concept:Category:틴트
 semantic_bee_attr:performance:long_lasting:concept:BEEAttr:bee_attr_lasting_power|user_edge=WANTS_GOAL|strength=0.8500
 ```
 
-This gives three evidence families:
+이 경우 evidence family가 세 개로 나뉜다.
 
-- `PRODUCT_MASTER_TRUTH` from `catalog_keyword:틴트`
-- `REVIEW_GRAPH_RELATION` from `지속력 -> lasting_power`
-- `PURCHASE_BEHAVIOR` from `repurchase_category:틴트`
+- `PRODUCT_MASTER_TRUTH`: `catalog_keyword:틴트`
+- `REVIEW_GRAPH_RELATION`: `지속력 -> lasting_power`
+- `PURCHASE_BEHAVIOR`: `repurchase_category:틴트`
 
-This is the intended richer shape: graph evidence does not replace product
-master or purchase behavior; all three can add separate evidence.
+이것이 의도한 더 풍부한 형태다. 리뷰 그래프 근거가 상품마스터나 구매행동을
+대체하지 않고, 세 종류가 각각 별도 근거로 더해진다.
 
-## Review Checklist
+## 검토 체크리스트
 
-Use this section to mark suspicious paths.
+아래 표를 보면서 이상해 보이는 경로를 찍어내면 된다.
 
-| Path to inspect | Current contract | Suspicious if |
+| 검토할 경로 | 현재 계약 | 이상 신호 |
 | --- | --- | --- |
-| `ACTIVE_IN_CATEGORY -> active_category_affinity` | weak profile context only | it appears as `PREFERS_CATEGORY`, eligibility, or `master_truth_score` |
-| `PREFERS_CATEGORY -> category_affinity` | explicit category preference only | it is produced from `active_product_category` |
-| `PREFERS_KEYWORD -> catalog_keyword` | direct user keyword in product name/category | it behaves like full-text search or ignores scope |
-| `REPURCHASES_CATEGORY -> repurchase_category` | direct repurchase category in product name/category | it fires from active category instead of repurchase category |
-| `WANTS_GOAL -> semantic_keyword/semantic_bee_attr` | rule-based semantic match | rule is too broad or should be category-scoped |
-| `HAS_CONCERN -> concern` | direct concern signal match | concern resolver merges unrelated concerns |
-| `HAS_CONCERN -> concern_bridge` | BEE-derived indirect concern | bridge makes unsupported clinical/skin claims |
-| `PREFERS_BEE_ATTR -> bee_attr` | exact non-generic BEE attr match | generic formulation/texture axis qualifies by itself |
-| `AVOIDS_INGREDIENT` | hard filter | it only down-ranks instead of filtering |
-| `source_review_*` | trust/tie-break only | it qualifies a product by itself |
-| `review_summary_sidecar` | display only | it changes candidate generation or score without explicit decision |
+| `ACTIVE_IN_CATEGORY -> active_category_affinity` | 약한 profile context only | `PREFERS_CATEGORY`, eligibility, `master_truth_score`로 나타나면 이상 |
+| `PREFERS_CATEGORY -> category_affinity` | 명시 카테고리 선호에만 사용 | `active_product_category`에서 생성되면 이상 |
+| `PREFERS_KEYWORD -> catalog_keyword` | 유저 키워드가 상품명/카테고리명에 직접 포함될 때만 사용 | full-text search처럼 동작하거나 scope를 무시하면 이상 |
+| `REPURCHASES_CATEGORY -> repurchase_category` | 재구매 카테고리 값이 상품명/카테고리명에 직접 닿을 때 사용 | active category에서 발화되면 이상 |
+| `WANTS_GOAL -> semantic_keyword/semantic_bee_attr` | rule 기반 semantic match | 규칙이 너무 넓거나 category-scope가 필요해 보이면 검토 |
+| `HAS_CONCERN -> concern` | 직접 concern signal 매칭 | concern resolver가 무관한 고민을 합치면 이상 |
+| `HAS_CONCERN -> concern_bridge` | BEE 기반 간접 concern 추정 | 근거 없는 의학적/피부 상태 claim처럼 보이면 이상 |
+| `PREFERS_BEE_ATTR -> bee_attr` | generic을 제외한 정확 BEE attr 매칭 | generic formulation/texture axis만으로 후보 자격을 얻으면 이상 |
+| `AVOIDS_INGREDIENT` | hard filter | 제외하지 않고 단순 감점만 하면 이상 |
+| `source_review_*` | trust/tie-break only | 단독 추천 자격 근거가 되면 이상 |
+| `review_summary_sidecar` | 표시용 only | 명시 결정 없이 후보 생성/점수를 바꾸면 이상 |
 
