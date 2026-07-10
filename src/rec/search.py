@@ -382,6 +382,7 @@ def search_products(
     products: list[dict[str, Any]],
     *,
     max_results: int = 20,
+    avoided_ingredient_concept_ids: list[str] | None = None,
 ) -> SearchOutcome:
     """Concept-based product search (evidence-first; no full-text fallback).
 
@@ -392,13 +393,27 @@ def search_products(
     2. Rank every product carrying at least one resolved concept by overlap
        count — simple relevance, not the full recommendation scorer (no user
        profile is involved; search is anonymous-safe).
+
+    ``avoided_ingredient_concept_ids`` — optional hard filter (Phase 6 B2, for
+    negation queries like "레티놀 없는 크림"): any product whose
+    ``ingredient_concept_ids`` intersects this set is skipped entirely, never
+    ranked. Mirrors the recommendation candidate generator's avoided-ingredient
+    hard filter so search and recommend honour a negated ingredient identically.
+    Defaults to ``None`` so existing callers are unaffected.
     """
     resolved = resolve_query_concepts(query_text, products)
     if not resolved:
         return SearchOutcome(query=query_text, resolved_concepts=[], results=[])
 
+    avoided = {str(cid) for cid in (avoided_ingredient_concept_ids or []) if cid}
+
     items: list[SearchResultItem] = []
     for product in products:
+        # Avoided-ingredient hard filter (concept-id join, same id space the
+        # ingredient axis resolves): a product carrying an avoided ingredient is
+        # excluded before ranking, not merely down-ranked.
+        if avoided and {str(v) for v in (product.get("ingredient_concept_ids") or [])} & avoided:
+            continue
         overlap = _product_overlap(product, resolved)
         if not overlap:
             continue

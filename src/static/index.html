@@ -5,15 +5,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>GraphRapping 데모</title>
 <link rel="stylesheet" href="/static/app.css">
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
-<script src="https://cdn.jsdelivr.net/npm/cytoscape@3/dist/cytoscape.min.js"></script>
+<script src="/static/vendor/chart.umd.min.js"></script>
+<script src="/static/vendor/cytoscape.min.js"></script>
 </head>
 <body>
 
 <div class="header">
   <h1>GraphRapping</h1>
-  <button class="btn btn-primary btn-sm" onclick="runPipeline()">파이프라인 실행</button>
-  <input class="input" style="width:80px" id="reviewLimit" value="100" placeholder="리뷰 수">
+  <button class="btn btn-primary btn-sm dev-only" onclick="runPipeline()">파이프라인 실행</button>
+  <input class="input dev-only" style="width:80px" id="reviewLimit" value="100" placeholder="리뷰 수">
+  <button class="btn btn-sm" id="devModeToggle" onclick="toggleDevMode()">🛠 개발자</button>
   <span class="status" id="headerStatus">데이터 미로드</span>
 </div>
 
@@ -57,31 +58,58 @@
             <label style="font-size:12px;color:var(--text2)">유저 선택</label>
             <select class="input" id="recUser" style="margin-top:4px"></select>
           </div>
-          <div style="margin:8px 0">
-            <label style="font-size:12px;color:var(--text2)">모드</label>
-            <select class="input" id="recMode" style="margin-top:4px">
-              <option value="explore">탐색 (Explore)</option>
-              <option value="strict">엄격 (Strict)</option>
-              <option value="compare">비교 (Compare)</option>
-            </select>
-            <div class="mode-desc" id="modeDesc">카테고리 불일치 시 감점만 적용 (penalty 0.3). 다양한 카테고리 탐색 가능. 기본 모드.</div>
+
+          <!-- User mode (default): intent presets. GET /api/recommend/presets
+               is the single source of truth for label/description -- see
+               loadRecommendPresets()/renderPresetCards() in app.js. -->
+          <div class="user-only" id="presetPanel">
+            <h3>추천 성향</h3>
+            <div id="presetCards"><div class="empty">프리셋 로딩 중...</div></div>
           </div>
-          <h3>가중치 조절 <span style="font-weight:400;font-size:11px;color:var(--text2)">(슬라이더 조작 시 설명 표시)</span></h3>
-          <div id="weightSliders"></div>
-          <h3>후처리 파라미터</h3>
-          <div class="slider-group">
-            <label><span>shrinkage_k</span><span id="skVal">10</span></label>
-            <input type="range" min="1" max="50" value="10" id="shrinkageK" oninput="document.getElementById('skVal').textContent=this.value">
-            <div class="weight-desc">리뷰 수가 적은 제품의 점수를 줄이는 정도. 값이 클수록 리뷰 적은 제품이 더 많이 감점됨. 공식: score × (리뷰수 / (리뷰수 + k))</div>
+
+          <!-- Developer mode: raw technical controls (unchanged behavior).
+               Hidden unless devModeToggle / ?dev=1 / localStorage gr_dev_mode
+               enables it -- see toggleDevMode() in app.js. -->
+          <div class="dev-only" id="devControls">
+            <div style="margin:8px 0">
+              <label style="font-size:12px;color:var(--text2)">모드 <span style="font-weight:400">(후보 게이팅 정책 -- 탐색/엄격/비교는 카테고리 불일치 처리 방식만 바꿉니다)</span></label>
+              <select class="input" id="recMode" style="margin-top:4px">
+                <option value="explore">탐색 (Explore)</option>
+                <option value="strict">엄격 (Strict)</option>
+                <option value="compare">비교 (Compare)</option>
+              </select>
+              <div class="mode-desc" id="modeDesc">카테고리 불일치 시 감점만 적용 (penalty 0.3). 다양한 카테고리 탐색 가능. 기본 모드.</div>
+            </div>
+            <h3>가중치 조절 <span style="font-weight:400;font-size:11px;color:var(--text2)">(슬라이더 조작 시 설명 표시)</span></h3>
+            <div id="weightSliders"></div>
+            <h3>후처리 파라미터</h3>
+            <div class="slider-group">
+              <label><span>shrinkage_k</span><span id="skVal">10</span></label>
+              <input type="range" min="1" max="50" value="10" id="shrinkageK" oninput="document.getElementById('skVal').textContent=this.value">
+              <div class="weight-desc">리뷰 수가 적은 제품의 점수를 줄이는 정도. 값이 클수록 리뷰 적은 제품이 더 많이 감점됨. 공식: score × (리뷰수 / (리뷰수 + k))</div>
+            </div>
+            <div class="slider-group">
+              <label><span>다양성 가중치</span><span id="dwVal">0.10</span></label>
+              <input type="range" min="0" max="30" value="10" id="diversityW" oninput="document.getElementById('dwVal').textContent=(this.value/100).toFixed(2)">
+              <div class="weight-desc">같은 브랜드/카테고리가 연속 노출되지 않도록 리랭킹 시 다양성 보너스 부여. 0이면 순수 점수 순서.</div>
+            </div>
           </div>
-          <div class="slider-group">
-            <label><span>다양성 가중치</span><span id="dwVal">0.10</span></label>
-            <input type="range" min="0" max="30" value="10" id="diversityW" oninput="document.getElementById('dwVal').textContent=(this.value/100).toFixed(2)">
-            <div class="weight-desc">같은 브랜드/카테고리가 연속 노출되지 않도록 리랭킹 시 다양성 보너스 부여. 0이면 순수 점수 순서.</div>
-          </div>
+
           <button class="btn btn-primary" style="width:100%;margin-top:12px" onclick="runRecommend()">추천 실행</button>
         </div>
         <div>
+          <!-- Integrated query bar (Phase 6 Track B3): POST /api/ask. Shown in
+               both user and developer mode -- see runAsk()/renderAskInterpretation()
+               in app.js. With a user selected the server resolves
+               resolved_mode="recommend" (existing card renderer reused as-is);
+               with "로그인 없이" selected (user_id null) it resolves
+               resolved_mode="search" (renderSearchResults()). -->
+          <div class="ask-bar">
+            <input class="input" id="askQuery" placeholder="검색하거나 질문하세요 — 예: 지성 피부에 맞는 순한 토너"
+              onkeydown="if(event.key==='Enter' && !event.isComposing) runAsk();">
+            <button class="btn btn-primary" id="askBtn" onclick="runAsk()">질문하기</button>
+          </div>
+          <div id="askInterpretation"></div>
           <div class="recommend-toolbar">
             <div id="recCategoryTabs" class="segmented-tabs"></div>
           </div>
@@ -118,6 +146,7 @@
   </div>
 </div>
 
-<script src="/static/app.js?v=20260623-active-category-context"></script>
+<script src="/static/graph_view.js?v=20260710-graph-view"></script>
+<script src="/static/app.js?v=20260710-graph-inline"></script>
 </body>
 </html>

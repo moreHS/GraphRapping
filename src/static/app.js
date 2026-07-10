@@ -2,7 +2,6 @@
 
 const API = '';
 let charts = {};
-let cyInstance = null;
 
 // =============================================================================
 // Navigation
@@ -16,6 +15,55 @@ function showSection(name) {
   if (name === 'quarantine') loadQuarantine();
   if (name === 'recommend') initRecommendPanel();
   if (name === 'graph') initGraphPanel();
+}
+
+// =============================================================================
+// Developer Mode (Phase 6 Track A2)
+// =============================================================================
+// Default OFF: hides technical recommendation controls (weight sliders, mode
+// select, shrinkage/diversity sliders, result-card score-layer breakdown,
+// raw/shrink score numbers) and the header's pipeline-run controls, leaving
+// only the evidence-first UI (evidence chips, explanation, explanation
+// paths+snippets, source trust, next question, hooks).
+//
+// State: localStorage(gr_dev_mode) + URL `?dev=1` (which also persists to
+// localStorage, so a shared "?dev=1" link keeps working on later reloads
+// without the query param). Visibility is pure CSS
+// (body.dev-mode-on toggles .dev-only/.user-only, see app.css), so toggling
+// applies instantly to already-rendered content (e.g. recommend result
+// cards already on screen) with no re-render needed.
+const DEV_MODE_STORAGE_KEY = 'gr_dev_mode';
+
+function isDevMode() {
+  return localStorage.getItem(DEV_MODE_STORAGE_KEY) === '1';
+}
+
+function setDevMode(enabled) {
+  localStorage.setItem(DEV_MODE_STORAGE_KEY, enabled ? '1' : '0');
+  applyDevModeUI();
+}
+
+function toggleDevMode() {
+  setDevMode(!isDevMode());
+}
+
+function applyDevModeUI() {
+  const enabled = isDevMode();
+  document.body.classList.toggle('dev-mode-on', enabled);
+  const btn = document.getElementById('devModeToggle');
+  if (btn) {
+    btn.classList.toggle('btn-primary', enabled);
+    btn.textContent = enabled ? '🛠 개발자 모드 ON' : '🛠 개발자';
+  }
+}
+
+function initDevMode() {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('dev') === '1') {
+    setDevMode(true);  // URL override also persists to localStorage
+  } else {
+    applyDevModeUI();
+  }
 }
 
 // =============================================================================
@@ -326,16 +374,29 @@ const RECOMMEND_CATEGORY_TABS = [
 let recommendCategoryTabs = RECOMMEND_CATEGORY_TABS;
 let activeRecommendCategory = 'all';
 let recommendHasRun = false;
+// Last rendered recommend results + the user they were computed for. The
+// inline "why this" subgraph (toggleRecGraph) reads these instead of the
+// response being re-embedded in the DOM, and instead of re-fetching -- the
+// subgraph is built purely from explanation_paths already in the response
+// (server does NOT expose a recompute endpoint; recomputing would drift from
+// what the user saw once presets/query injection land).
+let lastRecommendResults = [];
+let lastRecommendUserId = '';
 
 async function initRecommendPanel() {
+  // Non-login option (Phase 6 Track B3): lets askQuery submit as an anonymous
+  // search (user_id null, resolved_mode="search") without picking a user.
+  // Set before the /api/users fetch so it's present even if that call fails.
+  const sel = document.getElementById('recUser');
+  sel.innerHTML = '<option value="">로그인 없이 (검색만)</option>';
   try {
     const users = await fetch(API + '/api/users').then(r => r.json());
-    const sel = document.getElementById('recUser');
-    sel.innerHTML = users.items.map(u => (
+    sel.innerHTML += users.items.map(u => (
       `<option value="${displayText(u.user_id)}">${displayText(u.user_id)} (${displayText(u.skin_type, '')}/${displayText(u.gender, '')})</option>`
     )).join('');
   } catch(e) {}
   await loadRecommendCategories();
+  await loadRecommendPresets();
   // Mode description
   const modeDesc = document.getElementById('modeDesc');
   const modeSelect = document.getElementById('recMode');
@@ -403,6 +464,57 @@ function setRecommendCategory(group) {
   if (recommendHasRun) runRecommend();
 }
 
+// =============================================================================
+// Recommend intent presets (Phase 6 Track A1 frontend)
+// =============================================================================
+// GET /api/recommend/presets is the single source of truth for preset
+// key/label/description -- no preset copy is hardcoded here. User mode (dev
+// mode OFF) shows these cards instead of the raw weight/mode/shrinkage
+// controls; runRecommend() sends only `preset` in that case (see below).
+let recommendPresets = [];
+let selectedPresetKey = 'balanced';
+
+async function loadRecommendPresets() {
+  try {
+    const payload = await fetch(API + '/api/recommend/presets').then(r => r.json());
+    recommendPresets = Array.isArray(payload.items) ? payload.items : [];
+  } catch(e) {
+    recommendPresets = [];
+  }
+  if (recommendPresets.length && !recommendPresets.some(p => p.key === selectedPresetKey)) {
+    selectedPresetKey = recommendPresets[0].key;
+  }
+  renderPresetCards();
+}
+
+function renderPresetCards() {
+  const container = document.getElementById('presetCards');
+  if (!container) return;
+  if (!recommendPresets.length) {
+    container.innerHTML = '<div class="empty">프리셋을 불러올 수 없습니다</div>';
+    return;
+  }
+  container.innerHTML = recommendPresets.map(p => {
+    const checked = p.key === selectedPresetKey;
+    return `
+      <label class="preset-card${checked ? ' active' : ''}">
+        <input type="radio" name="recPreset" value="${displayText(p.key)}" ${checked ? 'checked' : ''}
+          onchange="selectPreset(${jsStringArg(p.key)})">
+        <div class="preset-card-body">
+          <div class="preset-card-label">${displayText(p.label_ko || p.key)}</div>
+          <div class="preset-card-desc">${displayText(p.description_ko, '')}</div>
+        </div>
+      </label>
+    `;
+  }).join('');
+}
+
+function selectPreset(key) {
+  selectedPresetKey = key;
+  renderPresetCards();
+  if (recommendHasRun) runRecommend();
+}
+
 function showWeightDesc(key) {
   const el = document.getElementById('desc_' + key);
   if (el) el.style.display = 'block';
@@ -411,27 +523,44 @@ function showWeightDesc(key) {
 async function runRecommend() {
   const userId = document.getElementById('recUser').value;
   if (!userId) return;
+  // Clear any stale ask-interpretation chips from a previous /api/ask call --
+  // a preset re-run otherwise leaves them floating over the new results (G1).
+  clearAskInterpretation();
 
-  // Collect weights from sliders — check if any were changed from default
-  const weights = {};
-  let customized = false;
-  for (const k of Object.keys(DEFAULT_WEIGHTS)) {
-    const el = document.getElementById('w_' + k);
-    if (!el) continue;
-    const val = parseInt(el.value) / 100;
-    weights[k] = val;
-    if (Math.abs(val - DEFAULT_WEIGHTS[k]) > 0.005) customized = true;
+  let body;
+  if (isDevMode()) {
+    // Developer mode: unchanged behavior -- send slider/mode values as
+    // before. The server now also respects a shrinkage_k-only change (no
+    // weights touched), which it previously discarded silently.
+    const weights = {};
+    let customized = false;
+    for (const k of Object.keys(DEFAULT_WEIGHTS)) {
+      const el = document.getElementById('w_' + k);
+      if (!el) continue;
+      const val = parseInt(el.value) / 100;
+      weights[k] = val;
+      if (Math.abs(val - DEFAULT_WEIGHTS[k]) > 0.005) customized = true;
+    }
+    body = {
+      user_id: userId,
+      mode: document.getElementById('recMode').value,
+      category_group: activeRecommendCategory,
+      top_k: 10,
+      weights: customized ? weights : null,  // null → server uses YAML config
+      shrinkage_k: parseFloat(document.getElementById('shrinkageK').value),
+      diversity_weight: parseInt(document.getElementById('diversityW').value) / 100,
+    };
+  } else {
+    // User mode: send only the selected intent preset -- no weights/
+    // shrinkage/diversity/mode. The server resolves all of those from
+    // configs/recommend_presets.yaml (see /api/recommend `preset` handling).
+    body = {
+      user_id: userId,
+      category_group: activeRecommendCategory,
+      top_k: 10,
+      preset: selectedPresetKey,
+    };
   }
-
-  const body = {
-    user_id: userId,
-    mode: document.getElementById('recMode').value,
-    category_group: activeRecommendCategory,
-    top_k: 10,
-    weights: customized ? weights : null,  // null → server uses YAML config
-    shrinkage_k: parseFloat(document.getElementById('shrinkageK').value),
-    diversity_weight: parseInt(document.getElementById('diversityW').value) / 100,
-  };
 
   const res = await fetch(API + '/api/recommend', {
     method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body),
@@ -458,8 +587,59 @@ function renderPathSnippets(snippets) {
   `;
 }
 
+// Tear down any inline subgraphs from the previous render before #recResults'
+// cards are replaced, so their cytoscape instances are released (no leak).
+// Shared by both result renderers below -- runAsk() (Phase 6 Track B3) can
+// route to either renderRecommendResults or renderSearchResults depending on
+// resolved_mode, and either may follow the other on the same #recResults.
+function destroyInlineRecGraphs() {
+  document.querySelectorAll('#recResults .rec-graph-inline').forEach(c => GraphView.destroy(c));
+}
+
+// Developer-mode summary of preset_used/weights_used (Phase 6 closing review
+// G3). Rendered unconditionally into #recMeta -- like the rec-card dev-only
+// blocks above, visibility is pure CSS (.dev-only, see app.css) so no
+// re-render is needed when the developer-mode toggle flips. Works for both
+// /api/recommend (always has weights_used) and /api/ask's recommend-mode
+// envelope (may omit weights_used): each part renders only if its field is
+// present, and the whole block is omitted if neither is.
+function renderDevMetaBlock(data) {
+  const parts = [];
+  const preset = data.preset_used;
+  if (preset && typeof preset === 'object') {
+    const overrideCount = preset.weight_overrides ? Object.keys(preset.weight_overrides).length : 0;
+    parts.push(`
+      <div class="dev-meta-row">
+        <span class="label">preset_used:</span>
+        ${displayText(preset.key)} (${displayText(preset.label_ko, preset.key)}) ·
+        mode: ${displayText(preset.mode)} ·
+        shrinkage_k: ${displayText(preset.shrinkage_k)} ·
+        diversity_weight: ${displayText(preset.diversity_weight)} ·
+        override ${fmtCount(overrideCount)}개
+      </div>
+    `);
+  }
+  const weights = data.weights_used;
+  if (weights && typeof weights === 'object') {
+    const keys = Object.keys(weights);
+    const diffCount = keys.filter(k => !(k in DEFAULT_WEIGHTS) || Math.abs(Number(weights[k]) - DEFAULT_WEIGHTS[k]) > 0.0001).length;
+    parts.push(`
+      <details class="dev-meta-row">
+        <summary>weights_used: ${keys.length}개 (기본과 다른 항목: ${diffCount})</summary>
+        <pre>${jsonHtml(weights)}</pre>
+      </details>
+    `);
+  }
+  if (!parts.length) return '';
+  return `<div class="dev-only dev-meta-block">${parts.join('')}</div>`;
+}
+
 function renderRecommendResults(data) {
+  destroyInlineRecGraphs();
+
   const results = data.results || [];
+  lastRecommendResults = results;
+  lastRecommendUserId = data.user_id || document.getElementById('recUser').value || '';
   const categoryLabel = data.category_label || (
     recommendCategoryTabs.find(tab => tab.group === activeRecommendCategory)?.label || activeRecommendCategory
   );
@@ -470,14 +650,15 @@ function renderRecommendResults(data) {
       <div class="kpi-card"><div class="label">후보군</div><div class="value blue">${fmtCount(data.candidate_count)}</div></div>
       <div class="kpi-card"><div class="label">최종 결과</div><div class="value green">${results.length}</div></div>
       <div class="kpi-card"><div class="label">다음 질문</div><div class="value" style="font-size:13px">${data.next_question ? displayText(data.next_question.question) : '-'}</div></div>
-    </div>`;
+    </div>
+    ${renderDevMetaBlock(data)}`;
 
   const container = document.getElementById('recResults');
   if (!results.length) {
     container.innerHTML = '<div class="empty">추천 결과 없음 (유저와 정렬된 상품마스터/리뷰그래프/구매 evidence 부족)</div>';
     return;
   }
-  container.innerHTML = results.map(r => {
+  container.innerHTML = results.map((r, idx) => {
     const product = r.product || {};
     const sourceTrust = r.source_trust || {};
     const eligibility = r.eligibility || {};
@@ -502,12 +683,13 @@ function renderRecommendResults(data) {
         <div class="rank">#${r.rank || '-'}</div>
         <div>
           <strong>${displayText(productName)}</strong>
-          <span class="score">추천점수: ${finalScore} / 정렬점수: ${rankScore} (raw: ${rawScore}, shrink: ${shrinkedScore}, diversity: ${diversityText})</span>
+          <span class="score">추천점수: ${finalScore} / 정렬점수: ${rankScore}</span>
+          <div class="score-debug dev-only">raw: ${rawScore} · shrink: ${shrinkedScore} · diversity: ${diversityText}</div>
           <div class="explanation">${displayText(r.explanation, '설명 없음')}</div>
           <div class="hooks" style="margin-top:8px">
             <span><span class="label">Evidence:</span> ${evidenceFamilies.length ? evidenceFamilies.map(f => `<span class="chip rel">${displayText(f)}</span>`).join(' ') : '없음'}</span>
           </div>
-          <div class="hooks" style="margin-top:8px">
+          <div class="hooks dev-only" style="margin-top:8px">
             <span><span class="label">상품마스터:</span> ${fmtScore(scoreLayers.master_truth_score)}</span>
             <span><span class="label">리뷰그래프:</span> ${fmtScore(scoreLayers.review_graph_score)}</span>
             <span><span class="label">프로필:</span> ${fmtScore(scoreLayers.profile_fit_score)}</span>
@@ -542,6 +724,285 @@ function renderRecommendResults(data) {
             <span><span class="label">🔍 탐색:</span> ${displayText(hooks.discovery)}</span>
             <span><span class="label">🤔 고려:</span> ${displayText(hooks.consideration)}</span>
             <span><span class="label">🎯 전환:</span> ${displayText(hooks.conversion)}</span>
+          </div>
+          ${overlap.length ? `<div style="margin-top:8px">${overlap.map(c => `<span class="chip bee">${displayText(c)}</span>`).join('')}</div>` : ''}
+          <div class="rec-graph-actions">
+            <button class="btn btn-sm rec-graph-toggle" type="button" id="rec-graph-btn-${idx}" onclick="toggleRecGraph(${idx})">🕸 그래프</button>
+          </div>
+          <div class="rec-graph-inline" id="rec-graph-${idx}" style="display:none"></div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+// =============================================================================
+// Recommendation inline "why this" subgraph (Phase 6 Track A3)
+// =============================================================================
+// Per-card cytoscape mini-view built entirely from the result's
+// explanation_paths (user node + product node + one concept node per path).
+// Independent per card thanks to GraphView's container-keyed instances.
+
+// explanation_paths[].type uses the explainer's concept-type vocabulary, which
+// is finer-grained than the /api/graphs/* node types that TYPE_COLORS keys off
+// of. Collapse each concept type onto the matching color key so the subgraph
+// shares the Graph Viewer's color language; unknown types fall through to the
+// raw type (GraphView greys anything not in TYPE_COLORS).
+const CONCEPT_TYPE_TO_NODE_TYPE = {
+  keyword: 'keyword', semantic_keyword: 'keyword', weak_semantic_keyword: 'keyword', catalog_keyword: 'keyword',
+  bee_attr: 'bee_attr', semantic_bee_attr: 'bee_attr', weak_semantic_bee_attr: 'bee_attr',
+  concern: 'concern', concern_bridge: 'concern',
+  context: 'context',
+  brand: 'brand', repurchase_brand: 'brand', recent_purchase_brand: 'brand',
+  category: 'category', active_category: 'category', repurchase_category: 'category',
+  goal_master: 'goal',
+  ingredient: 'ingredient',
+  tool: 'tool',
+  coused: 'coused',
+};
+const REC_GRAPH_NEG_COLOR = '#ef4444';  // negative-contribution edges (matches --red)
+
+function buildExplanationSubgraph(result, userId) {
+  const paths = Array.isArray(result.explanation_paths) ? result.explanation_paths : [];
+  const product = result.product || {};
+  const productId = result.product_id || product.product_id || 'product';
+  const productName = product.representative_product_name
+    ? [product.brand_name, product.representative_product_name].filter(Boolean).join(' ')
+    : String(productId);
+  const userNodeId = 'user:' + userId;
+  const productNodeId = 'product:' + productId;
+
+  // Relative edge width: |contribution| scaled to 1px..5px against the card's
+  // own largest |contribution| (each card scales independently).
+  const maxAbs = paths.reduce((m, p) => Math.max(m, Math.abs(Number(p.contribution) || 0)), 0);
+  const widthFor = (c) => {
+    const a = Math.abs(Number(c) || 0);
+    return maxAbs > 0 ? 1 + (a / maxAbs) * 4 : 1;
+  };
+
+  // Merge duplicate concept nodes (same concept reached by >1 path) but keep
+  // one edge pair per path; accumulate snippet counts across merged paths.
+  const conceptNodes = new Map();  // node id -> {base, type, snippetCount}
+  const edges = [];
+  paths.forEach((p, idx) => {
+    const rawType = p.type || 'concept';
+    const nodeType = CONCEPT_TYPE_TO_NODE_TYPE[rawType] || rawType;
+    const seg = p.id ? String(p.id).split(':').pop() : rawType;
+    const conceptId = 'c:' + rawType + ':' + (p.id || idx);
+    const snips = Array.isArray(p.snippets) ? p.snippets.length : 0;
+    const existing = conceptNodes.get(conceptId);
+    if (existing) {
+      existing.snippetCount += snips;
+    } else {
+      conceptNodes.set(conceptId, { base: seg, type: nodeType, snippetCount: snips });
+    }
+    const contribution = Number(p.contribution) || 0;
+    const width = widthFor(contribution);
+    const color = contribution < 0 ? REC_GRAPH_NEG_COLOR : null;
+    edges.push({ source: userNodeId, target: conceptId, label: p.user_edge || '', width, color });
+    edges.push({ source: conceptId, target: productNodeId, label: p.product_edge || '', width, color });
+  });
+
+  const nodes = [
+    { id: userNodeId, label: String(userId || '유저'), type: 'user', main: true },
+    { id: productNodeId, label: productName, type: 'product', main: true },
+  ];
+  conceptNodes.forEach((v, id) => {
+    const label = v.snippetCount > 0 ? `${v.base} 💬${v.snippetCount}` : v.base;
+    nodes.push({ id, label, type: v.type });
+  });
+  return { nodes, edges };
+}
+
+function toggleRecGraph(idx) {
+  const container = document.getElementById('rec-graph-' + idx);
+  if (!container) return;
+  const btn = document.getElementById('rec-graph-btn-' + idx);
+  const isOpen = container.dataset.open === '1';
+  if (isOpen) {
+    GraphView.destroy(container);
+    container.innerHTML = '';
+    container.style.display = 'none';
+    container.dataset.open = '0';
+    if (btn) btn.classList.remove('active');
+    return;
+  }
+  const result = lastRecommendResults[idx];
+  if (!result) return;
+  container.style.display = 'block';
+  container.dataset.open = '1';
+  if (btn) btn.classList.add('active');
+  const paths = result.explanation_paths || [];
+  if (!paths.length) {
+    // Empty state only -- do not spin up cytoscape for nothing to draw.
+    container.innerHTML = '<div class="empty">설명 경로가 없는 추천입니다</div>';
+    return;
+  }
+  container.innerHTML = '';
+  GraphView.render(container, buildExplanationSubgraph(result, lastRecommendUserId), {
+    layout: { padding: 24, nodeRepulsion: 6000, idealEdgeLength: 90 },
+  });
+}
+
+// =============================================================================
+// Integrated query bar: POST /api/ask (Phase 6 Track B3)
+// =============================================================================
+// One input serves both intents -- the server decides resolved_mode from
+// whether user_id is present:
+//   - user selected      -> resolved_mode="recommend": query concepts are
+//     injected as a request-scoped preference on top of the existing
+//     recommend path. Results are the exact /api/recommend result shape
+//     (explanation_paths included), so renderRecommendResults() is reused
+//     as-is -- no third card layout.
+//   - "로그인 없이" (user_id null) -> resolved_mode="search": results are the
+//     /api/search shape (no explanation_paths, hence no graph button here).
+// Chips are display-only for this scope: there is no per-chip "remove and
+// re-run"; editing the query text and resubmitting is the interaction.
+const ASK_CHIP_FALLBACK_COLOR = '#6b7280';  // matches graph_view.js's DEFAULT_NODE_COLOR
+
+function conceptIdSegment(id) {
+  return String(id || '').split(':').pop();
+}
+
+function askConceptColor(conceptType) {
+  const colors = window.GraphView && GraphView.TYPE_COLORS;
+  return (colors && colors[conceptType]) || ASK_CHIP_FALLBACK_COLOR;
+}
+
+function clearAskInterpretation() {
+  const el = document.getElementById('askInterpretation');
+  if (el) el.innerHTML = '';
+}
+
+function renderAskError(message) {
+  const el = document.getElementById('askInterpretation');
+  if (!el) return;
+  el.innerHTML = `<div class="ask-banner ask-banner-error">${displayText(message)}</div>`;
+}
+
+function renderAskInterpretation(data) {
+  const el = document.getElementById('askInterpretation');
+  if (!el) return;
+  const interp = data.interpretation || {};
+  const resolved = interp.resolved_concepts || [];
+  const avoided = interp.avoided_ingredient_concept_ids || [];
+  const unresolved = interp.unresolved_terms || [];
+  // (interp.warnings || []) -- defensive fallback so this renders safely
+  // whether or not the response already carries the warnings contract.
+  const warnings = interp.warnings || [];
+
+  const chips = resolved.map(c => {
+    const seg = conceptIdSegment(c.concept_id);
+    const label = (c.label && String(c.label).trim()) || seg;
+    const color = askConceptColor(c.concept_type);
+    return `<span class="chip ask-chip" style="background:${color}26;color:${color};border-color:${color}66" title="${displayText(c.concept_id)}">${displayText(label)}</span>`;
+  }).concat(avoided.map(id => (
+    `<span class="chip ask-chip ask-chip-avoid" title="${displayText(id)}">🚫 ${displayText(conceptIdSegment(id))}</span>`
+  ))).concat(unresolved.map(term => (
+    `<span class="chip ask-chip ask-chip-unresolved" title="아직 사전에 없는 표현이에요">${displayText(term)}</span>`
+  )));
+
+  const badge = interp.llm_used === false ? '<span class="ask-badge">사전 해석</span>' : '';
+  const banner = data.relaxed ? '<div class="ask-banner ask-banner-info">조건에 꼭 맞는 상품이 적어 관련도순으로 보여드려요</div>' : '';
+  const warningBanners = warnings.map(w => `<div class="ask-banner ask-banner-warn">${displayText(w)}</div>`).join('');
+
+  if (!chips.length && !badge && !banner && !warningBanners) {
+    el.innerHTML = '';
+    return;
+  }
+  el.innerHTML = `
+    ${warningBanners}
+    ${banner}
+    <div class="ask-interpretation-row">
+      ${chips.length || badge ? '<span class="ask-interpretation-label">질의 해석</span>' : ''}
+      ${badge}
+      ${chips.join('')}
+    </div>
+  `;
+}
+
+async function runAsk() {
+  const btn = document.getElementById('askBtn');
+  if (btn && btn.disabled) return;  // already in flight -- guards a repeat Enter
+
+  const queryEl = document.getElementById('askQuery');
+  const query = (queryEl.value || '').trim();
+  const userId = document.getElementById('recUser').value || null;
+
+  if (btn) { btn.disabled = true; btn.textContent = '해석 중...'; }
+  clearAskInterpretation();
+
+  try {
+    const res = await fetch(API + '/api/ask', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        user_id: userId,
+        query,
+        preset: isDevMode() ? null : selectedPresetKey,
+        category_group: activeRecommendCategory,
+        top_k: 10,
+      }),
+    });
+    if (!res.ok) {
+      let detail = '질의를 처리할 수 없습니다.';
+      try {
+        const errBody = await res.json();
+        if (errBody && errBody.detail) detail = errBody.detail;
+      } catch(e) {}
+      renderAskError(detail);
+      return;
+    }
+    const data = await res.json();
+    recommendHasRun = true;
+    renderAskInterpretation(data);
+    if (data.resolved_mode === 'recommend') {
+      renderRecommendResults(data);
+    } else {
+      renderSearchResults(data);
+    }
+  } catch(e) {
+    renderAskError('질의 처리 중 오류가 발생했습니다: ' + e.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '질문하기'; }
+  }
+}
+
+// Simple search-mode result card: /api/search-shaped items (product,
+// overlap_concepts, relevance_score, eligibility) with no explanation_paths,
+// so no 🕸 그래프 button (there is no path to visualize).
+function renderSearchResults(data) {
+  destroyInlineRecGraphs();
+
+  // /api/ask's search-mode envelope carries none of /api/recommend's meta
+  // fields (candidate_count, next_question, ...) -- clear rather than show a
+  // KPI grid full of dashes left over from a previous recommend run.
+  const metaEl = document.getElementById('recMeta');
+  if (metaEl) metaEl.innerHTML = '';
+
+  const results = data.results || [];
+  const container = document.getElementById('recResults');
+  if (!container) return;
+  if (!results.length) {
+    container.innerHTML = '<div class="empty">검색 결과 없음 (개념이 해석되지 않았거나 겹치는 상품이 없습니다)</div>';
+    return;
+  }
+  container.innerHTML = results.map((r, idx) => {
+    const product = r.product || {};
+    const evidenceFamilies = (r.eligibility || {}).evidence_families || [];
+    const overlap = r.overlap_concepts || [];
+    const productName = product.representative_product_name
+      ? [product.brand_name, product.representative_product_name].filter(Boolean).join(' ')
+      : (r.product_id || product.product_id || '-');
+    return `
+      <div class="rec-card">
+        <div class="rank">#${idx + 1}</div>
+        <div>
+          <strong>${displayText(productName)}</strong>
+          <span class="score">관련도: ${fmtScore(r.relevance_score)}</span>
+          <div class="hooks" style="margin-top:8px">
+            <span><span class="label">브랜드:</span> ${displayText(product.brand_name)}</span>
+            <span><span class="label">카테고리:</span> ${displayText(product.category_name)}</span>
+            <span><span class="label">Evidence:</span> ${evidenceFamilies.length ? evidenceFamilies.map(f => `<span class="chip rel">${displayText(f)}</span>`).join(' ') : '없음'}</span>
           </div>
           ${overlap.length ? `<div style="margin-top:8px">${overlap.map(c => `<span class="chip bee">${displayText(c)}</span>`).join('')}</div>` : ''}
         </div>
@@ -580,71 +1041,7 @@ async function loadGraph() {
       ? `Corpus view: promoted 시그널만 표시 (nodes: ${data.nodes.length}, edges: ${data.edges.length})`
       : `Evidence view: 전체 시그널 표시 (nodes: ${data.nodes.length}, edges: ${data.edges.length})`;
   }
-  renderGraph(data);
-}
-
-const TYPE_COLORS = {
-  product: '#6366f1', user: '#8b5cf6', bee_attr: '#f59e0b', keyword: '#eab308',
-  context: '#22c55e', concern_pos: '#10b981', concern_neg: '#ef4444',
-  tool: '#3b82f6', comparison: '#ec4899', coused: '#f97316',
-  brand: '#a78bfa', category: '#67e8f9', ingredient: '#34d399', goal: '#4ade80',
-  avoid_ingredient: '#f87171', concern: '#fbbf24', goal: '#4ade80',
-};
-
-function renderGraph(data) {
-  const container = document.getElementById('graph-container');
-  if (cyInstance) cyInstance.destroy();
-  const elements = [];
-  data.nodes.forEach(n => {
-    elements.push({ data: {
-      id: n.id,
-      label: n.label || n.id,
-      type: n.type,
-      main: n.main,
-      color: TYPE_COLORS[n.type] || '#6b7280',
-      size: n.main ? 40 : 25,
-    }});
-  });
-  data.edges.forEach(e => {
-    elements.push({ data: {
-      source: e.source,
-      target: e.target,
-      label: e.label,
-      weight: Math.max(1, Math.min((e.weight || 1) * 3, 6)),
-    }});
-  });
-  cyInstance = cytoscape({
-    container,
-    elements,
-    style: [
-      { selector: 'node', style: {
-        'label': 'data(label)',
-        'font-size': 10,
-        'color': '#e4e6eb',
-        'text-valign': 'bottom',
-        'text-margin-y': 4,
-        'background-color': 'data(color)',
-        'width': 'data(size)',
-        'height': 'data(size)',
-        'text-outline-color': '#0f1117',
-        'text-outline-width': 2,
-      }},
-      { selector: 'edge', style: {
-        'width': 'data(weight)',
-        'line-color': '#4b5563',
-        'target-arrow-color': '#4b5563',
-        'target-arrow-shape': 'triangle',
-        'curve-style': 'bezier',
-        'label': 'data(label)',
-        'font-size': 8,
-        'color': '#9ca3af',
-        'text-rotation': 'autorotate',
-        'text-outline-color': '#0f1117',
-        'text-outline-width': 1,
-      }},
-    ],
-    layout: { name: 'cose', padding: 40, nodeRepulsion: 8000, idealEdgeLength: 120 },
-  });
+  GraphView.render(document.getElementById('graph-container'), data);
 }
 
 // =============================================================================
@@ -682,4 +1079,5 @@ async function loadQuarantine() {
 // =============================================================================
 // Init
 // =============================================================================
+initDevMode();
 loadDashboard();

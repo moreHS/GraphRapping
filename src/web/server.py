@@ -4,6 +4,9 @@ FastAPI server for GraphRapping demo UI.
 
 from __future__ import annotations
 
+import asyncio
+import copy
+import functools
 import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -27,6 +30,13 @@ from src.rec.scorer import Scorer
 from src.rec.reranker import rerank
 from src.rec.explainer import explain, ExplanationService
 from src.rec.search import search_products
+# `_product_overlap` is imported read-only: it is the exact predicate search uses
+# to decide "does this product carry these concepts", which /api/ask reuses to
+# narrow the recommend candidate universe to query-relevant products (no logic is
+# reimplemented, and search.py itself is unmodified beyond search_products' sig).
+from src.rec.search import MatchedConcept, _product_overlap
+from src.rec.semantic_compatibility import normalize_signal_id
+from src.rec.query_understanding import understand_query, QueryInterpretation
 from src.rec.provenance_provider import (
     DBProvenanceProvider,
     fetch_product_signals,
@@ -40,6 +50,7 @@ from src.rec.category_groups import (
     classify_product_category_group,
     recommend_category_counts,
 )
+from src.common.config_loader import load_yaml
 from src.common.enums import RecommendationMode
 from src.web.review_summary_sidecar import fetch_sidecar_summaries
 
@@ -439,71 +450,128 @@ class RecommendRequest(BaseModel):
     weights: dict[str, float] | None = None
     shrinkage_k: float = 10.0
     diversity_weight: float = 0.1
+    preset: str | None = None
 
 
-@app.post("/api/recommend")
-async def recommend(req: RecommendRequest):
-    _check_serving_ready()
-    store = get_serving_store()
-    user = await store.get_user(req.user_id)
-    if not user:
-        raise HTTPException(404, "User not found")
+# RecommendRequest.shrinkage_k's own field default -- used to detect "caller
+# customized shrinkage_k without sending weights" (the C2 fix below) without
+# hardcoding the literal a second time.
+_DEFAULT_SHRINKAGE_K: float = float(RecommendRequest.model_fields["shrinkage_k"].default)
 
-    mode_map = {"strict": RecommendationMode.STRICT, "explore": RecommendationMode.EXPLORE, "compare": RecommendationMode.COMPARE}
-    mode = mode_map.get(req.mode, RecommendationMode.EXPLORE)
 
-    # Candidate path (Phase 2.2): category universe -> optional SQL prefilter ->
-    # in-memory scoring on the reduced set. The SQL prefilter (db mode default)
-    # only pushes the avoided-ingredient hard filter to SQL, which the in-memory
-    # full traversal applies identically, so the candidate set is unchanged.
-    product_map = {p["product_id"]: p for p in await store.get_products()}
-    requested_category_group = req.category_group if req.category_group in RECOMMEND_CATEGORY_LABELS else "all"
-    if requested_category_group == "all":
-        category_universe_ids = list(product_map.keys())
-    else:
-        category_universe_ids = [
-            pid
-            for pid, product in product_map.items()
-            if classify_product_category_group(product) == requested_category_group
+# =============================================================================
+# Recommend intent presets (Phase 6 Track A1)
+# =============================================================================
+#
+# A preset is a server-side named combination of the *existing* mode/weights/
+# shrinkage_k/diversity_weight knobs -- no new scoring path. `configs/
+# recommend_presets.yaml` is the single source of truth; the frontend reads it
+# via GET /api/recommend/presets instead of hardcoding preset copy.
+#
+# Not cached: the YAML is tiny and this mirrors Scorer.load_config(), which
+# also re-reads scoring_weights.yaml on every call.
+
+_RECOMMEND_PRESETS_FILENAME = "recommend_presets.yaml"
+
+
+def _load_recommend_presets() -> dict[str, dict[str, Any]]:
+    data = load_yaml(_RECOMMEND_PRESETS_FILENAME)
+    presets = data.get("presets") or {}
+    if not isinstance(presets, dict):
+        raise HTTPException(500, f"{_RECOMMEND_PRESETS_FILENAME} is malformed: 'presets' must be a mapping")
+    return presets
+
+
+def _resolve_preset(preset_key: str) -> dict[str, Any]:
+    presets = _load_recommend_presets()
+    preset = presets.get(preset_key)
+    if preset is None:
+        raise HTTPException(
+            400,
+            f"Unknown preset '{preset_key}'. Available: {sorted(presets)}",
+        )
+    return preset
+
+
+@app.get("/api/recommend/presets")
+async def recommend_presets():
+    presets = _load_recommend_presets()
+    return {
+        "items": [
+            {
+                "key": key,
+                "label_ko": preset.get("label_ko", key),
+                "description_ko": preset.get("description_ko", ""),
+            }
+            for key, preset in presets.items()
         ]
+    }
 
-    prefiltered_product_ids = category_universe_ids
+
+def _category_universe_ids(
+    product_map: dict[str, dict[str, Any]],
+    requested_category_group: str,
+) -> list[str]:
+    """Product ids in the requested recommend category group (all → every id)."""
+    if requested_category_group == "all":
+        return list(product_map.keys())
+    return [
+        pid
+        for pid, product in product_map.items()
+        if classify_product_category_group(product) == requested_category_group
+    ]
+
+
+async def _run_scored_pipeline(
+    *,
+    store: ServingStore,
+    user_profile: dict[str, Any],
+    product_map: dict[str, dict[str, Any]],
+    candidate_universe_ids: list[str],
+    mode: RecommendationMode,
+    scorer: Scorer,
+    diversity_weight: float,
+    top_k: int,
+) -> tuple[list[dict[str, Any]], int]:
+    """Shared recommend pipeline: prefilter -> candidates -> score -> rerank ->
+    explain -> per-path snippets -> result dicts.
+
+    Extracted verbatim from the /api/recommend handler so /api/ask's query-scoped
+    recommend mode reuses the identical candidate/score/explain/snippet path. The
+    only differences live in the caller: which user profile is scored, which
+    candidate universe is scored, and any post-hoc explanation relabeling. Returns
+    the result dicts and the raw candidate count (for the response candidate_count).
+    """
+    prefiltered_product_ids = candidate_universe_ids
     if _candidate_prefilter_enabled():
         # Optional store capability (duck-typed like provenance.prefetch): the
         # DB store narrows via SQL; a store without it leaves the universe as-is.
         prefilter = getattr(store, "prefilter_candidate_ids", None)
         if prefilter is not None:
             prefiltered_product_ids = await prefilter(
-                user_profile=user,
-                candidate_universe=category_universe_ids,
+                user_profile=user_profile,
+                candidate_universe=candidate_universe_ids,
             )
 
     candidates = generate_candidates_prefiltered(
-        user_profile=user,
+        user_profile=user_profile,
         prefiltered_product_ids=prefiltered_product_ids,
         product_profiles_by_id=product_map,
         mode=mode,
         max_candidates=50,
     )
 
-    scorer = Scorer()
-    if req.weights:
-        scorer.load_from_dict(req.weights, shrinkage_k=req.shrinkage_k)
-    else:
-        scorer.load_config()
-    weights = scorer.weights
-
     scored = []
     for c in candidates:
         p = product_map.get(c.product_id)
         if p:
-            s = scorer.score(user, p, c.overlap_concepts)
+            s = scorer.score(user_profile, p, c.overlap_concepts)
             scored.append((c, s))
 
     scored.sort(key=lambda x: x[1].final_score, reverse=True)
 
     reranked = rerank([s for _, s in scored], product_profiles=product_map,
-                      diversity_weight=req.diversity_weight, top_k=req.top_k)
+                      diversity_weight=diversity_weight, top_k=top_k)
     summary_by_product = await fetch_sidecar_summaries([r.product_id for r in reranked])
 
     # Pre-pass: pair each reranked product with its candidate/score/explanation.
@@ -553,20 +621,109 @@ async def recommend(req: RecommendRequest):
             "hooks": {"discovery": hooks.discovery, "consideration": hooks.consideration, "conversion": hooks.conversion},
         })
 
+    return results, len(candidates)
+
+
+@app.post("/api/recommend")
+async def recommend(req: RecommendRequest):
+    if req.preset and req.weights:
+        raise HTTPException(400, "Specify either 'preset' or 'weights', not both.")
+
+    # Preset resolution (C2 fix folded in below): a preset always materializes
+    # a *complete* weights dict (YAML base features + weight_overrides) so it
+    # rides the same load_from_dict(weights, shrinkage_k=...) path as a
+    # manually-customized request -- no separate scoring path.
+    preset_used: dict[str, Any] | None = None
+    effective_mode = req.mode
+    effective_shrinkage_k = req.shrinkage_k
+    effective_diversity_weight = req.diversity_weight
+    materialized_weights: dict[str, float] | None = None
+
+    if req.preset:
+        preset = _resolve_preset(req.preset)
+        base_scorer = Scorer()
+        base_scorer.load_config()
+        overrides = {str(k): float(v) for k, v in (preset.get("weight_overrides") or {}).items()}
+        materialized_weights = {**base_scorer.weights, **overrides}
+        # preset wins over req.mode/shrinkage_k/diversity_weight when both are given.
+        effective_mode = str(preset.get("mode", req.mode))
+        effective_shrinkage_k = float(preset.get("shrinkage_k", req.shrinkage_k))
+        effective_diversity_weight = float(preset.get("diversity_weight", req.diversity_weight))
+        preset_used = {
+            "key": req.preset,
+            "label_ko": preset.get("label_ko", req.preset),
+            "mode": effective_mode,
+            "shrinkage_k": effective_shrinkage_k,
+            "diversity_weight": effective_diversity_weight,
+            "weight_overrides": overrides,
+        }
+
+    _check_serving_ready()
+    store = get_serving_store()
+    user = await store.get_user(req.user_id)
+    if not user:
+        raise HTTPException(404, "User not found")
+
+    mode_map = {"strict": RecommendationMode.STRICT, "explore": RecommendationMode.EXPLORE, "compare": RecommendationMode.COMPARE}
+    mode = mode_map.get(effective_mode, RecommendationMode.EXPLORE)
+
+    # Candidate path (Phase 2.2): category universe -> optional SQL prefilter ->
+    # in-memory scoring on the reduced set. The SQL prefilter (db mode default)
+    # only pushes the avoided-ingredient hard filter to SQL, which the in-memory
+    # full traversal applies identically, so the candidate set is unchanged.
+    product_map = {p["product_id"]: p for p in await store.get_products()}
+    requested_category_group = req.category_group if req.category_group in RECOMMEND_CATEGORY_LABELS else "all"
+    category_universe_ids = _category_universe_ids(product_map, requested_category_group)
+
+    scorer = Scorer()
+    if materialized_weights is not None:
+        # Preset path: load_config() first so brand_confidence (not part of
+        # load_from_dict's contract) still comes from YAML, then override
+        # weights/shrinkage_k with the materialized preset values.
+        scorer.load_config()
+        scorer.load_from_dict(materialized_weights, shrinkage_k=effective_shrinkage_k)
+    elif req.weights:
+        scorer.load_from_dict(req.weights, shrinkage_k=req.shrinkage_k)
+    elif req.shrinkage_k != _DEFAULT_SHRINKAGE_K:
+        # C2 fix: previously, no explicit `weights` meant this always fell
+        # through to load_config(), silently discarding a caller-provided
+        # shrinkage_k (e.g. moving only the shrinkage_k slider, without
+        # touching any weight slider, had no effect). Materialize the YAML
+        # base weights so shrinkage_k-only customization still applies.
+        scorer.load_config()
+        scorer.load_from_dict(dict(scorer.weights), shrinkage_k=req.shrinkage_k)
+    else:
+        # Pure default request (no preset/weights/shrinkage_k customization):
+        # unchanged path, keeps existing tests/snapshots byte-identical.
+        scorer.load_config()
+    weights = scorer.weights
+
+    results, candidate_count = await _run_scored_pipeline(
+        store=store,
+        user_profile=user,
+        product_map=product_map,
+        candidate_universe_ids=category_universe_ids,
+        mode=mode,
+        scorer=scorer,
+        diversity_weight=effective_diversity_weight,
+        top_k=req.top_k,
+    )
+
     # P4-3 (Wave 3.3): pass scored products so axis selection can use score
     # histograms instead of falling back to data-absence ordering only.
     nq = generate_next_question(user, scored_products=results)
     return {
         "user_id": req.user_id,
-        "mode": req.mode,
+        "mode": effective_mode,
         "category_group": requested_category_group,
         "category_label": RECOMMEND_CATEGORY_LABELS[requested_category_group],
         "category_filtered_count": len(category_universe_ids),
         "total_product_count": len(product_map),
-        "candidate_count": len(candidates),
+        "candidate_count": candidate_count,
         "results": results,
         "next_question": {"question": nq.question_ko, "axis": nq.uncertainty_axis, "options": nq.options} if nq else None,
         "weights_used": weights,
+        "preset_used": preset_used,
     }
 
 
@@ -711,6 +868,294 @@ async def search_get(query: str = "", top_k: int = 20):
 @app.post("/api/search")
 async def search(req: SearchRequest):
     return await _run_search(req.query, req.top_k)
+
+
+# =============================================================================
+# Ask — query-scoped recommend / search (Phase 6 Track B, B2)
+# =============================================================================
+#
+# `/api/ask` is the service-facing entry the frontend query box calls. It runs
+# the query through `understand_query` (LLM translator with an automatic
+# dictionary fallback), then routes on user presence:
+#   - no user_id  → anonymous concept search (+ avoided-ingredient hard filter).
+#   - user_id     → query-scoped recommendation: the query's concern/goal/
+#     keyword/ingredient/brand concepts are injected as REQUEST-SCOPED scoped
+#     preferences onto a DEEP COPY of the user profile (never the shared cache),
+#     the candidate universe is narrowed to query-relevant products (auto-relaxed
+#     when the intersection is empty), and the query-injected concepts' paths are
+#     relabeled "질의에서 언급" so the UI distinguishes them from stored prefs.
+# The LLM never scores or invents evidence; it only translates free text into the
+# existing ontology, so recommend/search reuse the identical evidence pipeline.
+
+_ASK_MAX_QUERY_LEN = 500
+_ASK_QUERY_USER_EDGE = "질의에서 언급"
+
+# search.MatchedConcept.concept_type → the serving edge_type the recommendation
+# consumer already understands. Verified against candidate_generator
+# .collect_preference_ids / build_serving_views._collect (goal is WANTS_GOAL, not
+# PURSUES_GOAL). Category is intentionally absent: it is consumed as the candidate
+# *universe* axis (below), never injected as a preference.
+_QUERY_INJECT_EDGE_TYPE = {
+    "concern": "HAS_CONCERN",
+    "goal": "WANTS_GOAL",
+    "keyword": "PREFERS_KEYWORD",
+    "ingredient": "PREFERS_INGREDIENT",
+    "brand": "PREFERS_BRAND",
+}
+
+# Category-*group* concept ids search emits (concept:Category:<group>). Literal
+# catalog category concepts (e.g. concept:Category:쿠션) are NOT group ids and are
+# deliberately excluded, so only a real tab group maps the query to a universe.
+_GROUP_CATEGORY_CONCEPT_IDS = {
+    f"concept:Category:{item['group']}"
+    for item in RECOMMEND_CATEGORY_DEFS
+    if str(item["group"]) not in ("all", "other")
+}
+
+
+class AskRequest(BaseModel):
+    user_id: str | None = None
+    query: str = ""
+    preset: str | None = None
+    category_group: str | None = None
+    top_k: int = 10
+
+
+def _ask_category_group(interp: QueryInterpretation, requested: str | None) -> str:
+    """Resolve the query's category group: a group concept in the interpretation
+    wins over the request hint (first one, if several); otherwise the validated
+    request hint; otherwise "all"."""
+    for concept in interp.resolved_concepts:
+        if concept.concept_type == "category" and concept.concept_id in _GROUP_CATEGORY_CONCEPT_IDS:
+            return concept.concept_id[len("concept:Category:"):]
+    if requested and requested in RECOMMEND_CATEGORY_LABELS:
+        return requested
+    return "all"
+
+
+def _inject_query_preferences(
+    user_profile: dict[str, Any],
+    interp: QueryInterpretation,
+    scope_group: str,
+) -> set[str]:
+    """Append the query's concepts to ``user_profile`` as request-scoped
+    scoped_preference entries, and return the injected POSITIVE concept ids (for
+    the user_edge relabel).
+
+    MUST be called only on a deep copy (see the /api/ask C1 note). The scoped
+    shape mirrors build_serving_views._collect_scoped exactly; real users are
+    scoped-only (scoped_preferences.py), so preferences must be injected as
+    scoped entries — a legacy top-level field would be ignored.
+    """
+    scoped = user_profile.get("scoped_preference_ids")
+    if not isinstance(scoped, list):
+        scoped = []
+    else:
+        scoped = list(scoped)  # copy defensively even though the caller deep-copied
+    user_profile["scoped_preference_ids"] = scoped
+
+    injected_ids: set[str] = set()
+    for concept in interp.resolved_concepts:
+        edge_type = _QUERY_INJECT_EDGE_TYPE.get(concept.concept_type)
+        if not edge_type or not concept.concept_id:
+            continue
+        scoped.append({
+            "edge_type": edge_type,
+            "id": concept.concept_id,
+            "weight": 1.0,
+            "scope_group": scope_group,
+            "source_sections": ["query"],
+        })
+        injected_ids.add(concept.concept_id)
+
+    # Avoided ingredients → request-scoped AVOIDS_INGREDIENT (global) so the
+    # recommendation candidate generator's avoided hard filter drops carriers,
+    # matching the search path. Scope must be global to apply across categories.
+    for cid in interp.avoided_ingredient_concept_ids:
+        if not cid:
+            continue
+        scoped.append({
+            "edge_type": "AVOIDS_INGREDIENT",
+            "id": cid,
+            "weight": 1.0,
+            "scope_group": "global",
+            "source_sections": ["query"],
+        })
+
+    return injected_ids
+
+
+def _narrow_candidate_universe(
+    interp: QueryInterpretation,
+    product_map: dict[str, dict[str, Any]],
+    category_universe_ids: list[str],
+) -> tuple[list[str], bool]:
+    """Narrow the category universe to products carrying a NON-category query
+    concept (the axes actually injected as preferences). Empty intersection →
+    return the full category universe with ``relaxed=True`` (recall protection,
+    plan decision 2). No such concept → no narrowing, ``relaxed=False``."""
+    narrowing: list[MatchedConcept] = [
+        c for c in interp.resolved_concepts if c.concept_type != "category"
+    ]
+    if not narrowing:
+        return list(category_universe_ids), False
+    carrying = {
+        pid
+        for pid in category_universe_ids
+        if _product_overlap(product_map[pid], narrowing)
+    }
+    scoped = [pid for pid in category_universe_ids if pid in carrying]
+    if scoped:
+        return scoped, False
+    return list(category_universe_ids), True
+
+
+def _ask_preset_config(
+    preset_key: str | None,
+) -> tuple[dict[str, Any] | None, dict[str, float] | None, str, float, float]:
+    """Resolve an optional preset into (preset_used, materialized_weights, mode,
+    shrinkage_k, diversity_weight). No preset → recommend defaults (the exact
+    RecommendRequest field defaults, so an unpreset ask == a default recommend)."""
+    effective_mode = str(RecommendRequest.model_fields["mode"].default)
+    effective_shrinkage_k = _DEFAULT_SHRINKAGE_K
+    effective_diversity_weight = float(RecommendRequest.model_fields["diversity_weight"].default)
+    if not preset_key:
+        return None, None, effective_mode, effective_shrinkage_k, effective_diversity_weight
+
+    preset = _resolve_preset(preset_key)
+    base_scorer = Scorer()
+    base_scorer.load_config()
+    overrides = {str(k): float(v) for k, v in (preset.get("weight_overrides") or {}).items()}
+    materialized_weights = {**base_scorer.weights, **overrides}
+    effective_mode = str(preset.get("mode", effective_mode))
+    effective_shrinkage_k = float(preset.get("shrinkage_k", effective_shrinkage_k))
+    effective_diversity_weight = float(preset.get("diversity_weight", effective_diversity_weight))
+    preset_used = {
+        "key": preset_key,
+        "label_ko": preset.get("label_ko", preset_key),
+        "mode": effective_mode,
+        "shrinkage_k": effective_shrinkage_k,
+        "diversity_weight": effective_diversity_weight,
+        "weight_overrides": overrides,
+    }
+    return preset_used, materialized_weights, effective_mode, effective_shrinkage_k, effective_diversity_weight
+
+
+@app.post("/api/ask")
+async def ask(req: AskRequest):
+    query = (req.query or "").strip()
+    if not query:
+        raise HTTPException(400, "query is required.")
+    if len(query) > _ASK_MAX_QUERY_LEN:
+        raise HTTPException(400, f"query exceeds the {_ASK_MAX_QUERY_LEN}-character limit.")
+
+    # Validate any preset up front (recommend-mode only; search mode ignores it),
+    # so an unknown preset 400s before the LLM/search work.
+    (preset_used, materialized_weights, effective_mode,
+     effective_shrinkage_k, effective_diversity_weight) = _ask_preset_config(req.preset)
+
+    _check_serving_ready()
+    store = get_serving_store()
+    products = await store.get_products()
+
+    # LLM query understanding. understand_query builds its own provider from
+    # GRAPHRAPPING_QUERY_LLM (auto-off/dictionary-fallback when unset) and never
+    # raises — a provider outage degrades to the dictionary path transparently.
+    # It is synchronous (blocking httpx on the active-provider path), so run it in
+    # the default executor to avoid stalling the event loop; the off/fallback path
+    # is cheap but harmless to offload.
+    loop = asyncio.get_running_loop()
+    interp = await loop.run_in_executor(
+        None, functools.partial(understand_query, query, products)
+    )
+    category_group = _ask_category_group(interp, req.category_group)
+
+    # --- (a) Anonymous search mode ---
+    if not req.user_id:
+        outcome = search_products(
+            query,
+            products,
+            max_results=_clamp_search_top_k(req.top_k),
+            avoided_ingredient_concept_ids=interp.avoided_ingredient_concept_ids,
+        )
+        return {
+            "query": query,
+            "interpretation": interp.to_dict(),
+            "resolved_mode": "search",
+            "relaxed": False,
+            "category_group": category_group,
+            "preset_used": None,
+            "results": outcome.to_dict()["results"],
+        }
+
+    # --- (b) Query-scoped recommend mode ---
+    user = await store.get_user(req.user_id)
+    if not user:
+        raise HTTPException(404, "User not found")
+
+    # [C1] Deep-copy BEFORE any injection: the serving store returns a reference
+    # to its cached user dict, so mutating it in place would persist the
+    # request-scoped query preferences into the shared profile (personalization
+    # pollution). All injection happens on this copy only.
+    user_scoped = copy.deepcopy(user)
+    scope_group = "global" if category_group == "all" else category_group
+    injected_ids = _inject_query_preferences(user_scoped, interp, scope_group)
+
+    product_map = {p["product_id"]: p for p in products}
+    category_universe_ids = _category_universe_ids(product_map, category_group)
+    candidate_universe_ids, relaxed = _narrow_candidate_universe(
+        interp, product_map, category_universe_ids,
+    )
+
+    scorer = Scorer()
+    scorer.load_config()
+    if materialized_weights is not None:
+        scorer.load_from_dict(materialized_weights, shrinkage_k=effective_shrinkage_k)
+
+    mode_map = {"strict": RecommendationMode.STRICT, "explore": RecommendationMode.EXPLORE, "compare": RecommendationMode.COMPARE}
+    mode = mode_map.get(effective_mode, RecommendationMode.EXPLORE)
+
+    results, candidate_count = await _run_scored_pipeline(
+        store=store,
+        user_profile=user_scoped,
+        product_map=product_map,
+        candidate_universe_ids=candidate_universe_ids,
+        mode=mode,
+        scorer=scorer,
+        diversity_weight=effective_diversity_weight,
+        top_k=req.top_k,
+    )
+
+    # user_edge rewrite: candidate_generator cannot distinguish an injected query
+    # concept from a genuine stored preference, so relabel the query-injected
+    # concepts' paths here (post-explain, pre-serialize). Compare on the shared
+    # normalized signal key, not the raw id: the explanation path id can be a
+    # resolver-normalized/prefix-stripped form of the injected concept_id (goal
+    # and concern axes are re-normalized in candidate_generator), so a raw-string
+    # membership test would miss those and leave their user_edge unrelabeled.
+    if injected_ids:
+        injected_keys = {normalize_signal_id(cid) for cid in injected_ids}
+        for result in results:
+            for path in result["explanation_paths"]:
+                if normalize_signal_id(path.get("id")) in injected_keys:
+                    path["user_edge"] = _ASK_QUERY_USER_EDGE
+
+    return {
+        "query": query,
+        "interpretation": interp.to_dict(),
+        "resolved_mode": "recommend",
+        "relaxed": relaxed,
+        "category_group": category_group,
+        # KPI meta (parity with /api/recommend) so the frontend dashboard can show
+        # real counts instead of placeholders. category_filtered_count is the tab
+        # universe BEFORE query narrowing; candidate_count is what was scored.
+        "category_filtered_count": len(category_universe_ids),
+        "total_product_count": len(product_map),
+        "candidate_count": candidate_count,
+        "weights_used": scorer.weights,
+        "preset_used": preset_used,
+        "results": results,
+    }
 
 
 # =============================================================================

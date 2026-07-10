@@ -111,6 +111,41 @@ tr.clickable { cursor: pointer; }
 .snippet-item .snippet-text { color: var(--text); line-height: 1.6; white-space: pre-wrap; word-break: break-word; }
 .snippet-item .snippet-review-id { display: inline-block; margin-top: 2px; font-size: 11px; color: var(--text2); }
 
+/* Developer mode (Phase 6 Track A2): technical recommendation controls are
+   hidden by default (.dev-only) and the intent-preset panel is shown instead
+   (.user-only); toggleDevMode() in app.js flips body.dev-mode-on, which is
+   the only thing these rules key off of -- no JS re-render needed. */
+.dev-only { display: none; }
+.user-only { display: block; }
+body.dev-mode-on .dev-only { display: block; }
+body.dev-mode-on .user-only { display: none; }
+
+/* Recommend result card: raw/shrink/diversity numbers (dev-only detail below
+   the user-facing 추천점수/정렬점수 line). */
+.score-debug { font-size: 11px; color: var(--text2); margin-top: 2px; }
+
+/* Developer-mode preset_used/weights_used summary under recMeta's KPI grid
+   (Phase 6 closing review G3). Reuses .dev-only for visibility; the JSON
+   detail reuses the .snippet-details <details>/<summary> pattern above. */
+.dev-meta-block { margin-top: 8px; font-size: 11px; color: var(--text2); line-height: 1.6; }
+.dev-meta-row { margin: 2px 0; }
+.dev-meta-row summary { cursor: pointer; color: var(--primary-light); user-select: none; }
+.dev-meta-row summary:hover { color: var(--text); }
+.dev-meta-row pre { margin-top: 6px; font-size: 11px; color: var(--text2); white-space: pre-wrap; word-break: break-all; }
+
+/* Intent preset cards (Phase 6 Track A1 frontend): single-select radio-style
+   cards rendered from GET /api/recommend/presets. */
+.preset-card {
+  display: flex; align-items: flex-start; gap: 8px;
+  background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 10px 12px; margin-bottom: 8px; cursor: pointer; transition: all .15s;
+}
+.preset-card:hover { border-color: var(--primary-light); }
+.preset-card.active { border-color: var(--primary); background: rgba(99, 102, 241, 0.12); }
+.preset-card input[type="radio"] { margin-top: 3px; accent-color: var(--primary); }
+.preset-card-label { font-size: 13px; font-weight: 600; color: var(--text); }
+.preset-card-desc { font-size: 11px; color: var(--text2); margin-top: 2px; line-height: 1.5; }
+
 /* Section visibility */
 .section { display: none; }
 .section.active { display: block; }
@@ -122,6 +157,41 @@ tr.clickable { cursor: pointer; }
 /* Graph container */
 #graph-container { width: 100%; height: 500px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
 
+/* Recommendation inline "why this" subgraph (Phase 6 Track A3): a per-card
+   cytoscape mini-view built from explanation_paths. Shown in both user and
+   developer mode (it is a service-value feature, not a technical control).
+   Each card owns its own GraphView instance, so several can be open at once. */
+.rec-graph-actions { margin-top: 10px; }
+.rec-graph-toggle.active { background: var(--primary); color: #fff; }
+.rec-graph-inline { width: 100%; height: 280px; margin-top: 10px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
+.rec-graph-inline .empty { padding: 24px; }
+
 /* Detail panel */
 .detail-panel { background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; margin-top: 12px; max-height: 500px; overflow-y: auto; }
 .detail-panel pre { font-size: 11px; color: var(--text2); white-space: pre-wrap; word-break: break-all; }
+
+/* Integrated query bar + interpretation chips (Phase 6 Track B3): one input
+   drives both the existing /api/recommend UI and POST /api/ask (search, or
+   query-scoped recommend -- resolved server-side by whether a user is
+   selected). Shown in both user and developer mode: it's a service-value
+   entry point, not a technical control, so it isn't gated by .dev-only/.user-only. */
+.ask-bar { display: flex; gap: 8px; margin-bottom: 12px; }
+.ask-bar .input { flex: 1; }
+
+.ask-interpretation-row { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; margin-bottom: 8px; }
+.ask-interpretation-label { font-size: 11px; color: var(--text2); margin-right: 4px; }
+
+/* Resolved-concept chips get their color inline per concept_type (from
+   GraphView.TYPE_COLORS, see askConceptColor() in app.js); .ask-chip just
+   fixes a transparent border so colored and bordered (avoid/unresolved)
+   variants share the same box size. */
+.ask-chip { border: 1px solid transparent; }
+.ask-chip-avoid { background: transparent; color: var(--red); border-color: var(--red); }
+.ask-chip-unresolved { background: transparent; color: var(--text2); border: 1px dashed var(--text2); }
+
+.ask-badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 10px; margin: 2px; background: var(--surface2); color: var(--text2); border: 1px solid var(--border); }
+
+.ask-banner { padding: 8px 12px; border-radius: var(--radius); font-size: 12px; margin-bottom: 8px; }
+.ask-banner-info { background: rgba(59, 130, 246, 0.12); color: var(--blue); border: 1px solid rgba(59, 130, 246, 0.35); }
+.ask-banner-error { background: rgba(239, 68, 68, 0.12); color: var(--red); border: 1px solid rgba(239, 68, 68, 0.35); }
+.ask-banner-warn { background: rgba(234, 179, 8, 0.12); color: var(--yellow); border: 1px solid rgba(234, 179, 8, 0.35); }

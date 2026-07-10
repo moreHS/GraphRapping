@@ -499,3 +499,57 @@ async def test_search_empty_query_post_and_get_consistent(monkeypatch: pytest.Mo
     # Same shape on both verbs (no POST-only 422 for a blank query).
     assert get_payload["resolved"] == post_payload["resolved"]
     assert (get_payload["message"] is None) == (post_payload["message"] is None)
+
+
+# ---------------------------------------------------------------------------
+# Avoided-ingredient hard filter (Phase 6 B2: `avoided_ingredient_concept_ids`
+# keyword — negation queries like "레티놀 없는 크림" exclude carrier products
+# entirely; default None leaves every existing caller byte-identical).
+# ---------------------------------------------------------------------------
+
+
+def _avoidance_products() -> list[dict[str, Any]]:
+    # Both products match the "보습" query identically (goal axis); only their
+    # ingredients differ, so any result difference is the hard filter alone.
+    return [
+        _product(
+            "P_clean",
+            main_benefit_ids=["보습강화"],
+            main_benefit_concept_ids=["concept:Goal:보습"],
+            ingredient_concept_ids=["concept:Ingredient:히알루론산"],
+        ),
+        _product(
+            "P_retinol",
+            main_benefit_ids=["보습강화"],
+            main_benefit_concept_ids=["concept:Goal:보습"],
+            ingredient_concept_ids=["concept:Ingredient:레티놀"],
+        ),
+    ]
+
+
+def test_search_avoided_ingredient_hard_filter_excludes_carrier():
+    """A product whose ingredient_concept_ids intersects the avoided set is
+    skipped entirely (hard filter), even though it matches the query otherwise."""
+    outcome = search_products(
+        "보습 크림",
+        _avoidance_products(),
+        avoided_ingredient_concept_ids=["concept:Ingredient:레티놀"],
+    )
+    ids = [r.product_id for r in outcome.results]
+    assert "P_clean" in ids
+    assert "P_retinol" not in ids
+    # Resolution itself is untouched — only the ranking loop filters.
+    assert outcome.resolved is True
+
+
+def test_search_avoided_default_none_and_empty_do_not_change_results():
+    """Omitted / None / [] avoided sets are byte-identical to the pre-B2
+    behaviour, so existing callers are unaffected by the signature extension."""
+    products = _avoidance_products()
+    baseline = search_products("보습 크림", products)
+    with_none = search_products("보습 크림", products, avoided_ingredient_concept_ids=None)
+    with_empty = search_products("보습 크림", products, avoided_ingredient_concept_ids=[])
+
+    assert {r.product_id for r in baseline.results} == {"P_clean", "P_retinol"}
+    assert with_none.to_dict() == baseline.to_dict()
+    assert with_empty.to_dict() == baseline.to_dict()

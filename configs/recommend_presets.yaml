@@ -1,0 +1,58 @@
+# Recommendation intent presets (Phase 6 Track A1).
+#
+# Each preset is a server-side named combination of existing mode/weights/
+# shrinkage_k/diversity_weight parameters -- no new scoring path is introduced.
+# `/api/recommend` materializes a complete weights dict as
+# (configs/scoring_weights.yaml features) + weight_overrides, then routes it
+# through Scorer.load_from_dict(weights, shrinkage_k=...) exactly like a
+# manually-customized weights request (see src/web/server.py `_apply_preset`).
+#
+# weight_overrides values were tuned against the dense_golden fixture (see
+# tests/test_recommend_presets.py) so the three presets produce different
+# top-5 orderings for at least one golden user; they are not a probabilistic
+# distribution, just additive feature weights like scoring_weights.yaml.
+presets:
+  balanced:
+    label_ko: "균형 추천"
+    description_ko: "근거와 다양성을 균형 있게 살핀 기본 추천"
+    mode: explore
+    shrinkage_k: 10
+    diversity_weight: 0.10
+    weight_overrides: {}
+
+  trusted:
+    label_ko: "믿을 수 있는 추천"
+    description_ko: "리뷰 근거가 많고 검증된 상품 위주로 보수적으로 추천"
+    mode: strict
+    # shrinkage_k 25 -> 40: shrinks low-support scores harder so many-review
+    # ("검증된") products rise; combined with the weight bumps below this is what
+    # actually moves the top-5 (shrinkage alone did not).
+    shrinkage_k: 40
+    diversity_weight: 0.05
+    weight_overrides:
+      # Re-tuned (F3): the earlier 0.10/0.08/0.12 bumps left trusted's top-5 only
+      # 1 product different from balanced for user_dry_30f/all. The base weights
+      # for these axes are tiny (0.02-0.06 of ~25 features), so a strong multiplier
+      # is needed for "well-reviewed, trusted-brand" to visibly outrank the
+      # keyword/concern-driven default. Measured on the dense_golden fixture
+      # (tests/test_recommend_presets.py): balanced vs trusted top-5 now differs by
+      # 2 members (50165/100669 drop out, 35117/68788 rise), stable across k=40-60.
+      # Explore-only bonuses stay zeroed — "trusted" must not chase novelty.
+      source_rating_score: 0.40
+      source_popularity_score: 0.32
+      brand_match_conf_weighted: 0.30
+      novelty_bonus: 0.0
+      same_family_explore_bonus: 0.0
+
+  discovery:
+    label_ko: "새로운 발견"
+    description_ko: "안 써본 브랜드/제품군까지 폭넓게 탐색"
+    mode: explore
+    shrinkage_k: 5
+    diversity_weight: 0.20
+    weight_overrides:
+      novelty_bonus: 0.10
+      same_family_explore_bonus: 0.08
+      exact_owned_penalty: 0.10
+      owned_family_penalty: 0.06
+      source_popularity_score: 0.01

@@ -22,6 +22,12 @@ dev = [
     "mypy>=1.10",
     "types-PyYAML>=6.0",
 ]
+# Optional: HTTP client for the query-understanding LLM (Phase 6 Track B).
+# Not a core dependency — with it uninstalled, GRAPHRAPPING_QUERY_LLM stays
+# off/guarded and query understanding uses the dictionary fallback.
+query-llm = [
+    "httpx>=0.27",
+]
 
 [build-system]
 requires = ["hatchling"]
