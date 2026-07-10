@@ -103,12 +103,33 @@ uvicorn src.web.server:app --reload
 | `GRAPHRAPPING_CANDIDATE_PREFILTER` | Candidate path: `auto` (SQL prefilter on in `db` mode, off in `demo` mode), `on` (force SQL prefilter), `off` (full traversal, no SQL pre-narrowing) | `auto` |
 | `GRAPHRAPPING_ALERT_WEBHOOK_URL` | Webhook URL for a best-effort JSON POST on pipeline failure / retention-threshold breach. Unset or blank means no-op (no network attempt) | unset (disabled) |
 | `GRAPHRAPPING_RETENTION_ALERT_ENABLED` | Opt-in gate for the post-run retention-threshold alert (DB pipeline entrypoints only). Set to `1` to enable | unset (`0`/off) |
+| `GRAPHRAPPING_QUERY_LLM` | Query-understanding LLM provider (Phase 6): `azure` (recommended when enabled) / `anthropic` / `off`. Unset behaves as `off` (dictionary fallback; no network). Requires the `query-llm` extra (`pip install -e '.[query-llm]'`) — if httpx is missing the module warns and falls back | unset (`off`) |
+| `AZURE_OPENAI_ENDPOINT` | Azure OpenAI resource endpoint, e.g. `https://<resource>.openai.azure.com` (required when `GRAPHRAPPING_QUERY_LLM=azure`) | unset |
+| `AZURE_OPENAI_API_KEY` | Azure OpenAI API key (required when `GRAPHRAPPING_QUERY_LLM=azure`). Read from env only; never logged | unset |
+| `AZURE_OPENAI_DEPLOYMENT` | Azure OpenAI chat deployment name (required when `GRAPHRAPPING_QUERY_LLM=azure`) | unset |
+| `AZURE_OPENAI_API_VERSION` | Azure OpenAI REST API version, e.g. `2024-10-21` (required when `GRAPHRAPPING_QUERY_LLM=azure`) | unset |
+| `ANTHROPIC_API_KEY` | Anthropic API key (required when `GRAPHRAPPING_QUERY_LLM=anthropic`; model defaults to `claude-haiku-4-5`). Read from env only; never logged | unset |
 
 Each subcommand exposes its own `--help`. The underlying functions
 (`src.db.migrate.migrate`, `src.jobs.run_full_load_db.run_full_load_to_db`,
 `src.jobs.run_incremental_pipeline_db.run_incremental_to_db`,
 `src.db.contract_validator.validate_all`) remain directly importable for
 scripts and tests — see `src/cli.py` for the full mapping.
+
+## Demo UI
+
+- **User / developer mode**: the `🛠 개발자` toggle (also `?dev=1` or
+  `localStorage.gr_dev_mode`) switches the recommendation tester between the
+  default user-facing controls and the raw weight/mode/shrinkage/diversity
+  sliders plus per-result score-layer breakdown.
+- **Intent presets**: 3 presets from `GET /api/recommend/presets` replace the
+  raw controls in user mode.
+- **Integrated query bar**: `POST /api/ask` resolves to a query-scoped
+  recommendation when a user is selected, or a plain concept search when none
+  is selected. Query understanding uses an LLM when `GRAPHRAPPING_QUERY_LLM`
+  is set, falling back to a dictionary matcher by default.
+- **Inline "why this" graph**: each recommendation card can expand a small
+  subgraph of the explanation paths behind that recommendation.
 
 ## CI
 
