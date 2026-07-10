@@ -44,6 +44,9 @@ jobs:
       - name: Mypy
         run: python -m mypy src
 
+      - name: Ontology config validation
+        run: python -m src.cli validate-ontology
+
       - name: Tests
         run: python -m pytest tests/ -q
 
@@ -99,6 +102,10 @@ jobs:
         # (~3-5 min apiece on local hardware); timeout bumped accordingly. If
         # CI wall-clock becomes a problem, split into a parallel job
         # (postgres-fullload-service) per the §5.4 plan fallback.
+        # 5th-review fix: test_source_identity_collision.py and
+        # test_retention_monitor.py each carry a pg_only-gated behavioural suite
+        # (5 + 3 tests) that previously ran nowhere in CI — the quality job has
+        # no Postgres, so their skipif gate always fired there.
         run: |
           python -m pytest \
             tests/test_postgres_integration.py \
@@ -106,9 +113,12 @@ jobs:
             tests/test_dirty_product_propagation.py \
             tests/test_incremental_watermark_safety.py \
             tests/test_sql_prefilter_avoided.py \
+            tests/test_candidate_prefilter_equivalence.py \
             tests/test_full_load_db.py \
             tests/test_incremental_pipeline_db.py \
             tests/test_pipeline_lock.py \
+            tests/test_source_identity_collision.py \
+            tests/test_retention_monitor.py \
             -q --timeout=600
 
   postgres-integration:

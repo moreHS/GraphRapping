@@ -441,6 +441,23 @@ async function runRecommend() {
   renderRecommendResults(data);
 }
 
+function renderPathSnippets(snippets) {
+  if (!Array.isArray(snippets) || !snippets.length) return '';
+  return `
+    <details class="snippet-details">
+      <summary>리뷰 근거 ${snippets.length}건</summary>
+      <div class="snippet-list">
+        ${snippets.map(s => `
+          <div class="snippet-item">
+            <p class="snippet-text">${displayText(s.text)}</p>
+            ${s.review_id ? `<span class="snippet-review-id">review_id: ${displayText(s.review_id)}</span>` : ''}
+          </div>
+        `).join('')}
+      </div>
+    </details>
+  `;
+}
+
 function renderRecommendResults(data) {
   const results = data.results || [];
   const categoryLabel = data.category_label || (
@@ -518,6 +535,7 @@ function renderRecommendResults(data) {
                 <span class="chip rel">${displayText(p.product_edge)}</span>
                 <span style="margin-left:8px;color:${contribution < 0 ? 'var(--red)' : 'var(--green)'}">(${contributionText})</span>
               </div>
+              ${renderPathSnippets(p.snippets)}
             `;
           }).join('') : ''}
           <div class="hooks" style="margin-top:8px">

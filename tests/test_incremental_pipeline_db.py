@@ -14,6 +14,7 @@ Auto-skipped when GRAPHRAPPING_TEST_DATABASE_URL is unset.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import uuid
 from datetime import datetime, timezone
@@ -57,6 +58,24 @@ def _mock_inputs() -> tuple[list[dict], dict]:
     products = json.loads((MOCK / "product_catalog_es.json").read_text(encoding="utf-8"))
     users = json.loads((MOCK / "user_profiles_normalized.json").read_text(encoding="utf-8"))
     return products, users
+
+
+def _parse_stage_logs(caplog: pytest.LogCaptureFixture) -> list[dict]:
+    """Every caplog record whose message is a `pipeline_stage` JSON line.
+
+    The structured stage payload is the log *message* (this project has no JSON
+    log formatter), so a stage line is any record whose message parses as JSON
+    with `event == "pipeline_stage"`.
+    """
+    parsed: list[dict] = []
+    for record in caplog.records:
+        try:
+            payload = json.loads(record.message)
+        except (json.JSONDecodeError, TypeError):
+            continue
+        if payload.get("event") == "pipeline_stage":
+            parsed.append(payload)
+    return parsed
 
 
 def _build_incremental_context(products: list[dict]) -> dict[str, Any]:
@@ -152,9 +171,20 @@ async def test_first_incremental_after_full_is_noop(pg_pool_with_full_load) -> N
 
 
 @pytest.mark.asyncio
-async def test_incremental_processes_newly_inserted_review(pg_pool_with_full_load) -> None:
+async def test_incremental_processes_newly_inserted_review(
+    pg_pool_with_full_load,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     """Insert a synthetic review (review_raw + child rows) → incremental
-    picks it up, advances watermark, emits signals."""
+    picks it up, advances watermark, emits signals.
+
+    Phase 2.6: also the canonical *execution* check for incremental stage
+    logging — a real incremental run over a freshly inserted review is asserted
+    to EMIT the structured `pipeline_stage` JSON lines from both entrypoints
+    (`run_incremental`'s per-stage logs + `run_incremental_to_db`'s
+    `incremental_to_db` wrapper), complementing the source-only Tier-3 checks
+    in test_pipeline_stage_logging.py.
+    """
     pool, _schema, products, _users = pg_pool_with_full_load
     ctx = _build_incremental_context(products)
 
@@ -221,12 +251,37 @@ async def test_incremental_processes_newly_inserted_review(pg_pool_with_full_loa
             new_review_id, sample_prod_name, len(sample_prod_name),
         )
 
-    result = await run_incremental_to_db(pool, **ctx, validate_after=False)
+    caplog.clear()
+    # Capture at the `src.jobs` parent so both the inner `run_incremental`
+    # stage logs and the `run_incremental_to_db` wrapper log are collected via
+    # propagation. clear() drops any FULL-load lines from fixture setup.
+    with caplog.at_level(logging.INFO, logger="src.jobs"):
+        result = await run_incremental_to_db(pool, **ctx, validate_after=False)
 
     # Review must be picked up
     assert result.in_memory["review_count"] >= 1, (
         f"Expected at least 1 review processed, got {result.in_memory}"
     )
+
+    # Phase 2.6: the structured stage logs actually fired during this run.
+    by_stage = {s["stage"]: s for s in _parse_stage_logs(caplog)}
+    required = {
+        "load_changed_reviews",
+        "review_processing_loop",
+        "canonical_signal_persist",
+        "aggregate_product_signals",
+        "reaggregate_serving_persist",
+        "incremental_to_db",
+    }
+    assert required.issubset(by_stage), f"missing stage logs, got: {sorted(by_stage)}"
+    for name in required:
+        assert by_stage[name]["run_type"] == "INCREMENTAL", name
+    # The load + processing stages saw the newly inserted review...
+    assert by_stage["load_changed_reviews"]["row_count"] >= 1
+    assert by_stage["review_processing_loop"]["row_count"] >= 1
+    # ...and the wrapper's summary line closed ok with a matching review_count.
+    assert by_stage["incremental_to_db"]["status"] == "ok"
+    assert by_stage["incremental_to_db"]["review_count"] == result.in_memory["review_count"]
 
     # Watermark must advance to exactly the new review (Codex 1차 recommendation:
     # `>= wm_before` proves forward progress but not exact cursor placement).

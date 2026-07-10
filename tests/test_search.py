@@ -1,0 +1,501 @@
+"""Concept-based search tests (Phase 4.2, fable_doc/03_improvement_plan.md §4.2).
+
+Covers:
+- concept resolution success across all six axes (brand/category/ingredient/
+  concern/goal/keyword) and the category-*group* axis (tab vocabulary).
+- concept resolution failure — explicit non-resolution, not a silent full-text
+  fallback.
+- overlap-based ranking + evidence-family classification (reused from
+  src/rec/recommendation_evidence_index.py, same as /api/recommend).
+- the `/api/search` endpoint in both demo mode (module-level demo_state) and
+  DB mode (fake store), mirroring the server-function-call test pattern used
+  by tests/test_web_server_source_enrichment.py and
+  tests/test_serving_store_mode.py.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+import pytest
+
+from src.rec.search import resolve_query_concepts, search_products
+from src.web import server
+from src.web.state import DemoState
+
+
+def _product(pid: str = "P1", **overrides: Any) -> dict[str, Any]:
+    base: dict[str, Any] = {
+        "product_id": pid,
+        "brand_name": None,
+        "brand_concept_ids": [],
+        "category_name": None,
+        "category_concept_ids": [],
+        "ingredient_ids": [],
+        "ingredient_concept_ids": [],
+        "main_benefit_ids": [],
+        "main_benefit_concept_ids": [],
+        "top_keyword_ids": [],
+        "top_concern_pos_ids": [],
+    }
+    base.update(overrides)
+    return base
+
+
+# ---------------------------------------------------------------------------
+# resolve_query_concepts — per-axis resolution
+# ---------------------------------------------------------------------------
+
+
+def test_resolve_concern_axis():
+    concepts = resolve_query_concepts("건조해서 고민이에요", [])
+    concern = [c for c in concepts if c.concept_type == "concern"]
+    assert any(c.concept_id == "concern_dryness" for c in concern)
+
+
+def test_resolve_goal_axis():
+    concepts = resolve_query_concepts("보습 원해요", [])
+    goals = {c.concept_id for c in concepts if c.concept_type == "goal"}
+    assert "보습" in goals
+
+
+def test_resolve_keyword_axis():
+    concepts = resolve_query_concepts("촉촉한 제품 찾아요", [])
+    keywords = {c.concept_id for c in concepts if c.concept_type == "keyword"}
+    assert "kw_moist" in keywords
+
+
+def test_resolve_category_group_axis():
+    concepts = resolve_query_concepts("메이크업 추천해줘", [])
+    categories = {c.concept_id for c in concepts if c.concept_type == "category"}
+    assert "concept:Category:makeup" in categories
+
+
+def test_resolve_brand_axis_from_catalog():
+    products = [_product("P1", brand_name="이니스프리", brand_concept_ids=["concept:Brand:이니스프리"])]
+    concepts = resolve_query_concepts("이니스프리 신상 나왔나요", products)
+    brands = {c.concept_id for c in concepts if c.concept_type == "brand"}
+    assert brands == {"concept:Brand:이니스프리"}
+
+
+def test_resolve_category_axis_literal_catalog_name():
+    products = [_product("P1", category_name="핸드보습", category_concept_ids=["concept:Category:핸드보습"])]
+    concepts = resolve_query_concepts("핸드보습 제품 있나요", products)
+    categories = {c.concept_id for c in concepts if c.concept_type == "category"}
+    assert "concept:Category:핸드보습" in categories
+
+
+def test_resolve_ingredient_axis_from_catalog():
+    products = [
+        _product(
+            "P1",
+            ingredient_ids=["히알루론산"],
+            ingredient_concept_ids=["concept:Ingredient:히알루론산"],
+        )
+    ]
+    concepts = resolve_query_concepts("히알루론산 들어간 제품", products)
+    ingredients = {c.concept_id for c in concepts if c.concept_type == "ingredient"}
+    assert ingredients == {"concept:Ingredient:히알루론산"}
+
+
+def test_resolve_ingredient_axis_falls_back_to_concept_suffix_when_labels_misaligned():
+    """If ingredient_ids is shorter/absent, the concept id suffix is used as
+    the label instead of crashing on an index error."""
+    products = [_product("P1", ingredient_ids=[], ingredient_concept_ids=["concept:Ingredient:레티놀"])]
+    concepts = resolve_query_concepts("레티놀 성분 궁금해요", products)
+    ingredients = {c.concept_id for c in concepts if c.concept_type == "ingredient"}
+    assert ingredients == {"concept:Ingredient:레티놀"}
+
+
+def test_resolve_multiple_axes_in_one_query():
+    """The fable_doc §4.2 completion example: '보습 잘 되는 스킨케어' resolves
+    a goal, a keyword, and a category group simultaneously."""
+    concepts = resolve_query_concepts("보습 잘 되는 스킨케어", [])
+    by_type = {c.concept_type for c in concepts}
+    assert "goal" in by_type
+    assert "keyword" in by_type
+    assert "category" in by_type
+
+
+def test_resolve_query_concepts_no_match_returns_empty():
+    concepts = resolve_query_concepts("asdkjfhaskdjfh12345", [_product("P1")])
+    assert concepts == []
+
+
+def test_resolve_query_concepts_blank_query_returns_empty():
+    assert resolve_query_concepts("", [_product("P1")]) == []
+    assert resolve_query_concepts("   ", [_product("P1")]) == []
+
+
+def test_resolve_short_surface_tokens_are_not_noise_matched():
+    """A single-character substring must not spuriously resolve (min-length
+    floor mirrors the keyword min_label_len=2 already used for promotion)."""
+    # "향" (scent) is a real bee_attr/keyword-adjacent token, but as a lone
+    # character it must not match every query that happens to contain it.
+    concepts = resolve_query_concepts("아무 상관 없는 문장입니다", [])
+    assert concepts == []
+
+
+# ---------------------------------------------------------------------------
+# search_products — overlap ranking + evidence family
+# ---------------------------------------------------------------------------
+
+
+def test_search_ranks_more_overlap_higher():
+    products = [
+        _product(
+            "P_low",
+            main_benefit_ids=["보습강화"],
+            main_benefit_concept_ids=["concept:Goal:보습"],
+        ),
+        _product(
+            "P_high",
+            main_benefit_ids=["보습강화"],
+            main_benefit_concept_ids=["concept:Goal:보습"],
+            top_keyword_ids=[{"id": "kw_moisturizing", "score": 0.8}],
+        ),
+        _product("P_none"),
+    ]
+    outcome = search_products("보습 원해요", products)
+
+    assert outcome.resolved is True
+    result_ids = [r.product_id for r in outcome.results]
+    assert result_ids == ["P_high", "P_low"]  # P_none excluded (no evidence)
+    assert outcome.results[0].relevance_score > outcome.results[1].relevance_score
+
+
+def test_search_evidence_family_reused_from_recommendation_index():
+    products = [
+        _product(
+            "P1",
+            brand_name="이니스프리",
+            brand_concept_ids=["concept:Brand:이니스프리"],
+            top_concern_pos_ids=[{"id": "concern_dryness", "score": 0.9}],
+        ),
+    ]
+    outcome = search_products("이니스프리 건조함", products)
+    assert len(outcome.results) == 1
+    families = outcome.results[0].eligibility.evidence_families
+    assert "PRODUCT_MASTER_TRUTH" in families  # brand
+    assert "REVIEW_GRAPH_RELATION" in families  # concern
+    assert outcome.results[0].eligibility.eligible is True
+
+
+def test_search_products_same_completion_phrase_returns_evidence_backed_result():
+    """fable_doc §4.2 completion example, exercised end-to-end through
+    search_products (test_resolve_multiple_axes_in_one_query above only checks
+    concept resolution): the same '보습 잘 되는 스킨케어' phrase must also
+    return an actual product match with non-empty overlap_concepts and
+    evidence-backed eligibility, not just resolve concepts."""
+    products = [
+        _product(
+            "P1",
+            category_name="스킨케어",
+            category_concept_ids=["concept:Category:스킨케어"],
+            main_benefit_ids=["보습강화"],
+            main_benefit_concept_ids=["concept:Goal:보습"],
+            top_keyword_ids=[{"id": "kw_moisturizing", "score": 0.9}],
+        ),
+    ]
+    outcome = search_products("보습 잘 되는 스킨케어", products)
+    assert outcome.resolved is True
+
+    payload = outcome.to_dict()
+    assert payload["result_count"] == 1
+    result = payload["results"][0]
+    assert result["product_id"] == "P1"
+    assert result["overlap_concepts"]  # non-empty: at least one axis overlapped
+    eligibility = result["eligibility"]
+    assert eligibility["eligible"] is True
+    assert "PRODUCT_MASTER_TRUTH" in eligibility["evidence_families"]
+    assert "REVIEW_GRAPH_RELATION" in eligibility["evidence_families"]
+
+
+def test_search_no_resolution_short_circuits_before_scanning_products():
+    products = [_product("P1", brand_name="이니스프리", brand_concept_ids=["concept:Brand:이니스프리"])]
+    outcome = search_products("zzzz_no_such_concept_zzzz", products)
+    assert outcome.resolved is False
+    assert outcome.results == []
+    assert outcome.resolved_concepts == []
+
+
+def test_search_max_results_truncates():
+    products = [
+        _product(f"P{i}", main_benefit_ids=["보습강화"], main_benefit_concept_ids=["concept:Goal:보습"])
+        for i in range(5)
+    ]
+    outcome = search_products("보습", products, max_results=2)
+    assert len(outcome.results) == 2
+
+
+def test_search_category_group_does_not_force_match_on_unrelated_product():
+    """Resolving a category-group concept must not make every product match —
+    only products the group actually classifies to (evidence-first)."""
+    products = [_product("P_lipstick", category_name="립스틱", category_concept_ids=["concept:Category:립스틱"])]
+    outcome = search_products("스킨케어 추천", products)
+    assert outcome.resolved is True  # concept resolved...
+    assert outcome.results == []  # ...but no product actually belongs to it
+
+
+def test_search_outcome_to_dict_shape():
+    products = [_product("P1", brand_name="설화수", brand_concept_ids=["concept:Brand:설화수"])]
+    outcome = search_products("설화수 제품", products)
+    payload = outcome.to_dict()
+    assert payload["query"] == "설화수 제품"
+    assert payload["resolved"] is True
+    assert payload["result_count"] == 1
+    result = payload["results"][0]
+    assert result["product_id"] == "P1"
+    assert result["matched_concepts"] == ["brand:concept:Brand:설화수"]
+    assert "eligibility" in result and "evidence_families" in result["eligibility"]
+
+
+# ---------------------------------------------------------------------------
+# /api/search endpoint — demo mode
+# ---------------------------------------------------------------------------
+
+
+def _search_product(pid: str = "P1") -> dict[str, Any]:
+    return _product(
+        pid,
+        brand_name="헤라",
+        brand_concept_ids=["concept:Brand:헤라"],
+        category_name="쿠션",
+        category_concept_ids=["concept:Category:쿠션"],
+        top_keyword_ids=[{"id": "kw_thin_spread", "score": 0.9}],
+    )
+
+
+@pytest.mark.asyncio
+async def test_search_get_demo_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("GRAPHRAPPING_SERVING_MODE", raising=False)
+    monkeypatch.setattr(server, "_serving_store", None)
+    state = DemoState(loaded=True)
+    state.serving_products = [_search_product("P1")]
+    monkeypatch.setattr(server, "demo_state", state)
+
+    payload = await server.search_get(query="헤라 쿠션", top_k=10)
+
+    assert payload["resolved"] is True
+    assert payload["message"] is None
+    assert payload["result_count"] == 1
+    assert payload["results"][0]["product_id"] == "P1"
+    assert payload["results"][0]["product"]["product_id"] == "P1"
+
+
+@pytest.mark.asyncio
+async def test_search_post_demo_mode_no_concept_resolved(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("GRAPHRAPPING_SERVING_MODE", raising=False)
+    monkeypatch.setattr(server, "_serving_store", None)
+    state = DemoState(loaded=True)
+    state.serving_products = [_search_product("P1")]
+    monkeypatch.setattr(server, "demo_state", state)
+
+    payload = await server.search(server.SearchRequest(query="zzzz_no_such_concept_zzzz", top_k=10))
+
+    assert payload["resolved"] is False
+    assert payload["results"] == []
+    assert payload["message"]  # explicit guidance, not a silent empty result
+
+
+@pytest.mark.asyncio
+async def test_search_demo_mode_requires_pipeline_run(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("GRAPHRAPPING_SERVING_MODE", raising=False)
+    monkeypatch.setattr(server, "_serving_store", None)
+    monkeypatch.setattr(server, "demo_state", DemoState(loaded=False))
+
+    from fastapi import HTTPException
+
+    with pytest.raises(HTTPException) as excinfo:
+        await server.search_get(query="헤라")
+    assert excinfo.value.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# /api/search endpoint — DB mode (fake store, mirrors _FakeStore in
+# tests/test_web_server_source_enrichment.py)
+# ---------------------------------------------------------------------------
+
+
+class _FakeStore:
+    def __init__(self, products: list[dict]) -> None:
+        self._products = products
+
+    async def get_products(self) -> list[dict]:
+        return self._products
+
+    async def get_product(self, product_id: str) -> dict | None:
+        return next((p for p in self._products if p["product_id"] == product_id), None)
+
+    async def get_users(self) -> list[dict]:
+        return []
+
+    async def get_user(self, user_id: str) -> dict | None:
+        return None
+
+
+@pytest.mark.asyncio
+async def test_search_post_db_mode_independent_of_demo_state(monkeypatch: pytest.MonkeyPatch) -> None:
+    """DB mode must not require a demo pipeline run (demo_state stays unloaded)."""
+    monkeypatch.setenv("GRAPHRAPPING_SERVING_MODE", "db")
+    monkeypatch.setattr(server, "demo_state", DemoState(loaded=False))
+    monkeypatch.setattr(server, "_serving_store", _FakeStore([_search_product("P1")]))
+
+    payload = await server.search(server.SearchRequest(query="헤라 쿠션", top_k=5))
+
+    assert payload["resolved"] is True
+    assert payload["result_count"] == 1
+    assert payload["results"][0]["product_id"] == "P1"
+    assert "brand:concept:Brand:헤라" in payload["results"][0]["matched_concepts"]
+
+
+@pytest.mark.asyncio
+async def test_search_get_db_mode_evidence_family_present(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("GRAPHRAPPING_SERVING_MODE", "db")
+    monkeypatch.setattr(server, "demo_state", DemoState(loaded=False))
+    monkeypatch.setattr(server, "_serving_store", _FakeStore([_search_product("P1")]))
+
+    payload = await server.search_get(query="쿠션 제품", top_k=5)
+
+    assert payload["result_count"] == 1
+    eligibility = payload["results"][0]["eligibility"]
+    assert "PRODUCT_MASTER_TRUTH" in eligibility["evidence_families"]
+
+
+@pytest.mark.asyncio
+async def test_search_top_k_clamped(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("GRAPHRAPPING_SERVING_MODE", "db")
+    monkeypatch.setattr(server, "demo_state", DemoState(loaded=False))
+    products = [_search_product(f"P{i}") for i in range(5)]
+    monkeypatch.setattr(server, "_serving_store", _FakeStore(products))
+
+    payload = await server.search(server.SearchRequest(query="헤라 쿠션", top_k=0))
+    assert payload["result_count"] >= 1  # clamped to >=1, not an empty slice
+
+    payload_big = await server.search(server.SearchRequest(query="헤라 쿠션", top_k=10_000))
+    assert payload_big["result_count"] == 5
+
+
+# ---------------------------------------------------------------------------
+# Ingredient axis end-to-end (regression: concept_ids / ingredient_ids are
+# independently built in build_serving_views.py and are NOT positionally
+# aligned, so the concept must be labeled/matched from its own id suffix).
+# ---------------------------------------------------------------------------
+
+
+def _misaligned_ingredient_product(pid: str = "P1") -> dict[str, Any]:
+    # ingredient_ids (raw master) and ingredient_concept_ids (filtered
+    # HAS_INGREDIENT subset) differ in BOTH length and order, and the raw list's
+    # index-0 name (글리세린) is not the concept below — the exact shape that made
+    # positional pairing (raw_names[idx]) mislabel the concept.
+    return _product(
+        pid,
+        ingredient_ids=["글리세린", "정제수"],
+        ingredient_concept_ids=["concept:Ingredient:나이아신아마이드"],
+    )
+
+
+def test_search_ingredient_axis_e2e_with_misaligned_lists():
+    """The real ingredient name (encoded in the concept id) resolves and flows
+    through search_products ranking as an `ingredient:` overlap, even though the
+    raw ingredient_ids list is a different length/order and lacks that name."""
+    outcome = search_products("나이아신아마이드 세럼 찾아요", [_misaligned_ingredient_product("P1")])
+    assert outcome.resolved is True
+    assert len(outcome.results) == 1
+    assert "ingredient:concept:Ingredient:나이아신아마이드" in outcome.results[0].matched_concepts
+    # And the overlap is classified as product-master truth, same as recommend.
+    assert "PRODUCT_MASTER_TRUTH" in outcome.results[0].eligibility.evidence_families
+
+
+def test_search_ingredient_axis_no_false_positive_from_misaligned_raw_name():
+    """Querying the misaligned raw ingredient name (글리세린, which carries no
+    concept id on this product) must NOT resolve the unrelated concept it was
+    positionally paired with under the bug."""
+    outcome = search_products("글리세린 세럼", [_misaligned_ingredient_product("P1")])
+    matched = [mc for r in outcome.results for mc in r.matched_concepts]
+    assert "ingredient:concept:Ingredient:나이아신아마이드" not in matched
+
+
+# ---------------------------------------------------------------------------
+# Category axis dedupe (a literal category + its derived category-group are the
+# same categorical dimension; count once, not twice).
+# ---------------------------------------------------------------------------
+
+
+def test_search_category_axis_deduped_when_literal_and_group_both_resolve():
+    product = _product("P1", category_name="쿠션", category_concept_ids=["concept:Category:쿠션"])
+    # Both the literal category concept AND the makeup group concept resolve from
+    # the single token "쿠션" (쿠션 is a makeup tab keyword).
+    resolved = resolve_query_concepts("쿠션", [product])
+    category_ids = {c.concept_id for c in resolved if c.concept_type == "category"}
+    assert {"concept:Category:쿠션", "concept:Category:makeup"} <= category_ids
+    # ...but the product's overlap counts the categorical dimension once (literal
+    # kept, derived-group suppressed), so relevance is not double-inflated.
+    outcome = search_products("쿠션", [product])
+    assert len(outcome.results) == 1
+    categories = [c for c in outcome.results[0].matched_concepts if c.startswith("category:")]
+    assert categories == ["category:concept:Category:쿠션"]
+    assert outcome.results[0].relevance_score == 1.0
+
+
+def test_search_category_group_still_counts_when_no_literal_category_matches():
+    """Dedupe must not drop the group match when it is the ONLY categorical
+    signal (product classifies to the group but carries no matching literal
+    category concept)."""
+    product = _product(
+        "P_lip",
+        category_name="립스틱",
+        category_concept_ids=["concept:Category:립스틱"],
+    )
+    # Query resolves the makeup GROUP (via "메이크업") but no literal "립스틱".
+    outcome = search_products("메이크업 추천", [product])
+    assert len(outcome.results) == 1
+    categories = [c for c in outcome.results[0].matched_concepts if c.startswith("category:")]
+    assert categories == ["category:concept:Category:makeup"]
+
+
+# ---------------------------------------------------------------------------
+# Result field alias: overlap_concepts mirrors matched_concepts so the shared
+# front-end evidence renderer (app.js reads overlap_concepts) consumes search
+# and recommend results identically.
+# ---------------------------------------------------------------------------
+
+
+def test_search_result_dict_exposes_overlap_concepts_alias():
+    products = [_product("P1", brand_name="설화수", brand_concept_ids=["concept:Brand:설화수"])]
+    payload = search_products("설화수 제품", products).to_dict()
+    result = payload["results"][0]
+    assert result["overlap_concepts"] == result["matched_concepts"]
+    assert result["overlap_concepts"] == ["brand:concept:Brand:설화수"]
+
+
+# ---------------------------------------------------------------------------
+# Empty-query POST/GET consistency (SearchRequest.query defaults to "").
+# ---------------------------------------------------------------------------
+
+
+def test_search_request_query_defaults_to_empty_string():
+    """A POST body with no `query` is valid (mirrors GET's optional query), so
+    the endpoint returns guidance rather than raising an HTTP 422."""
+    assert server.SearchRequest().query == ""
+    assert server.SearchRequest(top_k=5).query == ""
+
+
+@pytest.mark.asyncio
+async def test_search_empty_query_post_and_get_consistent(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("GRAPHRAPPING_SERVING_MODE", raising=False)
+    monkeypatch.setattr(server, "_serving_store", None)
+    state = DemoState(loaded=True)
+    state.serving_products = [_search_product("P1")]
+    monkeypatch.setattr(server, "demo_state", state)
+
+    get_payload = await server.search_get(query="")
+    post_payload = await server.search(server.SearchRequest(query=""))
+
+    for payload in (get_payload, post_payload):
+        assert payload["resolved"] is False
+        assert payload["results"] == []
+        assert payload["message"]  # explicit guidance, not a silent empty result
+    # Same shape on both verbs (no POST-only 422 for a blank query).
+    assert get_payload["resolved"] == post_payload["resolved"]
+    assert (get_payload["message"] is None) == (post_payload["message"] is None)

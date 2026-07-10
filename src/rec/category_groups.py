@@ -5,11 +5,12 @@ Shared recommendation category-group classification.
 from __future__ import annotations
 
 from collections.abc import Iterable
+from typing import Any
 
 from src.common.text_normalize import normalize_text
 
 
-RECOMMEND_CATEGORY_DEFS: tuple[dict[str, object], ...] = (
+RECOMMEND_CATEGORY_DEFS: tuple[dict[str, Any], ...] = (
     {"group": "all", "label": "전체", "keywords": ()},
     {
         "group": "skincare",

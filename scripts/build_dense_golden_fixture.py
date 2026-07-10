@@ -443,8 +443,8 @@ def resolve_profile_anchors(
 ) -> dict[str, list[dict[str, Any]]]:
     name_index: dict[str, set[str]] = defaultdict(set)
     for pid, product in product_by_id.items():
-        for field in ("prd_nm", "ONLINE_PROD_NAME", "REPRESENTATIVE_PROD_NAME"):
-            value = product.get(field)
+        for field_name in ("prd_nm", "ONLINE_PROD_NAME", "REPRESENTATIVE_PROD_NAME"):
+            value = product.get(field_name)
             if value:
                 name_index[_normalize_key(value)].add(pid)
 

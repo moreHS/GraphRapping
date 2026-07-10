@@ -7,6 +7,8 @@ Thresholds: fuzzy auto-accept ≥0.93, manual review 0.80~0.93, quarantine <0.80
 
 from __future__ import annotations
 
+import re
+import unicodedata
 from dataclasses import dataclass
 from difflib import SequenceMatcher
 
@@ -16,6 +18,49 @@ from src.common.enums import MatchStatus
 
 FUZZY_AUTO_ACCEPT = 0.93
 FUZZY_MANUAL_REVIEW = 0.80
+
+# Hangul syllable block (U+AC00-U+D7A3). Used to detect Korean text so the
+# jamo-decomposition fuzzy variant only kicks in where it is meaningful,
+# leaving pure-ASCII/foreign-brand matching untouched.
+_HANGUL_RE = re.compile(r"[가-힣]")
+
+# Separator/bracket/punctuation noise commonly seen in review-side product
+# names (e.g. "[대용량] ...", "【LIVE/13,680원】...") that mostly carries no
+# product-identity information as standalone punctuation. Note this strips
+# the delimiter characters only, not their contents — measurement on the
+# mockdata fixture showed that also dropping whole bracketed *spans* (like
+# strip_brand_prefixes does for "(...)") is unsafe here: bracket content
+# frequently encodes real variant identity in this catalog (e.g. "[리필]"
+# refill, "[2입]" 2-pack, "[대용량 40mL]" volume), so removing it collapsed
+# genuinely different products into the same fuzzy key (wrong auto-accepts
+# rose from 24 to 122 on the 906-review fixture). Keeping the enclosed text
+# and only dropping the punctuation avoids that collision while still
+# normalizing spacing variants ("수분크림" vs "수분 크림").
+_FUZZY_NOISE_RE = re.compile(
+    r"[\s()\[\]{}<>「」『』〈〉《》"
+    r"【】（）.,·・\-_/~+!?'\"′″:;]"
+)
+
+
+def _has_hangul(text: str) -> bool:
+    return bool(_HANGUL_RE.search(text))
+
+
+def _korean_fuzzy_key(normalized_text: str) -> str:
+    """Build a spacing/symbol-insensitive, jamo-decomposed comparison key.
+
+    Strips whitespace and separator/bracket *punctuation characters* (not
+    their contents — see _FUZZY_NOISE_RE), then decomposes Hangul syllables
+    into individual jamo (choseong/jungseong/jongseong) via Unicode NFD.
+    This makes SequenceMatcher ratios robust to:
+      - spacing variants: "수분크림" vs "수분 크림"
+      - bracket delimiters used as pure separators: "[대용량] 크림" vs "대용량 크림"
+      - sub-syllable edits (e.g. a trailing 조사 changing the final batchim)
+        getting partial credit instead of failing the whole syllable.
+    ``normalized_text`` is expected to already be normalize_text()-ed.
+    """
+    collapsed = _FUZZY_NOISE_RE.sub("", normalized_text)
+    return unicodedata.normalize("NFD", collapsed)
 
 
 @dataclass
@@ -116,6 +161,17 @@ def match_product(
     # 4. Fuzzy match (brand-filtered)
     brand_norm = normalize_text(_safe_text(brand_name_raw))
     product_norm = normalize_text(_safe_text(product_name_raw))
+    # Korean-aware comparison is additive: only computed (and only allowed to
+    # raise the score, via max()) when BOTH the query and the candidate
+    # contain Hangul, so ASCII/foreign-brand matching is byte-for-byte
+    # unchanged. Gating on the query side alone is not enough — jamo
+    # decomposition + noise-stripping can still shift the ratio for a
+    # pure-ASCII candidate compared against a Hangul query (e.g. embedded
+    # ASCII tokens like "365days step3" realigning after punctuation/space
+    # stripping), which is a meaningless cross-script comparison and must
+    # never move a candidate's score.
+    query_has_hangul = _has_hangul(product_norm)
+    product_korean_key = _korean_fuzzy_key(product_norm) if query_has_hangul else ""
     best_score = 0.0
     best_pid = None
 
@@ -127,6 +183,11 @@ def match_product(
 
         pname_norm = normalize_text(pname)
         score = SequenceMatcher(None, product_norm, pname_norm).ratio()
+        if query_has_hangul and _has_hangul(pname_norm):
+            korean_score = SequenceMatcher(
+                None, product_korean_key, _korean_fuzzy_key(pname_norm)
+            ).ratio()
+            score = max(score, korean_score)
         if score > best_score:
             best_score = score
             best_pid = pid

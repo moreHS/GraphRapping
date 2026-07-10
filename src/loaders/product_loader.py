@@ -77,8 +77,8 @@ def _parse_review_score(value: Any) -> float | None:
 
 def _deepest_category_name(record: dict[str, Any]) -> str:
     """Return the most specific non-empty ES category label."""
-    for field in ("CTGR_SS_NAME", "CTGR_S_NAME", "CTGR_M_NAME", "CTGR_L_NAME"):
-        value = record.get(field)
+    for field_name in ("CTGR_SS_NAME", "CTGR_S_NAME", "CTGR_M_NAME", "CTGR_L_NAME"):
+        value = record.get(field_name)
         if value is not None and str(value).strip():
             return str(value).strip()
     return ""

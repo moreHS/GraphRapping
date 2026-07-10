@@ -8,6 +8,7 @@ Auto-skipped when `GRAPHRAPPING_TEST_DATABASE_URL` is unset. The CI
 from __future__ import annotations
 
 import json
+import logging
 import os
 import uuid
 from pathlib import Path
@@ -71,12 +72,39 @@ def _mock_inputs() -> tuple[list[dict], dict]:
     return products, users
 
 
+def _parse_stage_logs(caplog: pytest.LogCaptureFixture) -> list[dict]:
+    """Every caplog record whose message is a `pipeline_stage` JSON line.
+
+    Mirrors the helper in test_pipeline_stage_logging.py — the structured stage
+    payload is the log *message* (this project has no JSON log formatter), so a
+    stage line is any record whose message parses as JSON with
+    `event == "pipeline_stage"`.
+    """
+    parsed: list[dict] = []
+    for record in caplog.records:
+        try:
+            payload = json.loads(record.message)
+        except (json.JSONDecodeError, TypeError):
+            continue
+        if payload.get("event") == "pipeline_stage":
+            parsed.append(payload)
+    return parsed
+
+
 @pytest.mark.asyncio
 async def test_run_full_load_to_db_matches_in_memory_baseline(
     pg_pool: tuple[asyncpg.Pool, str],
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     """Baseline regression: DB load produces same signal/quarantine counts
     as the in-memory final 906-review `run_full_load` baseline.
+
+    Phase 2.6: this is also the canonical *execution* check for full-load
+    stage logging. The Tier-3 `inspect.getsource` checks in
+    test_pipeline_stage_logging.py only prove the `stage_timer` call text is
+    present in the source; here a real full load is asserted to actually EMIT
+    the structured `pipeline_stage` JSON lines (stage names + row_count /
+    signal_count), so a regression that silences the logs is caught.
     """
     pool, _schema = pg_pool
     products, users = _mock_inputs()
@@ -87,7 +115,9 @@ async def test_run_full_load_to_db_matches_in_memory_baseline(
         kg_mode="off",
     )
 
-    result = await run_full_load_to_db(pool, config, validate_after=False)
+    caplog.clear()
+    with caplog.at_level(logging.INFO, logger="src.jobs.run_full_load_db"):
+        result = await run_full_load_to_db(pool, config, validate_after=False)
 
     # Final 906-review baseline.
     assert result.in_memory.signal_count == 2801
@@ -102,6 +132,30 @@ async def test_run_full_load_to_db_matches_in_memory_baseline(
     assert row["status"] == "COMPLETED"
     assert row["signal_count"] == 2801
     assert row["quarantine_count"] == 9255
+
+    # Phase 2.6: the structured stage logs actually fired during this load.
+    by_stage = {s["stage"]: s for s in _parse_stage_logs(caplog)}
+    required = {
+        "in_memory_full_load",
+        "layer0_persist",
+        "canonical_signal_persist",
+        "aggregate_serving_persist",
+        "full_load_to_db",
+    }
+    assert required.issubset(by_stage), f"missing stage logs, got: {sorted(by_stage)}"
+    for name in required:
+        assert by_stage[name]["run_type"] == "FULL", name
+        assert by_stage[name]["run_id"] == result.run_id, name
+    # The stage payloads carry the REAL run values, not just a stage name:
+    # the in-memory step reports the baseline counts and completed ok...
+    assert by_stage["in_memory_full_load"]["status"] == "ok"
+    assert by_stage["in_memory_full_load"]["signal_count"] == 2801
+    assert by_stage["in_memory_full_load"]["quarantine_count"] == 9255
+    # ...the canonical/signal persist step logs how many review bundles it wrote...
+    assert by_stage["canonical_signal_persist"]["row_count"] > 0
+    # ...and the summary line closes the run ok with the same signal_count.
+    assert by_stage["full_load_to_db"]["status"] == "ok"
+    assert by_stage["full_load_to_db"]["signal_count"] == 2801
 
 
 @pytest.mark.asyncio

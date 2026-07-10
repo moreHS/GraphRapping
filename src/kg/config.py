@@ -23,7 +23,6 @@ class KGConfig:
     def __init__(self) -> None:
         self._bee_types: set[str] = set()
         self._type_aliases: dict[str, str] = {}
-        self._neo4j_labels: dict[str, str] = {}  # code → neo4j_label
         self._relation_neo4j: dict[str, str] = {}  # code → neo4j_type
         self._placeholder_types: dict[str, str] = {"reviewer": "PER", "review_target": "PRD"}
 
@@ -33,10 +32,14 @@ class KGConfig:
         relation_types_file: str = "kg_relation_types.json",
     ) -> None:
         # Entity types
+        # NOTE: kg_entity_types.json's "neo4j_label" field is named after the old
+        # Relation-project Neo4j port, but is still live today as ontology_validator's
+        # BEE-grouping ("BEE_ATTR" shared label) / type-mapping marker — that module
+        # reads the config file directly, so this loader doesn't need the field.
+        # See DECISIONS/2026-07-10_neo4j_label_dead_field_cleanup.md.
         et_data = load_json(entity_types_file)
         for t in et_data.get("types", []):
             code = t.get("code", "")
-            self._neo4j_labels[code] = t.get("neo4j_label", code)
             if t.get("is_bee"):
                 self._bee_types.add(code)
 
@@ -73,9 +76,6 @@ class KGConfig:
         if normalized in self._bee_types:
             return "BEE_ATTR"
         return normalized
-
-    def get_neo4j_label(self, entity_type: str) -> str:
-        return self._neo4j_labels.get(entity_type, entity_type)
 
     def get_neo4j_relation_type(self, relation_code: str) -> str | None:
         """Get Neo4j relation type. Returns None for dropped relations (same_entity, no_relationship)."""

@@ -9,12 +9,15 @@ from __future__ import annotations
 
 import logging
 import os
+import time
 from datetime import datetime, timezone
 from typing import Any
 
 import asyncpg
 
+from src.common.alerting import send_pipeline_failure_alert_async
 from src.common.config_loader import get_kg_mode, load_predicate_contracts
+from src.common.pipeline_observability import log_pipeline_stage, stage_timer
 from src.db.persist import persist_review_bundle
 from src.db.repos import product_repo
 from src.db.repos.review_repo import load_full_review_snapshot
@@ -415,19 +418,27 @@ async def _maybe_run_stale_cleanup(
 
     from src.db.repos import mart_repo
 
-    async with UnitOfWork(pool) as uow:
-        cleanup_result = await mart_repo.mark_stale_agg_signals_inactive(
-            uow,
+    with stage_timer(logger, "stale_cleanup", run_type="INCREMENTAL") as t:
+        async with UnitOfWork(pool) as uow:
+            cleanup_result = await mart_repo.mark_stale_agg_signals_inactive(
+                uow,
+                threshold_days=threshold_days,
+                include_ids=True,
+            )
+            rebuild_counts = await _rebuild_serving_profiles_after_cleanup(
+                uow,
+                cleanup_result,
+                product_masters,
+                concept_links,
+            )
+        counts = _cleanup_counts_only(cleanup_result)
+        t.set(
+            product_signals=counts.get("product_signals"),
+            user_preferences=counts.get("user_preferences"),
+            rebuilt_serving_products=rebuild_counts.get("serving_products"),
+            rebuilt_serving_users=rebuild_counts.get("serving_users"),
             threshold_days=threshold_days,
-            include_ids=True,
         )
-        rebuild_counts = await _rebuild_serving_profiles_after_cleanup(
-            uow,
-            cleanup_result,
-            product_masters,
-            concept_links,
-        )
-    counts = _cleanup_counts_only(cleanup_result)
     logger.info(
         "Stale agg cleanup: product_signals=%s user_preferences=%s "
         "rebuilt_serving_products=%s rebuilt_serving_users=%s (threshold=%sd)",
@@ -463,13 +474,22 @@ async def run_incremental(
 
     run_start = datetime.now(timezone.utc)
     run_id = await start_pipeline_run(pool, "INCREMENTAL")
+    # Bound before try: get_last_watermark() is the first statement inside
+    # the try block below, so if IT raises, these must already be defined —
+    # otherwise the except-block's `wm_ts or run_start` / `wm_rid or ""`
+    # raises UnboundLocalError, masking the real exception, skipping
+    # send_pipeline_failure_alert_async, and leaving pipeline_run stuck at RUNNING.
+    wm_ts: datetime | None = None
+    wm_rid: str | None = None
 
     try:
         # Get watermark
         wm_ts, wm_rid = await get_last_watermark(pool)
 
         # Fetch changed reviews
-        changed = await fetch_changed_reviews(pool, wm_ts, wm_rid, run_start, batch_size)
+        with stage_timer(logger, "load_changed_reviews", run_type="INCREMENTAL", run_id=run_id) as _t_load:
+            changed = await fetch_changed_reviews(pool, wm_ts, wm_rid, run_start, batch_size)
+            _t_load.set(row_count=len(changed))
         if not changed:
             # P3-8 (Wave 3.8): still trim stale aggregates on quiet runs.
             cleanup_counts = await _maybe_run_stale_cleanup(
@@ -494,16 +514,20 @@ async def run_incremental(
         total_quarantined = 0
         skipped_reviews: set[str] = set()
         last_processed_review: dict | None = None
+        persist_elapsed = 0.0
+        review_loop_start = time.monotonic()
 
         for review_row in changed:
             quarantine = QuarantineHandler()
 
             if not review_row.get("is_active", True):
                 # Tombstone
+                _t0 = time.monotonic()
                 dirty = await handle_tombstone(
                     pool, review_row["review_id"],
                     review_row.get("matched_product_id"),
                 )
+                persist_elapsed += time.monotonic() - _t0
                 all_dirty_products.update(dirty)
                 last_processed_review = review_row
                 continue
@@ -559,7 +583,9 @@ async def run_incremental(
                     review_row["review_id"],
                 )
 
+            _t0 = time.monotonic()
             persist_stats = await persist_review_bundle(pool, bundle)
+            persist_elapsed += time.monotonic() - _t0
 
             total_signals += persist_stats.get("signal_count", len(bundle.wrapped_signals))
             total_quarantined += persist_stats.get("quarantine_count", len(bundle.quarantine_entries))
@@ -573,7 +599,22 @@ async def run_incremental(
             if prev_link and prev_link["matched_product_id"]:
                 all_dirty_products.add(prev_link["matched_product_id"])
 
+        review_loop_elapsed = time.monotonic() - review_loop_start
+        log_pipeline_stage(
+            logger, "review_processing_loop", review_loop_elapsed,
+            run_type="INCREMENTAL", run_id=run_id,
+            row_count=len(changed), signal_count=total_signals,
+            quarantine_count=total_quarantined, skipped_count=len(skipped_reviews),
+        )
+        log_pipeline_stage(
+            logger, "canonical_signal_persist", persist_elapsed,
+            run_type="INCREMENTAL", run_id=run_id,
+            row_count=len(changed) - len(skipped_reviews), signal_count=total_signals,
+        )
+
         # Re-aggregate dirty products
+        aggregate_elapsed = 0.0
+        serving_persist_elapsed = 0.0
         for pid in all_dirty_products:
             # Full re-aggregate for this product from all signals in DB
             async with pool.acquire() as conn:
@@ -582,10 +623,13 @@ async def run_incremental(
                 """, pid)
                 signals_dicts = [dict(r) for r in signal_rows]
 
+            _t0 = time.monotonic()
             agg = aggregate_product_signals(signals_dicts)
+            aggregate_elapsed += time.monotonic() - _t0
 
             # Persist
             from src.db.repos import mart_repo
+            _t0 = time.monotonic()
             async with UnitOfWork(pool) as uow:
                 master = await _load_product_master_for_rebuild(uow, pid, product_masters)
                 if not master:
@@ -601,6 +645,16 @@ async def run_incremental(
                     source_review_stats=source_stats,
                 )
                 await mart_repo.upsert_serving_product_profile(uow, profile)
+            serving_persist_elapsed += time.monotonic() - _t0
+
+        log_pipeline_stage(
+            logger, "aggregate_product_signals", aggregate_elapsed,
+            run_type="INCREMENTAL", run_id=run_id, row_count=len(all_dirty_products),
+        )
+        log_pipeline_stage(
+            logger, "reaggregate_serving_persist", serving_persist_elapsed,
+            run_type="INCREMENTAL", run_id=run_id, row_count=len(all_dirty_products),
+        )
 
         # P0-5: Watermark — early-stop at earliest skipped cursor so a
         # skipped review is NEVER passed by the watermark.
@@ -643,8 +697,26 @@ async def run_incremental(
         }
 
     except Exception as e:
-        await complete_pipeline_run(pool, run_id, wm_ts or run_start, wm_rid or "",
-                                     error_message=str(e))
+        # Alert FIRST, before the FAILED-recording DB write. The webhook has no
+        # DB dependency, so when the DB itself is the failure (e.g. connection
+        # loss) it is the only notification that can still fire — which is
+        # exactly when an alert matters most. Offloaded to a thread so the
+        # blocking urlopen can't stall the event loop.
+        await send_pipeline_failure_alert_async(
+            run_type="INCREMENTAL", run_id=run_id, error_message=str(e),
+        )
+        # The FAILED-recording write goes in its own try/except: if it fails
+        # again (same dead connection), swallow that secondary error so the
+        # ORIGINAL exception is preserved by the bare `raise` below. The run may
+        # stay stuck at RUNNING, but that's unavoidable when the DB is down.
+        try:
+            await complete_pipeline_run(pool, run_id, wm_ts or run_start, wm_rid or "",
+                                         error_message=str(e))
+        except Exception:
+            logger.exception(
+                "failed to record FAILED pipeline_run status (run_id=%s); "
+                "run may remain stuck at RUNNING", run_id,
+            )
         raise
 
 

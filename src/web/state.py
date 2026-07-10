@@ -57,6 +57,11 @@ class DemoState:
     # Per-product signal index (for graph API hierarchy)
     product_signals: dict[str, list[dict]] = field(default_factory=dict)
 
+    # Phase 0.4: in-memory provenance provider built from pipeline bundles.
+    # Type is InMemoryProvenanceProvider | None; kept as Any to avoid importing
+    # the rec layer at module import time.
+    provenance_provider: Any | None = None
+
     def reset(self) -> None:
         fresh = DemoState()
         self.__dict__.clear()
@@ -233,6 +238,11 @@ def load_demo_data(
     demo_state.quarantine_entries = [
         {"table": e.table, **e.data} for e in batch_quarantine_entries
     ]
+
+    # Phase 0.4: build provenance provider from pipeline bundles so
+    # /api/recommend can attach review snippets to explanation paths.
+    from src.rec.provenance_provider import build_inmemory_provenance_provider
+    demo_state.provenance_provider = build_inmemory_provenance_provider(batch_result)
 
     demo_state.loaded = True
     return demo_state

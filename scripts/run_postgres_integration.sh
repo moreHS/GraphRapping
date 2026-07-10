@@ -22,14 +22,26 @@
 set -euo pipefail
 
 # Wave 4 PG-bound test set. Add new files here so both local and Docker
-# runs cover the same surface.
+# runs cover the same surface. Keep the PG-gated block below in lockstep with
+# the `postgres-service` job in .github/workflows/ci.yml.
 PG_TESTS=(
+  # PG-gated suites — must match ci.yml `postgres-service` exactly (the
+  # canonical Postgres surface). Each self-skips without
+  # GRAPHRAPPING_TEST_DATABASE_URL, so they only truly run here / in that job.
   tests/test_postgres_integration.py
+  tests/test_wave1_integration_smoke.py
   tests/test_dirty_product_propagation.py
   tests/test_incremental_watermark_safety.py
   tests/test_sql_prefilter_avoided.py
-  tests/test_wave1_integration_smoke.py
+  tests/test_candidate_prefilter_equivalence.py
   tests/test_full_load_db.py
+  tests/test_incremental_pipeline_db.py
+  tests/test_pipeline_lock.py
+  tests/test_source_identity_collision.py
+  tests/test_retention_monitor.py
+  # NOT PG-gated: these also run in the CI quality job (no DB). Kept here for
+  # extra local/Docker coverage; intentionally omitted from ci.yml
+  # postgres-service so CI doesn't run them twice.
   tests/test_master_upsert_completeness.py
   tests/test_incremental_cleanup_wiring.py
   tests/test_stale_agg_soft_delete.py

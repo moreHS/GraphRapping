@@ -26,6 +26,8 @@ from typing import Any
 
 import asyncpg
 
+from src.common.alerting import check_and_alert_retention
+from src.common.pipeline_observability import stage_timer
 from src.db.contract_validator import ContractValidationResult, validate_all
 from src.db.pipeline_lock import acquire_pipeline_lock
 from src.jobs.run_incremental_pipeline import run_incremental
@@ -96,37 +98,52 @@ async def run_incremental_to_db(
     # correctness is unaffected; ops observability is degraded for failed
     # incremental runs. Tracked for Wave 6.
     async with acquire_pipeline_lock(pool, run_label="run_incremental_to_db") as lock_pid:
-        in_memory = await run_incremental(
-            pool,
-            product_index=product_index,
-            product_masters=product_masters,
-            concept_links=concept_links,
-            bee_normalizer=bee_normalizer,
-            relation_canonicalizer=relation_canonicalizer,
-            projection_registry=projection_registry,
-            deriver=deriver,
-            predicate_contracts=predicate_contracts,
-            batch_size=batch_size,
-            kg_mode=kg_mode,
-        )
-
-        # Record lock_holder_pid on the pipeline_run row produced by run_incremental.
-        async with pool.acquire() as conn:
-            await conn.execute(
-                "UPDATE pipeline_run SET lock_holder_pid = $1 WHERE run_id = $2",
-                lock_pid, int(in_memory["run_id"]),
+        with stage_timer(logger, "incremental_to_db", run_type="INCREMENTAL") as _t:
+            in_memory = await run_incremental(
+                pool,
+                product_index=product_index,
+                product_masters=product_masters,
+                concept_links=concept_links,
+                bee_normalizer=bee_normalizer,
+                relation_canonicalizer=relation_canonicalizer,
+                projection_registry=projection_registry,
+                deriver=deriver,
+                predicate_contracts=predicate_contracts,
+                batch_size=batch_size,
+                kg_mode=kg_mode,
             )
 
-        persisted = {
-            "review_count": int(in_memory.get("review_count", 0)),
-            "signal_count": int(in_memory.get("signal_count", 0)),
-            "dirty_product_count": int(in_memory.get("dirty_product_count", 0)),
-            "skipped_count": int(in_memory.get("skipped_count", 0)),
-        }
+            # Record lock_holder_pid on the pipeline_run row produced by run_incremental.
+            async with pool.acquire() as conn:
+                await conn.execute(
+                    "UPDATE pipeline_run SET lock_holder_pid = $1 WHERE run_id = $2",
+                    lock_pid, int(in_memory["run_id"]),
+                )
 
-        validation: ContractValidationResult | None = None
-        if validate_after:
-            validation = await validate_all(pool, **(validator_options or {}))
+            persisted = {
+                "review_count": int(in_memory.get("review_count", 0)),
+                "signal_count": int(in_memory.get("signal_count", 0)),
+                "dirty_product_count": int(in_memory.get("dirty_product_count", 0)),
+                "skipped_count": int(in_memory.get("skipped_count", 0)),
+            }
+
+            validation: ContractValidationResult | None = None
+            if validate_after:
+                validation = await validate_all(pool, **(validator_options or {}))
+
+            _t.set(
+                run_id=in_memory.get("run_id"),
+                review_count=persisted["review_count"],
+                signal_count=persisted["signal_count"],
+                dirty_product_count=persisted["dirty_product_count"],
+                skipped_count=persisted["skipped_count"],
+            )
+
+    # Phase 2.3 item 3: optional retention-threshold alert (DB pipeline path
+    # only). No-ops unless GRAPHRAPPING_RETENTION_ALERT_ENABLED=1; never
+    # raises (see check_and_alert_retention docstring). Runs after the
+    # advisory lock is released since this is a read-only check.
+    await check_and_alert_retention(pool, run_type="INCREMENTAL", run_id=int(in_memory["run_id"]))
 
     return IncrementalDbResult(
         in_memory=in_memory,

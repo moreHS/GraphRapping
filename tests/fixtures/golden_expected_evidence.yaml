@@ -1,0 +1,266 @@
+# Golden-profile expected evidence-family baseline (Phase 0.1)
+#
+# 이 파일은 dense_golden fixture 기준으로 6개 골든 프로파일 × 카테고리 탭 조합의
+# "기대 evidence-family 계약"을 코드로 고정한다. 소비 테스트:
+#   tests/test_expected_evidence_family_baseline.py
+#
+# 관측 원천: scripts/audit_recommendation_evidence.build_audit_report(
+#     fixture="dense_golden", kg_mode="on")
+# 파이프라인: category prefilter -> candidate generation -> scorer -> reranker
+# (데모 서버와 동일 primitive). DB/네트워크 미사용.
+#
+# ── 계약 설계 원칙 (단순 스냅샷이 아니라 계약 수준) ────────────────────────────
+#
+# required_families:
+#   해당 프로파일×탭의 "후보 풀(candidate pool)"에 현재 나타나는 evidence family.
+#   후보 풀 family 분포는 top_k에 무관하게 안정적이므로 회귀 방어 앵커로 쓴다.
+#   (top-N은 reranker/diversity 영향으로 흔들리므로 required 앵커로 쓰지 않는다.)
+#   -> 여기 적힌 family가 후보 풀에서 사라지면 = 무언가 깨진 것 = CI fail.
+#
+# forbidden_families:
+#   계약상 그 탭에서 나오면 안 되는 family. "현재 없음"과 "계약상 금지"는 다르다.
+#   family 부재는 대개 fixture 데이터 특성이므로 기본은 빈 리스트로 둔다.
+#   (미래에 정당한 개선으로 새 family가 붙어도 스냅샷 깨짐이 나지 않도록.)
+#   문서화된 계약이 있는 조합에서만 채운다 — 아래 user_makeup_matte_50m.skincare 참조.
+#
+# allowed_no_candidate:
+#   해당 탭에서 후보가 0개여도 정상인 조합만 true. 그 외 조합에서 no-candidate가
+#   발생하면 CI fail. (탭에 상품 자체가 없거나, 유저 신호가 그 탭 상품과 겹치지
+#   않으면 후보 0 — 이것이 현재 정상 상태다.)
+#
+# ── 전역 불변식 (스펙과 무관하게 소비 테스트가 모든 42개 조합에 강제) ─────────
+#   (a) eligible=true 결과는 evidence family가 1개 이상.
+#   (b) source_trust(source_review_*)만으로 eligible이 된 결과는 없음.
+#   (c) SOURCE_REVIEW_STATS / active_category / review_summary 는 evidence family가
+#       될 수 없음 (자격 근거 아님, trust/context/표시용).
+#   (d) top-N에 나타난 family는 반드시 후보 풀 family의 부분집합.
+#   (e) no-candidate는 allowed_no_candidate=true 조합에서만 허용.
+#
+# ── 카테고리 탭 ────────────────────────────────────────────────────────────────
+#   all, skincare, makeup, bodycare, haircare, fragrance, other
+#   (src/rec/category_groups.RECOMMEND_CATEGORY_DEFS 순서). "other" 탭은 dense_golden에
+#   해당 상품이 0개라 항상 no-candidate.
+#
+# 갱신 방법: 파이프라인/가중치를 의도적으로 바꿔 이 계약을 조정할 때만 값을 수정한다.
+#   관측 재생성: python scripts/audit_recommendation_evidence.py --json 로 대조.
+
+fixture: dense_golden
+kg_mode: "on"   # quoted: YAML 1.1 parses bare on/off/yes/no as booleans
+
+# 유효 evidence family 전체 집합 (소비 테스트가 스펙 검증에 사용)
+known_families:
+  - PRODUCT_MASTER_TRUTH
+  - REVIEW_GRAPH_RELATION
+  - REVIEW_GRAPH_WEAK_RELATION
+  - PURCHASE_BEHAVIOR
+
+profiles:
+
+  # 브랜드 선호는 있으나 purchase 선호 브랜드/active category가 비어 있는 프로파일.
+  # skincare 계열 concern/goal(건조함/보습) 기반으로 skincare 탭에서만 후보 성립.
+  # 구매 이력 신호가 없어 PURCHASE_BEHAVIOR는 후보 풀에 등장하지 않는다.
+  user_brand_null_cat:
+    all:
+      allowed_no_candidate: false
+      required_families: [PRODUCT_MASTER_TRUTH, REVIEW_GRAPH_RELATION]
+      forbidden_families: []
+    skincare:
+      allowed_no_candidate: false
+      required_families: [PRODUCT_MASTER_TRUTH, REVIEW_GRAPH_RELATION]
+      forbidden_families: []
+    makeup:
+      allowed_no_candidate: true
+      required_families: []
+      forbidden_families: []
+    bodycare:
+      allowed_no_candidate: true
+      required_families: []
+      forbidden_families: []
+    haircare:
+      allowed_no_candidate: true
+      required_families: []
+      forbidden_families: []
+    fragrance:
+      allowed_no_candidate: true
+      required_families: []
+      forbidden_families: []
+    other:
+      allowed_no_candidate: true
+      required_families: []
+      forbidden_families: []
+
+  # 다카테고리 활동 프로파일 (skincare/makeup/bodycare/hair active). 브랜드/구매/재구매
+  # 신호가 풍부해 대부분 탭에서 세 family가 함께 성립. fragrance 탭은 재구매 브랜드
+  # overlap만 닿아 PURCHASE_BEHAVIOR 단독.
+  user_dry_30f:
+    all:
+      allowed_no_candidate: false
+      required_families: [PRODUCT_MASTER_TRUTH, PURCHASE_BEHAVIOR, REVIEW_GRAPH_RELATION]
+      forbidden_families: []
+    skincare:
+      allowed_no_candidate: false
+      required_families: [PRODUCT_MASTER_TRUTH, PURCHASE_BEHAVIOR, REVIEW_GRAPH_RELATION]
+      forbidden_families: []
+    makeup:
+      allowed_no_candidate: false
+      required_families: [PRODUCT_MASTER_TRUTH, PURCHASE_BEHAVIOR, REVIEW_GRAPH_RELATION]
+      forbidden_families: []
+    bodycare:
+      allowed_no_candidate: false
+      required_families: [PRODUCT_MASTER_TRUTH, PURCHASE_BEHAVIOR, REVIEW_GRAPH_RELATION]
+      forbidden_families: []
+    haircare:
+      allowed_no_candidate: false
+      required_families: [PRODUCT_MASTER_TRUTH, PURCHASE_BEHAVIOR, REVIEW_GRAPH_RELATION]
+      forbidden_families: []
+    fragrance:
+      allowed_no_candidate: false
+      required_families: [PURCHASE_BEHAVIOR]
+      forbidden_families: []
+    other:
+      allowed_no_candidate: true
+      required_families: []
+      forbidden_families: []
+
+  # 향수 전용 프로파일 (active=perfume, chat 없음, concern="향 지속력 고민").
+  # 향 관련 신호가 dense_golden의 어느 상품 truth/그래프와도 겹치지 않아 모든 탭에서
+  # 후보 0. 전 탭 no-candidate 허용이 현재 정상 상태다 (콜드/희소 신호 케이스).
+  user_fragrance_60f:
+    all:
+      allowed_no_candidate: true
+      required_families: []
+      forbidden_families: []
+    skincare:
+      allowed_no_candidate: true
+      required_families: []
+      forbidden_families: []
+    makeup:
+      allowed_no_candidate: true
+      required_families: []
+      forbidden_families: []
+    bodycare:
+      allowed_no_candidate: true
+      required_families: []
+      forbidden_families: []
+    haircare:
+      allowed_no_candidate: true
+      required_families: []
+      forbidden_families: []
+    fragrance:
+      allowed_no_candidate: true
+      required_families: []
+      forbidden_families: []
+    other:
+      allowed_no_candidate: true
+      required_families: []
+      forbidden_families: []
+
+  # 매트 메이크업 프로파일. makeup 탭은 catalog_keyword(틴트)+재구매+semantic로 세 family.
+  # skincare 탭 = 문서화된 broad-semantic 케이스의 Phase 3.1 수정 후 상태:
+  #   docs/architecture/recommendation_signal_flow_2026_06_23.md
+  #   "현재 관측된 Broad Semantic 케이스" 참조.
+  #   유저의 makeup-scope 키워드(파우더/틴트/매트)는 skincare 탭 점수에 새지 않는다
+  #   (PREFERS_CATEGORY/catalog_keyword 누수 금지). 이 유저는 지속력을 skincare goal로도
+  #   갖고 있어, 예전에는 skincare 후보가 오직 리뷰 그래프 semantic(지속력->lasting_power)
+  #   으로만 성립했다 = broad-semantic 도배.
+  #   Phase 3.1에서 lasting_power 규칙에 category_scope: [makeup, fragrance]를 부여해
+  #   (configs/recommendation_semantic_compatibility.yaml) skincare 탭에서는 더 이상
+  #   발화하지 않는다. 경쟁할 skincare 전용 근거가 없으므로 skincare 탭은 이제 정상적으로
+  #   비어 있다(no-candidate). evidence-first 철학상 임의 source-only 추천보다 정직하다
+  #   (DECISIONS/2026-06-19). => skincare는 no-candidate 허용, forbidden은 유지: 혹시
+  #   후보가 생기더라도 PRODUCT_MASTER_TRUTH(키워드 누수)/PURCHASE_BEHAVIOR는 계약상 금지.
+  user_makeup_matte_50m:
+    all:
+      allowed_no_candidate: false
+      required_families: [PRODUCT_MASTER_TRUTH, PURCHASE_BEHAVIOR, REVIEW_GRAPH_RELATION]
+      forbidden_families: []
+    skincare:
+      allowed_no_candidate: true
+      required_families: []
+      forbidden_families: [PRODUCT_MASTER_TRUTH, PURCHASE_BEHAVIOR]
+    makeup:
+      allowed_no_candidate: false
+      required_families: [PRODUCT_MASTER_TRUTH, PURCHASE_BEHAVIOR, REVIEW_GRAPH_RELATION]
+      forbidden_families: []
+    bodycare:
+      allowed_no_candidate: true
+      required_families: []
+      forbidden_families: []
+    haircare:
+      allowed_no_candidate: true
+      required_families: []
+      forbidden_families: []
+    fragrance:
+      allowed_no_candidate: true
+      required_families: []
+      forbidden_families: []
+    other:
+      allowed_no_candidate: true
+      required_families: []
+      forbidden_families: []
+
+  # 두피/헤어 케어 프로파일. haircare 탭은 브랜드 truth + 구매 신호로 성립.
+  # skincare 탭은 두피/헤어 신호가 skincare 상품과 안 겹쳐 no-candidate(정상).
+  # 그래프 관계 신호가 후보 풀에 등장하지 않아 REVIEW_GRAPH_RELATION은 required가 아니다.
+  user_scalp_care_50m:
+    all:
+      allowed_no_candidate: false
+      required_families: [PRODUCT_MASTER_TRUTH, PURCHASE_BEHAVIOR]
+      forbidden_families: []
+    skincare:
+      allowed_no_candidate: true
+      required_families: []
+      forbidden_families: []
+    makeup:
+      allowed_no_candidate: false
+      required_families: [PRODUCT_MASTER_TRUTH]
+      forbidden_families: []
+    bodycare:
+      allowed_no_candidate: true
+      required_families: []
+      forbidden_families: []
+    haircare:
+      allowed_no_candidate: false
+      required_families: [PRODUCT_MASTER_TRUTH, PURCHASE_BEHAVIOR]
+      forbidden_families: []
+    fragrance:
+      allowed_no_candidate: true
+      required_families: []
+      forbidden_families: []
+    other:
+      allowed_no_candidate: true
+      required_families: []
+      forbidden_families: []
+
+  # 민감성 피부 프로파일. skincare/all 탭은 세 family 모두 성립. makeup 탭은 브랜드
+  # truth 단독(PRODUCT_MASTER_TRUTH). bodycare/haircare는 truth+구매. fragrance는
+  # 구매 신호 단독.
+  user_sensitive_40f:
+    all:
+      allowed_no_candidate: false
+      required_families: [PRODUCT_MASTER_TRUTH, PURCHASE_BEHAVIOR, REVIEW_GRAPH_RELATION]
+      forbidden_families: []
+    skincare:
+      allowed_no_candidate: false
+      required_families: [PRODUCT_MASTER_TRUTH, PURCHASE_BEHAVIOR, REVIEW_GRAPH_RELATION]
+      forbidden_families: []
+    makeup:
+      allowed_no_candidate: false
+      required_families: [PRODUCT_MASTER_TRUTH]
+      forbidden_families: []
+    bodycare:
+      allowed_no_candidate: false
+      required_families: [PRODUCT_MASTER_TRUTH, PURCHASE_BEHAVIOR]
+      forbidden_families: []
+    haircare:
+      allowed_no_candidate: false
+      required_families: [PRODUCT_MASTER_TRUTH, PURCHASE_BEHAVIOR]
+      forbidden_families: []
+    fragrance:
+      allowed_no_candidate: false
+      required_families: [PURCHASE_BEHAVIOR]
+      forbidden_families: []
+    other:
+      allowed_no_candidate: true
+      required_families: []
+      forbidden_families: []

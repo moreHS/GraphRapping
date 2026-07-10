@@ -102,6 +102,15 @@ tr.clickable { cursor: pointer; }
 .path-row { display: flex; align-items: center; gap: 4px; font-size: 12px; margin: 4px 0; color: var(--text2); }
 .path-row .arrow { color: var(--primary-light); }
 
+/* Snippet evidence (explanation path review snippets) */
+.snippet-details { margin: 0 0 8px 0; font-size: 12px; color: var(--text2); }
+.snippet-details summary { cursor: pointer; color: var(--primary-light); user-select: none; }
+.snippet-details summary:hover { color: var(--text); }
+.snippet-list { margin-top: 6px; padding-left: 10px; border-left: 2px solid var(--border); }
+.snippet-item { margin: 6px 0; }
+.snippet-item .snippet-text { color: var(--text); line-height: 1.6; white-space: pre-wrap; word-break: break-word; }
+.snippet-item .snippet-review-id { display: inline-block; margin-top: 2px; font-size: 11px; color: var(--text2); }
+
 /* Section visibility */
 .section { display: none; }
 .section.active { display: block; }

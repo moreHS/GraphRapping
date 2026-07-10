@@ -17,12 +17,17 @@ from src.rec.category_groups import classify_product_category_group
 from src.rec.scoped_preferences import collect_preference_ids
 
 
-PROMOTED_EVIDENCE_FIELDS = {
+# Rule-level ``category_scope`` markers that keep a rule global (fires for every
+# product) even though the field is present. Anything else is matched against a
+# product's classified recommendation category group.
+GLOBAL_CATEGORY_SCOPES: frozenset[str] = frozenset({"all", "global", "any"})
+
+PROMOTED_EVIDENCE_FIELDS: dict[str, tuple[str, ...]] = {
     "keyword": ("top_keyword_ids",),
     "bee_attr": ("top_bee_attr_ids",),
 }
 
-WEAK_EVIDENCE_FIELDS = {
+WEAK_EVIDENCE_FIELDS: dict[str, tuple[str, ...]] = {
     "keyword": (
         "weak_keyword_ids",
         "longtail_keyword_ids",
@@ -78,7 +83,8 @@ def find_semantic_matches(
     explained separately from promoted review graph relation evidence.
     """
 
-    user_ids_by_key = _collect_user_preference_ids(user_profile, product_profile)
+    product_group = classify_product_category_group(product_profile)
+    user_ids_by_key = _collect_user_preference_ids(user_profile, product_group)
     user_ids = set(user_ids_by_key)
     if not user_ids:
         return []
@@ -93,6 +99,8 @@ def find_semantic_matches(
     seen: set[tuple[str, str, str, bool]] = set()
 
     for rule in _load_rules():
+        if not _rule_allows_category(rule, product_group):
+            continue
         triggered_user_ids = sorted(user_ids & _rule_user_keys(rule))
         if not triggered_user_ids:
             continue
@@ -161,11 +169,33 @@ def _load_rules() -> tuple[dict[str, Any], ...]:
     return tuple(rule for rule in rules if isinstance(rule, dict))
 
 
+def _rule_allows_category(rule: dict[str, Any], product_group: str) -> bool:
+    """Return True when ``rule`` may fire for a product in ``product_group``.
+
+    ``category_scope`` is an optional list of recommendation category groups
+    (see ``src/rec/category_groups.py``). When absent or empty the rule stays
+    global — identical to the pre-gating behavior. When present, the rule only
+    fires for products whose classified category group is listed. A global
+    marker (``all``/``global``/``any``) anywhere in the list also keeps it
+    global. Products that carry the scope field but no group match (including
+    the ``other`` fallback) are skipped, which is how category-specific review
+    semantics such as ``lasting_power`` are kept out of unrelated tabs.
+    """
+    scope = rule.get("category_scope")
+    if not scope:
+        return True
+    if isinstance(scope, str):
+        scope = [scope]
+    groups = {str(group).strip().lower() for group in scope if str(group).strip()}
+    if not groups or groups & GLOBAL_CATEGORY_SCOPES:
+        return True
+    return str(product_group).strip().lower() in groups
+
+
 def _collect_user_preference_ids(
     user_profile: dict[str, Any],
-    product_profile: dict[str, Any],
+    product_group: str,
 ) -> dict[str, str]:
-    product_group = classify_product_category_group(product_profile)
     ids: dict[str, str] = {}
     for legacy_field, edge_type in (
         ("preferred_keyword_ids", "PREFERS_KEYWORD"),

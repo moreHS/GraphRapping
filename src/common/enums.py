@@ -351,3 +351,19 @@ class FactStatus(str, Enum):
 class SignalPromotionStatus(str, Enum):
     PROMOTED = "PROMOTED"
     CANDIDATE = "CANDIDATE"
+
+
+# ---------------------------------------------------------------------------
+# Source Identity Collision (product_master compat-id collision markers)
+# ---------------------------------------------------------------------------
+# Sentinels that mark a compat `product_id` as collapsed from multiple
+# `(source_channel, source_key_type, source_product_id)` source identities.
+# Single source of truth shared by src/db/contract_validator.py,
+# src/jobs/run_full_load_db.py, and src/loaders/review_summary_sidecar_loader.py
+# so the validator and the loaders agree on what a collision looks like.
+# Values are part of the on-disk/DB contract — do not change them without a
+# migration plan.
+
+SOURCE_KEY_COLLISION_QUALITY = "SOURCE_KEY_COLLISION"
+SOURCE_KEY_COLLISION_KEY_TYPE = "source_key_collision"
+SOURCE_KEY_COLLISION_MARKER_PREFIX = "source_key_collision:"

@@ -108,11 +108,14 @@ def test_goal_intent_can_match_review_graph_keyword_semantically():
 
 
 def test_lasting_goal_can_match_review_graph_lasting_attr_semantically():
+    # Phase 3.1: the long_lasting rule is category_scope: [makeup, fragrance], so
+    # the product must classify into an in-scope group for the match to fire.
     user = _user(goal_ids=[{"id": "concept:Goal:지속력", "weight": 1.0}])
     product = _product(
+        category_name="메이크업 쿠션",
         top_bee_attr_ids=[
             {"id": "concept:BEEAttr:bee_attr_lasting_power", "score": 0.9, "review_cnt": 8},
-        ]
+        ],
     )
 
     candidates = generate_candidates(user, [product], mode=RecommendationMode.EXPLORE)
@@ -122,12 +125,69 @@ def test_lasting_goal_can_match_review_graph_lasting_attr_semantically():
     assert candidates[0].eligibility.review_graph_paths
 
 
+def test_lasting_goal_scoped_out_of_skincare_product():
+    """Phase 3.1 leak regression: the observed Broad Semantic case
+    (docs/architecture/recommendation_signal_flow_2026_06_23.md). A skincare
+    product whose only user-aligned signal is 지속력 -> bee_attr_lasting_power must
+    no longer become a candidate, because the long_lasting rule is scoped to
+    makeup/fragrance. This is the intended evidence-first outcome, not a
+    regression (DECISIONS/2026-06-19).
+    """
+    user = _user(goal_ids=[{"id": "concept:Goal:지속력", "weight": 1.0}])
+    product = _product(
+        category_name="스킨케어 수분 크림",
+        product_name="수분 진정 크림",
+        top_bee_attr_ids=[
+            {"id": "concept:BEEAttr:bee_attr_lasting_power", "score": 0.9, "review_cnt": 8},
+        ],
+    )
+
+    assert find_semantic_matches(user, product) == []
+    assert generate_candidates(user, [product], mode=RecommendationMode.EXPLORE) == []
+
+
+def test_lasting_goal_matches_lasting_attr_for_fragrance_product():
+    """The long_lasting scope also covers fragrance (scent longevity), so a
+    fragrance product keeps the semantic match.
+    """
+    user = _user(goal_ids=[{"id": "concept:Goal:지속력", "weight": 1.0}])
+    product = _product(
+        category_name="향수 오드퍼퓸",
+        top_bee_attr_ids=[
+            {"id": "concept:BEEAttr:bee_attr_lasting_power", "score": 0.9, "review_cnt": 8},
+        ],
+    )
+
+    candidates = generate_candidates(user, [product], mode=RecommendationMode.EXPLORE)
+
+    assert len(candidates) == 1
+    assert any(c.startswith("semantic_bee_attr:performance:long_lasting") for c in candidates[0].overlap_concepts)
+
+
+def test_global_moisture_rule_still_fires_for_skincare_product():
+    """Control: category_scope gating is per-rule. A global rule (moisture) must
+    keep firing for a skincare product even though long_lasting is now scoped —
+    proving the gate did not blanket-disable semantic matching for skincare.
+    """
+    user = _user(goal_ids=[{"id": "concept:Goal:보습", "weight": 1.0}])
+    product = _product(
+        category_name="스킨케어 수분 크림",
+        top_keyword_ids=[
+            {"id": "concept:Keyword:kw_moist", "score": 0.9, "review_cnt": 8},
+        ],
+    )
+
+    matches = find_semantic_matches(user, product)
+    assert [m.product_id for m in matches] == ["concept:Keyword:kw_moist"]
+
+
 def test_semantic_explanation_preserves_triggering_user_edge():
     user = _user(goal_ids=[{"id": "concept:Goal:지속력", "weight": 1.0}])
     product = _product(
+        category_name="메이크업 쿠션",
         top_bee_attr_ids=[
             {"id": "concept:BEEAttr:bee_attr_lasting_power", "score": 0.9, "review_cnt": 8},
-        ]
+        ],
     )
     candidate = generate_candidates(user, [product], mode=RecommendationMode.EXPLORE)[0]
 

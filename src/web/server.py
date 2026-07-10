@@ -5,7 +5,10 @@ FastAPI server for GraphRapping demo UI.
 from __future__ import annotations
 
 import os
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Any
 
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.staticfiles import StaticFiles
@@ -13,10 +16,22 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from src.web.state import demo_state, load_demo_data
+from src.web.serving_store import (
+    DBServingStore,
+    DemoServingStore,
+    ServingStore,
+    DEFAULT_SERVING_REFRESH_SEC,
+)
 from src.rec.candidate_generator import generate_candidates_prefiltered
 from src.rec.scorer import Scorer
 from src.rec.reranker import rerank
-from src.rec.explainer import explain
+from src.rec.explainer import explain, ExplanationService
+from src.rec.search import search_products
+from src.rec.provenance_provider import (
+    DBProvenanceProvider,
+    fetch_product_signals,
+    signal_ids_by_concept_path,
+)
 from src.rec.hook_generator import generate_hooks
 from src.rec.next_question import generate_next_question
 from src.rec.category_groups import (
@@ -28,7 +43,104 @@ from src.rec.category_groups import (
 from src.common.enums import RecommendationMode
 from src.web.review_summary_sidecar import fetch_sidecar_summaries
 
-app = FastAPI(title="GraphRapping Demo", version="1.0")
+
+# =============================================================================
+# Serving store selection (Phase 2.1)
+# =============================================================================
+#
+# GRAPHRAPPING_SERVING_MODE selects the recommendation data source:
+#   - "demo" (default): in-memory DemoState from a pipeline run. Existing demo
+#     and test behaviour is unchanged.
+#   - "db": serving_product_profile / serving_user_profile read from Postgres
+#     with a periodic-refresh cache. Requires GRAPHRAPPING_DATABASE_URL or
+#     DATABASE_URL; a missing URL fails fast at app startup.
+
+_SERVING_MODE_ENV = "GRAPHRAPPING_SERVING_MODE"
+_SERVING_REFRESH_ENV = "GRAPHRAPPING_SERVING_REFRESH_SEC"
+
+# Phase 2.2 (issue E2): GRAPHRAPPING_CANDIDATE_PREFILTER selects the candidate
+# path:
+#   - "auto" (default): SQL prefilter ON in db mode, OFF in demo mode.
+#   - "on": consult the store's SQL prefilter (recall-safe; no-op if the store
+#     does not implement one, e.g. the demo store).
+#   - "off": full traversal over the category universe (no SQL pre-narrowing).
+# The prefiltered path is proven equivalent to full traversal, so this only
+# governs *where* the avoided hard filter runs, never the result set.
+_CANDIDATE_PREFILTER_ENV = "GRAPHRAPPING_CANDIDATE_PREFILTER"
+
+# DB-mode store, created at startup and reused so its refresh cache persists
+# across requests. Stays None in demo mode.
+_serving_store: ServingStore | None = None
+
+
+def _serving_mode() -> str:
+    return (os.environ.get(_SERVING_MODE_ENV) or "demo").strip().lower()
+
+
+def _candidate_prefilter_enabled() -> bool:
+    raw = (os.environ.get(_CANDIDATE_PREFILTER_ENV) or "auto").strip().lower()
+    if raw == "on":
+        return True
+    if raw == "off":
+        return False
+    # auto: on in db mode, off in demo mode.
+    return _serving_mode() == "db"
+
+
+def _serving_refresh_sec() -> float:
+    raw = os.environ.get(_SERVING_REFRESH_ENV)
+    if not raw:
+        return float(DEFAULT_SERVING_REFRESH_SEC)
+    try:
+        return max(0.0, float(raw))
+    except ValueError:
+        return float(DEFAULT_SERVING_REFRESH_SEC)
+
+
+def get_serving_store() -> ServingStore:
+    """Return the active serving store.
+
+    DB mode reuses the startup-built store (holding the refresh cache). Demo
+    mode (default) returns a lightweight store that reads the *live*
+    module-level ``demo_state`` each call, so pipeline reloads and tests that
+    monkeypatch ``server.demo_state`` are always reflected.
+    """
+    if _serving_store is not None:
+        return _serving_store
+    if _serving_mode() == "db":
+        raise RuntimeError(
+            "DB serving store is not initialized. It is created during app "
+            "startup (lifespan); GRAPHRAPPING_SERVING_MODE=db requires the "
+            "server to run through its lifespan."
+        )
+    return DemoServingStore(lambda: demo_state)
+
+
+@asynccontextmanager
+async def _lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    """App lifespan: in DB mode, build the pool + serving store at startup.
+
+    A missing DB URL raises here (fail-fast at boot) rather than surfacing on
+    the first recommendation request.
+    """
+    global _serving_store
+    if _serving_mode() == "db":
+        from src.db.connection import close_pool, create_pool, resolve_database_url
+
+        # Fail fast with a clear, config-focused message before connecting.
+        resolve_database_url()
+        pool = await create_pool()
+        _serving_store = DBServingStore(pool, refresh_sec=_serving_refresh_sec())
+        try:
+            yield
+        finally:
+            _serving_store = None
+            await close_pool()
+    else:
+        yield
+
+
+app = FastAPI(title="GraphRapping Demo", version="1.0", lifespan=_lifespan)
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
@@ -192,24 +304,33 @@ async def pipeline_run(
 
 @app.get("/api/dashboard/summary")
 async def dashboard_summary():
-    _check_loaded()
+    # Serving counts + source-review stats come through the store, so they work
+    # in both modes; the guard is mode-aware (DB mode is ready once started).
+    # reviews_processed / total_signals / total_quarantined are demo-pipeline-run
+    # artifacts with no DB-mode equivalent, so they fall back to 0 there.
+    # `loaded` mirrors readiness per mode: demo_state.loaded in demo mode, True
+    # in DB mode (reaching this point already passed _check_serving_ready()).
+    _check_serving_ready()
+    products = await get_serving_store().get_products()
+    users = await get_serving_store().get_users()
     source_stats_positive = sum(
-        1 for p in demo_state.serving_products
+        1 for p in products
         if _positive_number(p.get("source_review_count_6m"))
     )
     source_rating_present = sum(
-        1 for p in demo_state.serving_products
+        1 for p in products
         if p.get("source_avg_rating_6m") is not None
     )
+    db_mode = _serving_mode() == "db"
     return {
-        "reviews_processed": demo_state.review_count,
-        "total_signals": demo_state.batch_result.get("total_signals", 0),
-        "total_quarantined": sum(demo_state.quarantine_stats.values()),
-        "serving_products": len(demo_state.serving_products),
-        "serving_users": len(demo_state.serving_users),
+        "reviews_processed": 0 if db_mode else demo_state.review_count,
+        "total_signals": 0 if db_mode else demo_state.batch_result.get("total_signals", 0),
+        "total_quarantined": 0 if db_mode else sum(demo_state.quarantine_stats.values()),
+        "serving_products": len(products),
+        "serving_users": len(users),
         "source_review_stats_products": source_stats_positive,
         "source_avg_rating_products": source_rating_present,
-        "loaded": demo_state.loaded,
+        "loaded": True if db_mode else demo_state.loaded,
     }
 
 
@@ -250,16 +371,18 @@ async def get_review(review_id: str):
 
 @app.get("/api/products")
 async def list_products():
-    _check_loaded()
-    return {"items": demo_state.serving_products, "total": len(demo_state.serving_products)}
+    _check_serving_ready()
+    products = await get_serving_store().get_products()
+    return {"items": products, "total": len(products)}
 
 
 @app.get("/api/products/{product_id}")
 async def get_product(product_id: str):
-    _check_loaded()
-    product = next((p for p in demo_state.serving_products if p["product_id"] == product_id), None)
+    _check_serving_ready()
+    product = await get_serving_store().get_product(product_id)
     if not product:
         raise HTTPException(404, "Product not found")
+    # master / concept_links are demo-pipeline artifacts (empty in DB mode).
     master = demo_state.product_masters.get(product_id, {})
     links = demo_state.concept_links.get(f"product:{product_id}", [])
     summaries = await fetch_sidecar_summaries([product_id])
@@ -273,14 +396,15 @@ async def get_product(product_id: str):
 
 @app.get("/api/users")
 async def list_users():
-    _check_loaded()
-    return {"items": demo_state.serving_users, "total": len(demo_state.serving_users)}
+    _check_serving_ready()
+    users = await get_serving_store().get_users()
+    return {"items": users, "total": len(users)}
 
 
 @app.get("/api/users/{user_id}")
 async def get_user(user_id: str):
-    _check_loaded()
-    user = next((u for u in demo_state.serving_users if u["user_id"] == user_id), None)
+    _check_serving_ready()
+    user = await get_serving_store().get_user(user_id)
     if not user:
         raise HTTPException(404, "User not found")
     return {"serving_profile": user}
@@ -292,8 +416,9 @@ async def get_user(user_id: str):
 
 @app.get("/api/recommend/categories")
 async def recommend_categories():
-    _check_loaded()
-    counts = recommend_category_counts(demo_state.serving_products)
+    _check_serving_ready()
+    products = await get_serving_store().get_products()
+    counts = recommend_category_counts(products)
     return {
         "items": [
             {
@@ -318,25 +443,41 @@ class RecommendRequest(BaseModel):
 
 @app.post("/api/recommend")
 async def recommend(req: RecommendRequest):
-    _check_loaded()
-    user = next((u for u in demo_state.serving_users if u["user_id"] == req.user_id), None)
+    _check_serving_ready()
+    store = get_serving_store()
+    user = await store.get_user(req.user_id)
     if not user:
         raise HTTPException(404, "User not found")
 
     mode_map = {"strict": RecommendationMode.STRICT, "explore": RecommendationMode.EXPLORE, "compare": RecommendationMode.COMPARE}
     mode = mode_map.get(req.mode, RecommendationMode.EXPLORE)
 
-    # SQL-first: use prefiltered path as default (avoids Python full-scan of all products)
-    product_map = {p["product_id"]: p for p in demo_state.serving_products}
+    # Candidate path (Phase 2.2): category universe -> optional SQL prefilter ->
+    # in-memory scoring on the reduced set. The SQL prefilter (db mode default)
+    # only pushes the avoided-ingredient hard filter to SQL, which the in-memory
+    # full traversal applies identically, so the candidate set is unchanged.
+    product_map = {p["product_id"]: p for p in await store.get_products()}
     requested_category_group = req.category_group if req.category_group in RECOMMEND_CATEGORY_LABELS else "all"
     if requested_category_group == "all":
-        prefiltered_product_ids = list(product_map.keys())
+        category_universe_ids = list(product_map.keys())
     else:
-        prefiltered_product_ids = [
+        category_universe_ids = [
             pid
             for pid, product in product_map.items()
             if classify_product_category_group(product) == requested_category_group
         ]
+
+    prefiltered_product_ids = category_universe_ids
+    if _candidate_prefilter_enabled():
+        # Optional store capability (duck-typed like provenance.prefetch): the
+        # DB store narrows via SQL; a store without it leaves the universe as-is.
+        prefilter = getattr(store, "prefilter_candidate_ids", None)
+        if prefilter is not None:
+            prefiltered_product_ids = await prefilter(
+                user_profile=user,
+                candidate_universe=category_universe_ids,
+            )
+
     candidates = generate_candidates_prefiltered(
         user_profile=user,
         prefiltered_product_ids=prefiltered_product_ids,
@@ -365,36 +506,52 @@ async def recommend(req: RecommendRequest):
                       diversity_weight=req.diversity_weight, top_k=req.top_k)
     summary_by_product = await fetch_sidecar_summaries([r.product_id for r in reranked])
 
-    results = []
+    # Pre-pass: pair each reranked product with its candidate/score/explanation.
+    # explain() is pure, in-memory and cheap, so computing all explanations up
+    # front lets provenance snippets be resolved in a single request-level batch
+    # (avoids per-product N+1 DB round-trips in DB mode).
+    prepared: list[tuple[Any, Any, Any, dict, Any]] = []
     for r in reranked:
         candidate = next((candidate for candidate, scored_product in scored if scored_product.product_id == r.product_id), None)
         scored_product = next((scored_product for _, scored_product in scored if scored_product.product_id == r.product_id), None)
         if candidate is not None and scored_product is not None:
             product_profile = product_map.get(r.product_id, {})
             exp = explain(scored_product, candidate.overlap_concepts, top_n=5)
-            hooks = generate_hooks(exp, product_profile=product_profile)
-            results.append({
-                "rank": r.final_rank + 1,
-                "product_id": r.product_id,
-                "product": product_profile,
-                "overlap_concepts": candidate.overlap_concepts,
-                "raw_score": scored_product.raw_score,
-                "shrinked_score": scored_product.shrinked_score,
-                "final_score": r.final_score,
-                "rank_score": r.rank_score,
-                "diversity_bonus": r.diversity_bonus,
-                "support_count": scored_product.support_count,
-                "feature_contributions": scored_product.feature_contributions,
-                "score_layers": scored_product.score_layers,
-                "eligibility": candidate.eligibility.to_dict(),
-                "review_summary": summary_by_product.get(r.product_id),
-                "source_trust": _source_trust(product_profile),
-                "explanation": exp.summary_ko,
-                "explanation_paths": [{"type": p.concept_type, "id": p.concept_id,
-                                       "user_edge": p.user_edge, "product_edge": p.product_edge,
-                                       "contribution": p.contribution} for p in exp.paths],
-                "hooks": {"discovery": hooks.discovery, "consideration": hooks.consideration, "conversion": hooks.conversion},
-            })
+            prepared.append((r, candidate, scored_product, product_profile, exp))
+
+    # Phase 0.4 / 2.1: attach per-path review provenance snippets. Each path is
+    # enriched only with signals of its own concept for the recommended product,
+    # so no unrelated review leaks onto a path. Batched once for the whole request.
+    snippets_by_product = await _resolve_snippets_batch(prepared)
+
+    results = []
+    for r, candidate, scored_product, product_profile, exp in prepared:
+        hooks = generate_hooks(exp, product_profile=product_profile)
+        snippets_by_path_idx = snippets_by_product.get(r.product_id, {})
+        results.append({
+            "rank": r.final_rank + 1,
+            "product_id": r.product_id,
+            "product": product_profile,
+            "overlap_concepts": candidate.overlap_concepts,
+            "raw_score": scored_product.raw_score,
+            "shrinked_score": scored_product.shrinked_score,
+            "final_score": r.final_score,
+            "rank_score": r.rank_score,
+            "diversity_bonus": r.diversity_bonus,
+            "support_count": scored_product.support_count,
+            "feature_contributions": scored_product.feature_contributions,
+            "score_layers": scored_product.score_layers,
+            "eligibility": candidate.eligibility.to_dict(),
+            "review_summary": summary_by_product.get(r.product_id),
+            "source_trust": _source_trust(product_profile),
+            "explanation": exp.summary_ko,
+            "explanation_paths": [{"type": p.concept_type, "id": p.concept_id,
+                                   "user_edge": p.user_edge, "product_edge": p.product_edge,
+                                   "contribution": p.contribution,
+                                   "snippets": snippets_by_path_idx.get(idx, [])}
+                                  for idx, p in enumerate(exp.paths)],
+            "hooks": {"discovery": hooks.discovery, "consideration": hooks.consideration, "conversion": hooks.conversion},
+        })
 
     # P4-3 (Wave 3.3): pass scored products so axis selection can use score
     # histograms instead of falling back to data-absence ordering only.
@@ -404,13 +561,156 @@ async def recommend(req: RecommendRequest):
         "mode": req.mode,
         "category_group": requested_category_group,
         "category_label": RECOMMEND_CATEGORY_LABELS[requested_category_group],
-        "category_filtered_count": len(prefiltered_product_ids),
+        "category_filtered_count": len(category_universe_ids),
         "total_product_count": len(product_map),
         "candidate_count": len(candidates),
         "results": results,
         "next_question": {"question": nq.question_ko, "axis": nq.uncertainty_axis, "options": nq.options} if nq else None,
         "weights_used": weights,
     }
+
+
+async def _build_provenance_context(
+    product_ids: list[str],
+) -> tuple[Any, dict[str, list[dict]]]:
+    """Resolve the (provider, product_signals-by-id) pair for the active mode.
+
+    Demo mode uses the in-memory provider + ``demo_state.product_signals``. DB
+    mode builds a request-batched ``DBProvenanceProvider`` and fetches the
+    products' raw signals in one query.
+    """
+    if _serving_mode() == "db":
+        from src.db.connection import get_pool
+
+        pool = await get_pool()
+        provider: Any = DBProvenanceProvider(pool)
+        product_signals_by_id = await fetch_product_signals(pool, product_ids)
+        return provider, product_signals_by_id
+    return demo_state.provenance_provider, demo_state.product_signals
+
+
+async def _resolve_snippets_batch(
+    prepared: list[tuple[Any, Any, Any, dict, Any]],
+) -> dict[str, dict[int, list[dict]]]:
+    """Resolve per-product, per-path review snippets in one request-level batch.
+
+    Returns ``{product_id: {path_index: [{"review_id": str, "text": str}, ...]}}``
+    keyed to the order of each product's ``exp.paths``. Products/paths with no
+    backing provenance are omitted; an empty result means no snippets (backward
+    compatible — the endpoint simply omits them).
+
+    Provenance integrity: each path is matched only against signals of its own
+    concept for that product, so an unrelated review can never attach. In DB
+    mode the whole signal_evidence → fact_provenance → review chain is prefetched
+    once (no N+1); in demo mode the in-memory provider has no ``prefetch`` and is
+    read directly.
+    """
+    if not prepared:
+        return {}
+
+    product_ids = [r.product_id for r, *_rest in prepared]
+    provider, product_signals_by_id = await _build_provenance_context(product_ids)
+    if provider is None:
+        return {}
+
+    # Step 1: resolve each product's path→signal_ids, collecting the full batch.
+    per_product: dict[str, tuple[Any, list[str], Any, dict[int, list[str]]]] = {}
+    all_signal_ids: list[str] = []
+    for r, candidate, scored_product, _product_profile, exp in prepared:
+        if not exp.paths:
+            continue
+        product_signals = product_signals_by_id.get(r.product_id, [])
+        signal_ids_by_concept = signal_ids_by_concept_path(exp.paths, product_signals)
+        if not signal_ids_by_concept:
+            continue
+        per_product[r.product_id] = (
+            scored_product, candidate.overlap_concepts, exp, signal_ids_by_concept,
+        )
+        for sids in signal_ids_by_concept.values():
+            all_signal_ids.extend(sids)
+
+    if not per_product:
+        return {}
+
+    # Step 2: request-level batch prefetch (DB provider only; in-memory has none).
+    prefetch = getattr(provider, "prefetch", None)
+    if prefetch is not None:
+        await prefetch(all_signal_ids)
+
+    # Step 3: per-product enrichment — O(1) cache reads after prefetch in DB mode.
+    service = ExplanationService(provenance_provider=provider)
+    out: dict[str, dict[int, list[dict]]] = {}
+    for product_id, (scored_product, overlap_concepts, exp, signal_ids_by_concept) in per_product.items():
+        prov_exp = await service.explain_with_provenance(
+            scored=scored_product,
+            overlap_concepts=overlap_concepts,
+            top_n=len(exp.paths),
+            signal_ids_by_concept=signal_ids_by_concept,
+        )
+        snippets_by_path_idx: dict[int, list[dict]] = {}
+        for idx, ppath in enumerate(prov_exp.provenance_paths):
+            if not ppath.snippet_evidence:
+                continue
+            # Each snippet carries its own review_id (see ExplanationService's
+            # SnippetEvidence), so there are no parallel lists to index-align — a
+            # snippet with no review_id surfaces as an empty string, not a wrong id.
+            snippets_by_path_idx[idx] = [
+                {"review_id": ev.review_id or "", "text": ev.snippet}
+                for ev in ppath.snippet_evidence
+            ]
+        if snippets_by_path_idx:
+            out[product_id] = snippets_by_path_idx
+    return out
+
+
+# =============================================================================
+# Search (Phase 4.2: concept-based search, not full-text)
+# =============================================================================
+#
+# `/api/search` resolves the query text into known concepts (brand/category/
+# ingredient/concern/goal/keyword — see src/rec/search.py) and ranks products
+# by concept overlap. It reuses the same serving store + evidence-family
+# classification as `/api/recommend`, but needs no user profile (anonymous
+# search) and no scorer (simple overlap relevance, not the weighted score).
+# A query that resolves to no concept returns an explicit, non-empty message
+# rather than silently falling back to full-text search.
+
+_SEARCH_NO_CONCEPT_MESSAGE = (
+    "질의에서 해석된 concept이 없습니다. 브랜드/카테고리/성분/피부고민/케어목표/키워드 등 "
+    "구체적인 표현을 포함해 다시 검색해주세요. (전문 검색이 아닌 concept 기반 검색입니다.)"
+)
+
+
+class SearchRequest(BaseModel):
+    # `query` defaults to "" so a missing/blank query behaves the same on POST as
+    # on GET (`search_get(query="")`): both return HTTP 200 with an explicit
+    # no-concept guidance message, rather than POST alone raising a 422 for a
+    # missing required field.
+    query: str = ""
+    top_k: int = 20
+
+
+def _clamp_search_top_k(top_k: int) -> int:
+    return max(1, min(int(top_k), 200))
+
+
+async def _run_search(query: str, top_k: int) -> dict[str, Any]:
+    _check_serving_ready()
+    products = await get_serving_store().get_products()
+    outcome = search_products(query, products, max_results=_clamp_search_top_k(top_k))
+    payload = outcome.to_dict()
+    payload["message"] = None if outcome.resolved else _SEARCH_NO_CONCEPT_MESSAGE
+    return payload
+
+
+@app.get("/api/search")
+async def search_get(query: str = "", top_k: int = 20):
+    return await _run_search(query, top_k)
+
+
+@app.post("/api/search")
+async def search(req: SearchRequest):
+    return await _run_search(req.query, req.top_k)
 
 
 # =============================================================================
@@ -424,8 +724,8 @@ async def product_graph(product_id: str, view: str = "corpus"):
     Query params:
         view: "corpus" (promoted serving signals only, default) | "evidence" (all per-review signals)
     """
-    _check_loaded()
-    product = next((p for p in demo_state.serving_products if p["product_id"] == product_id), None)
+    _check_serving_ready()
+    product = await get_serving_store().get_product(product_id)
     if not product:
         raise HTTPException(404)
 
@@ -449,7 +749,15 @@ async def product_graph(product_id: str, view: str = "corpus"):
         # CORPUS VIEW: use serving_product_profile (promoted-only signals)
         _build_corpus_graph(product, product_id, nodes_map, edges)
     else:
-        # EVIDENCE VIEW: use raw per-review signals (all, including non-promoted)
+        # EVIDENCE VIEW: raw per-review signals live only in the demo pipeline
+        # state (demo_state.product_signals); DB mode carries no in-process
+        # per-review signal index, so the view is explicitly unsupported there
+        # rather than silently returning an empty graph.
+        if _serving_mode() == "db":
+            raise HTTPException(
+                400,
+                "evidence view is not available in DB serving mode; use view=corpus.",
+            )
         _build_evidence_graph(product_id, nodes_map, edges)
 
     # Deduplicate edges
@@ -561,8 +869,8 @@ def _build_evidence_graph(product_id: str, nodes_map: dict, edges: list) -> None
 
 @app.get("/api/graphs/user/{user_id}")
 async def user_graph(user_id: str):
-    _check_loaded()
-    user = next((u for u in demo_state.serving_users if u["user_id"] == user_id), None)
+    _check_serving_ready()
+    user = await get_serving_store().get_user(user_id)
     if not user:
         raise HTTPException(404)
 
@@ -668,11 +976,23 @@ def _check_loaded():
         raise HTTPException(400, "데이터가 로드되지 않았습니다. POST /api/pipeline/run을 먼저 실행하세요.")
 
 
+def _check_serving_ready():
+    """Readiness guard for serving endpoints (products/users/recommend/graphs).
+
+    Mode-aware: demo mode requires a pipeline run (``demo_state.loaded``); DB
+    mode has no per-request load step (the store loads lazily and refreshes on
+    a timer), so readiness is implicit once the app has started.
+    """
+    if _serving_mode() == "db":
+        return
+    _check_loaded()
+
+
 def _sorted_counts(counts: dict, limit: int = 50) -> list[dict]:
     return [{"name": k, "count": v} for k, v in sorted(counts.items(), key=lambda x: -x[1])[:limit]]
 
 
-def _positive_number(value: object) -> bool:
+def _positive_number(value: Any) -> bool:
     try:
         return float(value or 0) > 0
     except (TypeError, ValueError):

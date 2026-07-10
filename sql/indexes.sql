@@ -3,6 +3,7 @@
 -- =============================================================================
 
 -- Raw layer
+create index if not exists idx_pm_source_product_id on product_master(source_product_id);
 create index if not exists idx_ner_review on ner_raw(review_id);
 create index if not exists idx_bee_review on bee_raw(review_id);
 create index if not exists idx_rel_review on rel_raw(review_id);

@@ -155,6 +155,14 @@ def _stub_data(monkeypatch: pytest.MonkeyPatch):
             "positive_6m": 0,
             "avg_6m": 0,
         },
+        # Collision helpers query the pool directly (no null-pool no-op), so
+        # they must be stubbed here for pool=None unit tests to stay DB-free.
+        "collision": {
+            "unmarked_structural": 0,
+            "unmarked_shared_source_id": 0,
+            "marked": 0,
+        },
+        "clean_join_leaks": 0,
     }
 
     async def _active(pool: Any, table: str) -> int:
@@ -181,6 +189,12 @@ def _stub_data(monkeypatch: pytest.MonkeyPatch):
     async def _source_stats(pool: Any) -> dict[str, int]:
         return state["source_review_stats"]
 
+    async def _collision(pool: Any) -> dict[str, int]:
+        return state["collision"]
+
+    async def _clean_join(pool: Any) -> int:
+        return state["clean_join_leaks"]
+
     monkeypatch.setattr(contract_validator, "_count_active_rows", _active)
     monkeypatch.setattr(contract_validator, "_count_concepts", _concepts)
     monkeypatch.setattr(contract_validator, "_count_promoted_signals_in_window", _promoted)
@@ -189,6 +203,10 @@ def _stub_data(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(contract_validator, "_count_product_id_mismatches", _mismatches)
     monkeypatch.setattr(contract_validator, "_count_source_grounding_violations", _source_grounding)
     monkeypatch.setattr(contract_validator, "_count_source_review_stats_readiness", _source_stats)
+    monkeypatch.setattr(
+        contract_validator, "_count_source_identity_collision_violations", _collision
+    )
+    monkeypatch.setattr(contract_validator, "_count_collision_clean_join_leaks", _clean_join)
     return state
 
 

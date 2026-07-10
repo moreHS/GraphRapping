@@ -18,6 +18,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from src.common.enums import (
+    SOURCE_KEY_COLLISION_MARKER_PREFIX,
+    SOURCE_KEY_COLLISION_QUALITY,
+)
+
 
 OWN_CHANNEL_TO_CATEGORY = {
     "031": "own-apmall",
@@ -32,8 +37,8 @@ MATCH_RANK = {
     "not_found": 0,
 }
 
-COLLISION_QUALITY = "SOURCE_KEY_COLLISION"
-COLLISION_PREFIX = "source_key_collision:"
+COLLISION_QUALITY = SOURCE_KEY_COLLISION_QUALITY
+COLLISION_PREFIX = SOURCE_KEY_COLLISION_MARKER_PREFIX
 
 
 @dataclass(frozen=True)
@@ -225,7 +230,7 @@ def choose_review_summary_match(
     source_product_id = _text(product.get("source_product_id"))
     candidates = docs_by_product_id.get(source_product_id or "", [])
     categories = _unique([doc_category(doc) for doc in candidates])
-    candidate_ids = [doc_id(doc) for doc in candidates if doc_id(doc)]
+    candidate_ids = [did for doc in candidates if (did := doc_id(doc))]
     if not candidates:
         return MatchResult(
             status="not_found",
@@ -380,6 +385,8 @@ def doc_review_count(doc: dict[str, Any] | None) -> int:
     if not doc:
         return 0
     value = _doc_source(doc).get("review_cnt")
+    if value is None:
+        return 0
     try:
         return int(value)
     except (TypeError, ValueError):
@@ -528,7 +535,8 @@ def _es_post(url: str, api_key: str, body: dict[str, Any]) -> dict[str, Any]:
     )
     try:
         with urllib.request.urlopen(request, timeout=60) as response:
-            return json.loads(response.read().decode("utf-8"))
+            payload: dict[str, Any] = json.loads(response.read().decode("utf-8"))
+            return payload
     except urllib.error.HTTPError as exc:
         body_text = exc.read().decode("utf-8", errors="replace")
         raise RuntimeError(f"ES request failed: status={exc.code} body={body_text[:300]}") from exc
@@ -558,7 +566,8 @@ def _es_request(url: str, api_key: str, body: dict[str, Any], *, method: str) ->
         method=method,
     )
     with urllib.request.urlopen(request, timeout=30) as response:
-        return json.loads(response.read().decode("utf-8"))
+        payload: dict[str, Any] = json.loads(response.read().decode("utf-8"))
+        return payload
 
 
 def es_config_from_env(env_file: str | Path | None = None) -> tuple[str, str]:

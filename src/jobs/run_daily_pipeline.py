@@ -18,6 +18,7 @@ from src.canonical.canonical_fact_builder import (
 from src.common.config_loader import get_kg_mode, load_predicate_contracts
 from src.common.enums import MatchStatus, ObjectRefKind
 from src.common.ids import make_concept_iri, make_product_iri
+from src.common.pipeline_observability import stage_timer
 from src.common.text_normalize import normalize_text
 from src.db.persist_bundle import ReviewPersistBundle
 from src.ingest.review_ingest import RawReviewRecord, ingest_review
@@ -666,26 +667,34 @@ def run_batch(
     review_results = []
     all_bundles: list[ReviewPersistBundle] = []
     all_signal_dicts = []
-    for record in reviews:
-        bundle = process_review(
-            record=record, source=source,
-            product_index=product_index,
-            bee_normalizer=bee_normalizer,
-            relation_canonicalizer=relation_canonicalizer,
-            projection_registry=projection_registry,
-            quarantine=quarantine,
-            deriver=deriver,
-            predicate_contracts=predicate_contracts,
-            kg_mode=kg_mode,
-            kg_pipeline_instance=kg_pipeline_instance,
+    with stage_timer(logger, "review_processing_loop", run_type=source) as _t1:
+        for record in reviews:
+            bundle = process_review(
+                record=record, source=source,
+                product_index=product_index,
+                bee_normalizer=bee_normalizer,
+                relation_canonicalizer=relation_canonicalizer,
+                projection_registry=projection_registry,
+                quarantine=quarantine,
+                deriver=deriver,
+                predicate_contracts=predicate_contracts,
+                kg_mode=kg_mode,
+                kg_pipeline_instance=kg_pipeline_instance,
+            )
+            all_bundles.append(bundle)
+            result_dict = bundle_to_result_dict(bundle)
+            review_results.append(result_dict)
+            all_signal_dicts.extend(result_dict.get("signals", []))
+        _t1.set(
+            row_count=len(reviews),
+            signal_count=len(all_signal_dicts),
+            quarantine_count=sum(len(b.quarantine_entries) for b in all_bundles),
         )
-        all_bundles.append(bundle)
-        result_dict = bundle_to_result_dict(bundle)
-        review_results.append(result_dict)
-        all_signal_dicts.extend(result_dict.get("signals", []))
 
     # Step 2: Aggregate product signals
-    agg_signals = aggregate_product_signals(all_signal_dicts)
+    with stage_timer(logger, "aggregate_product_signals", run_type=source) as _t2:
+        agg_signals = aggregate_product_signals(all_signal_dicts)
+        _t2.set(row_count=len(all_signal_dicts), agg_count=len(agg_signals))
 
     # Step 2b: Build brand_lookup (product_id → brand_concept_id) for purchase confidence
     brand_lookup: dict[str, str] = {}
@@ -702,37 +711,41 @@ def run_batch(
 
     serving_users = []
     user_pref_rows: list[dict] = []  # Wave 4 Task 4: collected for DB persist
-    for user_id, facts in user_adapted_facts.items():
-        # Canonicalize user facts first
-        canonical_facts = canonicalize_user_facts(user_id, facts)
+    with stage_timer(logger, "user_preference_build", run_type=source) as _t3:
+        for user_id, facts in user_adapted_facts.items():
+            # Canonicalize user facts first
+            canonical_facts = canonicalize_user_facts(user_id, facts)
 
-        # Derive purchase-based brand confidence (concept IRI keyed)
-        purchase_conf: dict[str, float] = {}
-        if purchase_events_by_user and user_id in purchase_events_by_user:
-            purchase_conf = derive_brand_confidence(
-                purchase_events_by_user[user_id], brand_lookup,
-            )
+            # Derive purchase-based brand confidence (concept IRI keyed)
+            purchase_conf: dict[str, float] = {}
+            if purchase_events_by_user and user_id in purchase_events_by_user:
+                purchase_conf = derive_brand_confidence(
+                    purchase_events_by_user[user_id], brand_lookup,
+                )
 
-        user_prefs = refresh_user_preferences(user_id, canonical_facts, purchase_conf)
-        user_pref_rows.extend(user_prefs)
-        if user_id in user_masters:
-            profile = build_serving_user_profile(user_masters[user_id], user_prefs)
-            serving_users.append(profile)
+            user_prefs = refresh_user_preferences(user_id, canonical_facts, purchase_conf)
+            user_pref_rows.extend(user_prefs)
+            if user_id in user_masters:
+                profile = build_serving_user_profile(user_masters[user_id], user_prefs)
+                serving_users.append(profile)
+        _t3.set(row_count=len(user_adapted_facts), serving_user_count=len(serving_users))
 
     # Step 4: Build serving product profiles
     serving_products = []
     source_review_stats_by_product = source_review_stats_by_product or {}
-    for pid, master in product_masters.items():
-        pid_signals = [s for s in agg_signals if s.target_product_id == pid]
-        pid_signals_dicts = [_agg_to_dict(s) for s in pid_signals]
-        links = concept_links.get(make_product_iri(pid), [])
-        profile = build_serving_product_profile(
-            master,
-            pid_signals_dicts,
-            concept_links=links,
-            source_review_stats=source_review_stats_by_product.get(pid),
-        )
-        serving_products.append(profile)
+    with stage_timer(logger, "serving_product_build", run_type=source) as _t4:
+        for pid, master in product_masters.items():
+            pid_signals = [s for s in agg_signals if s.target_product_id == pid]
+            pid_signals_dicts = [_agg_to_dict(s) for s in pid_signals]
+            links = concept_links.get(make_product_iri(pid), [])
+            profile = build_serving_product_profile(
+                master,
+                pid_signals_dicts,
+                concept_links=links,
+                source_review_stats=source_review_stats_by_product.get(pid),
+            )
+            serving_products.append(profile)
+        _t4.set(row_count=len(product_masters), serving_product_count=len(serving_products))
 
     total_signals = sum(r.get("signal_count", 0) for r in review_results)
     all_quarantine_entries = [

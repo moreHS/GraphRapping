@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import uuid
+from dataclasses import replace
 from datetime import datetime, timezone
 from typing import Any
 
@@ -404,6 +405,171 @@ async def test_stale_agg_signals_marked_inactive_then_revived(
         )
     assert revived_signal is True, "re-upsert must reactivate stale agg_product_signal"
     assert revived_user is True, "re-upsert must reactivate stale agg_user_preference"
+
+
+async def test_search_endpoint_db_mode_over_real_serving_store(
+    pg_pool: tuple[asyncpg.Pool, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Phase 4.2 concept search served through the REAL DBServingStore.
+
+    Seeds serving_product_profile, then calls /api/search (server.search_get) in
+    db mode and asserts concept resolution + overlap over live DB rows (not a
+    fake store). The ingredient axis is exercised with intentionally misaligned
+    raw/concept lists — ingredient_ids (TEXT[]) and ingredient_concept_ids
+    (JSONB) differ in length and order — so this also guards the concept-suffix
+    (not positional) ingredient matching end-to-end through JSONB decode.
+    """
+    from src.web import server
+    from src.web.serving_store import DBServingStore
+    from src.web.state import DemoState
+
+    pool, _schema = pg_pool
+    await migrate(pool)
+    suffix = uuid.uuid4().hex
+    product_id = f"product-{suffix}"
+
+    stats = await persist_aggregates(
+        pool,
+        agg_rows=[],
+        serving_products=[
+            {
+                "product_id": product_id,
+                "brand_id": "brand-sulwhasoo",
+                "brand_name": "설화수",
+                "brand_concept_ids": ["concept:Brand:설화수"],
+                "category_id": "cat-cushion",
+                "category_name": "쿠션",
+                "category_concept_ids": ["concept:Category:쿠션"],
+                # Misaligned on purpose: the raw master list differs in length and
+                # order from the concept list and does not contain the concept's
+                # ingredient name.
+                "ingredient_ids": ["글리세린", "정제수"],
+                "ingredient_concept_ids": ["concept:Ingredient:나이아신아마이드"],
+            },
+        ],
+        serving_users=[],
+        user_pref_rows=[],
+    )
+    assert stats["serving_products"] == 1
+
+    monkeypatch.setenv("GRAPHRAPPING_SERVING_MODE", "db")
+    monkeypatch.setattr(server, "demo_state", DemoState(loaded=False))
+    monkeypatch.setattr(server, "_serving_store", DBServingStore(pool))
+
+    payload = await server.search_get(query="설화수 나이아신아마이드", top_k=10)
+
+    assert payload["resolved"] is True
+    assert payload["result_count"] == 1
+    result = payload["results"][0]
+    assert result["product_id"] == product_id
+    # overlap_concepts is the shared field name (mirrors /api/recommend); the
+    # ingredient overlap proves concept-suffix matching survived JSONB decode.
+    assert "brand:concept:Brand:설화수" in result["overlap_concepts"]
+    assert "ingredient:concept:Ingredient:나이아신아마이드" in result["overlap_concepts"]
+    assert result["overlap_concepts"] == result["matched_concepts"]
+    assert "PRODUCT_MASTER_TRUTH" in result["eligibility"]["evidence_families"]
+
+
+async def test_db_provenance_provider_resolves_real_persisted_chain(
+    pg_pool: tuple[asyncpg.Pool, str],
+) -> None:
+    """Phase 2.5: DBProvenanceProvider batch-prefetch resolves the real
+    ``signal_evidence → canonical_fact → fact_provenance → review_raw`` chain
+    over a live persisted bundle — the real-PG counterpart to the fake-pool
+    unit tests in test_db_provenance_provider.py, whose only coverage was the
+    query routing, not the actual persisted rows.
+
+    The fact's stored snippet is emptied so ``prefetch`` must fall back to the
+    raw review text: this forces all three prefetch queries (signal_evidence,
+    fact_provenance, review_raw) to run AND proves ``get_review_snippet``
+    returns the real persisted ``review_raw.review_text``.
+    """
+    from src.rec.provenance_provider import DBProvenanceProvider
+
+    pool, _schema = pg_pool
+    await migrate(pool)
+    bundle = _make_review_bundle(uuid.uuid4().hex)
+    # Empty the fact's stored snippet → the provenance row now lacks a snippet,
+    # so prefetch must pull review_raw text for the fallback (exercising query 3).
+    fact = bundle.canonical_facts[0]
+    bundle.canonical_facts[0] = replace(
+        fact, provenance=[replace(p, snippet="") for p in fact.provenance]
+    )
+    await persist_review_bundle(pool, bundle)
+
+    signal_id = bundle.wrapped_signals[0].signal_id
+    fact_id = bundle.canonical_facts[0].fact_id
+    review_id = bundle.review_id
+
+    provider = DBProvenanceProvider(pool)
+    await provider.prefetch([signal_id])
+
+    # Layer 1: signal_evidence resolves the signal to its backing fact.
+    evidence = await provider.get_signal_evidence(signal_id)
+    assert [row["fact_id"] for row in evidence] == [fact_id]
+
+    # Layer 2: fact_provenance for that fact, with the nullable review_id kept.
+    prov = await provider.get_fact_provenance(fact_id)
+    assert len(prov) == 1
+    prov_row = prov[0]
+    assert prov_row["review_id"] == review_id
+    assert prov_row["raw_table"] == "bee_raw"
+
+    # Layer 3: get_review_snippet returns the real persisted review_raw text.
+    expected_text = bundle.review_raw["review_text"]
+    assert await provider.get_review_snippet(review_id, None, None) == expected_text
+    start, end = prov_row["start_offset"], prov_row["end_offset"]
+    assert await provider.get_review_snippet(review_id, start, end) == expected_text[start:end]
+
+
+async def test_fetch_product_signals_matches_semantic_path_over_real_load(
+    pg_pool: tuple[asyncpg.Pool, str],
+) -> None:
+    """Phase 2.5: over a live load, ``fetch_product_signals`` returns the
+    product's persisted signals and a semantic explanation path in the real
+    ``axis:value:<IRI>`` shape resolves to that signal via
+    ``signal_ids_by_concept_path``.
+
+    This pins the 5th-round semantic-match fix (embedded-IRI recovery, proved
+    64/64 on the in-memory dense_golden fixture) against real Postgres rows:
+    the signal anchor is read back out of ``wrapped_signal`` rather than a
+    hand-built dict.
+    """
+    from src.rec.explainer import ExplanationPath
+    from src.rec.provenance_provider import (
+        fetch_product_signals,
+        signal_ids_by_concept_path,
+    )
+
+    pool, _schema = pg_pool
+    await migrate(pool)
+    bundle = _make_review_bundle(uuid.uuid4().hex)
+    await persist_review_bundle(pool, bundle)
+
+    product_id = bundle.matched_product_id
+    signal = bundle.wrapped_signals[0]
+
+    signals_by_product = await fetch_product_signals(pool, [product_id])
+    assert product_id in signals_by_product
+    fetched = signals_by_product[product_id]
+    fetched_signal = next(s for s in fetched if s["signal_id"] == signal.signal_id)
+    # The BEEAttr concept IRI survived the round-trip as the signal's anchor.
+    assert fetched_signal["dst_id"] == signal.dst_id
+    assert fetched_signal["bee_attr_id"] == signal.bee_attr_id
+
+    # A semantic overlap path embeds the IRI as ``axis:value:<IRI>`` (the shape
+    # find_semantic_matches/explain emit). _concept_path_match_key must recover
+    # the trailing IRI so it normalizes to the same key as the persisted anchor.
+    semantic_path = ExplanationPath(
+        concept_type="semantic_bee_attr",
+        concept_id=f"moisture:moist:{signal.bee_attr_id}",
+        user_edge="PREFERS_BEE_ATTR",
+        product_edge="HAS_BEE_ATTR_SIGNAL",
+        contribution=1.0,
+    )
+    mapping = signal_ids_by_concept_path([semantic_path], fetched)
+    assert mapping == {0: [signal.signal_id]}
 
 
 async def _has_columns(

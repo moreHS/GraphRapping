@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from pathlib import Path
@@ -35,6 +36,13 @@ from typing import Any
 
 import asyncpg
 
+from src.common.alerting import check_and_alert_retention, send_pipeline_failure_alert_async
+from src.common.enums import (
+    SOURCE_KEY_COLLISION_KEY_TYPE,
+    SOURCE_KEY_COLLISION_MARKER_PREFIX,
+    SOURCE_KEY_COLLISION_QUALITY,
+)
+from src.common.pipeline_observability import log_pipeline_stage, stage_timer
 from src.db.contract_validator import (
     ContractValidationResult,
     validate_all,
@@ -160,6 +168,75 @@ async def _complete_full_run(
             error_message,
             run_id,
         )
+
+
+_COLLISION_QUALITY = SOURCE_KEY_COLLISION_QUALITY
+_COLLISION_KEY_TYPE = SOURCE_KEY_COLLISION_KEY_TYPE
+_COLLISION_MARKER_PREFIX = SOURCE_KEY_COLLISION_MARKER_PREFIX
+
+
+def _count_collision_detections(
+    product_masters: dict[str, dict[str, Any]],
+) -> dict[str, int]:
+    """Count source identity collisions detected in the loaded product_masters.
+
+    Pure in-memory tally over the batch about to be persisted — mirrors the
+    collision signatures used by src/db/contract_validator.py. Logging only;
+    no DB schema / pipeline_run column is touched.
+
+    - `marked`: rows already carrying source_truth_quality=SOURCE_KEY_COLLISION.
+    - `unmarked_structural` (row unit): rows with a collision structural
+      signature (comma-joined source_channel, source_key_collision key type, or
+      a source_key_collision: source_product_id) that are NOT marked.
+    - `unmarked_shared_source_id` (group unit): distinct source_product_id
+      groups shared across >1 product_id AND >1 (source_channel, source_key_type)
+      identity with at least one unmarked sibling. Mirrors the validator's
+      GROUP BY source_product_id check so the full-load log is not blind to the
+      shared-id collision class (previously only structural rows were tallied).
+    """
+    marked = 0
+    unmarked_structural = 0
+    # group_key(source_product_id) -> {product_ids, identities, any_unmarked}
+    shared_groups: dict[str, dict[str, Any]] = {}
+    for product_id, master in product_masters.items():
+        quality = str(master.get("source_truth_quality") or "").upper()
+        is_marked = quality == _COLLISION_QUALITY
+        channel = str(master.get("source_channel") or "")
+        key_type = str(master.get("source_key_type") or "").lower()
+        source_product_id = str(master.get("source_product_id") or "")
+        has_signature = (
+            "," in channel
+            or key_type == _COLLISION_KEY_TYPE
+            or source_product_id.startswith(_COLLISION_MARKER_PREFIX)
+        )
+        if is_marked:
+            marked += 1
+        elif has_signature:
+            unmarked_structural += 1
+
+        if source_product_id:
+            group = shared_groups.setdefault(
+                source_product_id,
+                {"product_ids": set(), "identities": set(), "any_unmarked": False},
+            )
+            group["product_ids"].add(str(product_id))
+            group["identities"].add((channel, key_type))
+            if not is_marked:
+                group["any_unmarked"] = True
+
+    unmarked_shared_source_id = sum(
+        1
+        for group in shared_groups.values()
+        if len(group["product_ids"]) > 1
+        and len(group["identities"]) > 1
+        and group["any_unmarked"]
+    )
+    return {
+        "marked": marked,
+        "unmarked_structural": unmarked_structural,
+        "unmarked_shared_source_id": unmarked_shared_source_id,
+        "total_products": len(product_masters),
+    }
 
 
 def _coerce_purchased_at(value: Any) -> datetime | None:
@@ -322,15 +399,56 @@ async def run_full_load_to_db(
         run_id = await _start_full_run(pool, lock_pid=lock_pid)
 
         try:
+            _full_start = time.monotonic()
+
             # Step 1: in-memory full pipeline (the existing entrypoint).
-            in_memory = run_full_load(config)
+            with stage_timer(logger, "in_memory_full_load", run_type="FULL", run_id=run_id) as _t1:
+                in_memory = run_full_load(config)
+                _t1.set(
+                    review_count=in_memory.review_count,
+                    signal_count=in_memory.signal_count,
+                    quarantine_count=in_memory.quarantine_count,
+                )
 
             # Step 2: persist each layer.
-            layer0_counts = await _persist_layer0(
-                pool, in_memory, config.purchase_events_by_user,
+            with stage_timer(logger, "layer0_persist", run_type="FULL", run_id=run_id) as _t2:
+                layer0_counts = await _persist_layer0(
+                    pool, in_memory, config.purchase_events_by_user,
+                )
+                _t2.set(**layer0_counts)
+
+            # Structured collision detection log (Phase 1.1): report how many
+            # source identity collisions were seen in this load. Log only — no
+            # pipeline_run column is added. A non-zero unmarked count (structural
+            # rows or shared-source_product_id groups) means a collision is
+            # arriving without a SOURCE_KEY_COLLISION marker and will fail the
+            # contract validator below.
+            collision_counts = _count_collision_detections(
+                in_memory.batch_result.get("product_masters", {})
             )
-            review_bundles_persisted = await _persist_review_bundles(pool, in_memory)
-            layer3_counts = await _persist_layer3(pool, in_memory)
+            unmarked_seen = (
+                collision_counts["unmarked_structural"] > 0
+                or collision_counts["unmarked_shared_source_id"] > 0
+            )
+            log_fn = logger.warning if unmarked_seen else logger.info
+            log_fn(
+                "Source identity collision detection (run_id=%s): "
+                "marked=%s unmarked_structural=%s unmarked_shared_source_id=%s "
+                "total_products=%s",
+                run_id,
+                collision_counts["marked"],
+                collision_counts["unmarked_structural"],
+                collision_counts["unmarked_shared_source_id"],
+                collision_counts["total_products"],
+            )
+
+            with stage_timer(logger, "canonical_signal_persist", run_type="FULL", run_id=run_id) as _t3:
+                review_bundles_persisted = await _persist_review_bundles(pool, in_memory)
+                _t3.set(row_count=review_bundles_persisted)
+
+            with stage_timer(logger, "aggregate_serving_persist", run_type="FULL", run_id=run_id) as _t4:
+                layer3_counts = await _persist_layer3(pool, in_memory)
+                _t4.set(**layer3_counts)
 
             persisted = {
                 **layer0_counts,
@@ -355,6 +473,20 @@ async def run_full_load_to_db(
             if validate_after:
                 validation = await validate_all(pool, **(validator_options or {}))
 
+            # Phase 2.3 item 3: optional retention-threshold alert (DB pipeline
+            # path only). No-ops unless GRAPHRAPPING_RETENTION_ALERT_ENABLED=1;
+            # never raises (see check_and_alert_retention docstring).
+            await check_and_alert_retention(pool, run_type="FULL", run_id=run_id)
+
+            log_pipeline_stage(
+                logger, "full_load_to_db", time.monotonic() - _full_start,
+                run_type="FULL", run_id=run_id, status="ok",
+                review_count=in_memory.review_count,
+                signal_count=in_memory.signal_count,
+                quarantine_count=in_memory.quarantine_count,
+                review_bundles_persisted=review_bundles_persisted,
+            )
+
             return FullLoadDbResult(
                 in_memory=in_memory,
                 run_id=run_id,
@@ -364,13 +496,30 @@ async def run_full_load_to_db(
 
         except Exception as exc:
             logger.exception("run_full_load_to_db failed (run_id=%s)", run_id)
-            await _complete_full_run(
-                pool, run_id,
-                review_count=0,
-                signal_count=0,
-                quarantine_count=0,
-                error_message=str(exc),
+            # Alert FIRST, before the FAILED-recording DB write (see the same
+            # ordering in run_incremental's except block). The webhook has no
+            # DB dependency, so when the DB itself is the failure it is the
+            # only notification that can still fire. Offloaded to a thread so
+            # the blocking urlopen can't stall the event loop.
+            await send_pipeline_failure_alert_async(
+                run_type="FULL", run_id=run_id, error_message=str(exc),
             )
+            # The FAILED-recording write goes in its own try/except: a second
+            # failure here (same dead connection) is swallowed so the ORIGINAL
+            # exception is preserved by the bare `raise` below.
+            try:
+                await _complete_full_run(
+                    pool, run_id,
+                    review_count=0,
+                    signal_count=0,
+                    quarantine_count=0,
+                    error_message=str(exc),
+                )
+            except Exception:
+                logger.exception(
+                    "failed to record FAILED pipeline_run status (run_id=%s); "
+                    "run may remain stuck at RUNNING", run_id,
+                )
             raise
 
 

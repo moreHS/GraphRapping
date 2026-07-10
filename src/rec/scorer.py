@@ -297,6 +297,8 @@ def _source_rating_score(product: dict) -> float:
     rating = product.get("source_avg_rating_6m")
     if rating is None:
         rating = product.get("source_avg_rating_all")
+    if rating is None:
+        return 0.0
     try:
         rating_float = float(rating)
     except (TypeError, ValueError):

@@ -234,12 +234,35 @@ def _generate_summary_ko(paths: list[ExplanationPath]) -> str:
 # ExplanationService: DB-backed provenance explanation
 # ---------------------------------------------------------------------------
 
+@dataclass(frozen=True)
+class SnippetEvidence:
+    """A review snippet paired atomically with its originating review_id.
+
+    `review_id` is optional because `fact_provenance.review_id` is nullable in
+    the DDL — a snippet can come from a provenance row that carries no review
+    linkage. Carrying the pair together (rather than in two parallel lists)
+    guarantees a snippet is never index-aligned to the wrong review_id when
+    some snippets lack one.
+    """
+    snippet: str
+    review_id: str | None
+
+
 @dataclass
 class ProvenanceExplanationPath(ExplanationPath):
-    """Extended path with actual evidence from DB."""
-    snippets: list[str] = field(default_factory=list)
+    """Extended path with actual evidence from DB.
+
+    Snippets are stored in `snippet_evidence` where each snippet is bound to
+    its own review_id (or None). `snippets` is a read-only convenience view for
+    callers that only need the texts.
+    """
+    snippet_evidence: list[SnippetEvidence] = field(default_factory=list)
     fact_ids: list[str] = field(default_factory=list)
-    review_ids: list[str] = field(default_factory=list)
+
+    @property
+    def snippets(self) -> list[str]:
+        """Snippet texts only (order matches `snippet_evidence`)."""
+        return [ev.snippet for ev in self.snippet_evidence]
 
 
 @dataclass
@@ -248,11 +271,28 @@ class ProvenanceExplanation(Explanation):
     provenance_paths: list[ProvenanceExplanationPath] = field(default_factory=list)
 
 
-class ExplanationService:
-    """DB-backed explanation service with full provenance chain.
+# Provenance snippet limits (Phase 0.4): keep explanations compact and faithful.
+_MAX_SNIPPETS_PER_PATH = 2
+_SNIPPET_MAX_CHARS = 120
 
-    Primary path: signal → signal_evidence → fact_provenance → raw snippet.
-    Fallback: overlap-based explanation (when no DB available).
+
+def _truncate_snippet(text: str, limit: int = _SNIPPET_MAX_CHARS) -> str:
+    text = text.strip()
+    if len(text) <= limit:
+        return text
+    return text[: limit - 1].rstrip() + "…"
+
+
+class ExplanationService:
+    """Explanation service with full provenance chain.
+
+    Primary path: signal → signal_evidence → fact_provenance → raw snippet
+    (review_text fallback when a provenance row has no stored snippet/offsets).
+    Fallback: overlap-based explanation (when no provider available).
+
+    Provider-agnostic: works with `DBProvenanceProvider` (async DB) or
+    `InMemoryProvenanceProvider` (demo pipeline artifacts) — both satisfy the
+    `ProvenanceProvider` Protocol.
     """
 
     def __init__(self, provenance_provider: ProvenanceProvider | None = None) -> None:
@@ -264,24 +304,35 @@ class ExplanationService:
         overlap_concepts: list[str],
         signal_ids: list[str] | None = None,
         top_n: int = 5,
+        *,
+        signal_ids_by_concept: dict[int, list[str]] | None = None,
     ) -> ProvenanceExplanation:
-        """Generate explanation with DB-backed provenance.
+        """Generate explanation with provider-backed provenance.
 
-        Falls back to overlap-based explanation if no provider or no signal_ids.
+        Falls back to overlap-based explanation if no provider, or if neither
+        `signal_ids` nor `signal_ids_by_concept` is supplied.
+
+        Args:
+            signal_ids: legacy flat list applied to every path (backward compat).
+            signal_ids_by_concept: per-path signal ids keyed by path index
+                (produced by `signal_ids_by_concept_path`). When given, each path
+                is enriched ONLY with its own concept's signals, preserving
+                provenance integrity (no unrelated review leaks onto a path).
+                Takes precedence over `signal_ids` for path enrichment.
         """
         # Always generate base explanation first
         base = explain(scored, overlap_concepts, top_n)
 
-        if not self._provider or not signal_ids:
+        if not self._provider or (not signal_ids and not signal_ids_by_concept):
             return ProvenanceExplanation(
                 product_id=base.product_id,
                 paths=base.paths,
                 summary_ko=base.summary_ko,
             )
 
-        # Enrich with provenance from DB
+        # Enrich with provenance
         provenance_paths: list[ProvenanceExplanationPath] = []
-        for path in base.paths:
+        for idx, path in enumerate(base.paths):
             enriched = ProvenanceExplanationPath(
                 concept_type=path.concept_type,
                 concept_id=path.concept_id,
@@ -290,13 +341,25 @@ class ExplanationService:
                 contribution=path.contribution,
             )
 
-            # Find matching signals for this concept
-            for sid in signal_ids:
+            # Path-scoped signals (provenance integrity) or legacy flat list.
+            if signal_ids_by_concept is not None:
+                path_signal_ids = signal_ids_by_concept.get(idx, [])
+            else:
+                path_signal_ids = signal_ids or []
+
+            for sid in path_signal_ids:
+                if len(enriched.snippet_evidence) >= _MAX_SNIPPETS_PER_PATH:
+                    break
                 evidence_rows = await self._provider.get_signal_evidence(sid)
                 for ev in evidence_rows[:3]:  # top-3 evidence per signal
-                    enriched.fact_ids.append(ev["fact_id"])
+                    if len(enriched.snippet_evidence) >= _MAX_SNIPPETS_PER_PATH:
+                        break
+                    if ev["fact_id"] not in enriched.fact_ids:
+                        enriched.fact_ids.append(ev["fact_id"])
                     prov_rows = await self._provider.get_fact_provenance(ev["fact_id"])
                     for prov in prov_rows[:2]:  # top-2 provenance per fact
+                        if len(enriched.snippet_evidence) >= _MAX_SNIPPETS_PER_PATH:
+                            break
                         snippet = prov.get("snippet")
                         if not snippet and prov.get("review_id"):
                             snippet = await self._provider.get_review_snippet(
@@ -305,9 +368,13 @@ class ExplanationService:
                                 prov.get("end_offset"),
                             )
                         if snippet:
-                            enriched.snippets.append(snippet)
-                        if prov.get("review_id"):
-                            enriched.review_ids.append(prov["review_id"])
+                            # Bind snippet ↔ review_id atomically. review_id is
+                            # explicitly None when the provenance row has none,
+                            # so consumers never mis-pair via list indexing.
+                            enriched.snippet_evidence.append(SnippetEvidence(
+                                snippet=_truncate_snippet(snippet),
+                                review_id=prov.get("review_id") or None,
+                            ))
 
             provenance_paths.append(enriched)
 

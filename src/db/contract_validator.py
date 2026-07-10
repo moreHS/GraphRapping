@@ -29,6 +29,13 @@ Invariants validated (when applicable, i.e. when data exists):
 - Optional production source-grounding: serving rows with explicit source
   identity must match `product_master.product_id`, and source-backed rows must
   not expose promo-prefix brands as product truth.
+- Source identity collision (on by default via
+  `enforce_source_identity_collision`): a compat `product_id` collapsed from
+  multiple `(source_channel, source_key_type, source_product_id)` identities
+  must be marked `source_truth_quality = 'SOURCE_KEY_COLLISION'`. An unmarked
+  collision is INVALID (silent-inflow guard). A marked collision must not own a
+  `product_review_stats` row (clean source join target). The marked count is
+  reported for monitoring.
 """
 
 from __future__ import annotations
@@ -39,6 +46,11 @@ from enum import Enum
 
 import asyncpg
 
+from src.common.enums import (
+    SOURCE_KEY_COLLISION_KEY_TYPE,
+    SOURCE_KEY_COLLISION_MARKER_PREFIX,
+    SOURCE_KEY_COLLISION_QUALITY,
+)
 from src.mart.serving_profile_schema import (
     SERVING_PRODUCT_PROFILE_COLUMNS,
     SERVING_USER_PROFILE_COLUMNS,
@@ -374,6 +386,110 @@ async def _count_source_review_stats_readiness(pool: asyncpg.Pool) -> dict[str, 
     return {"positive_6m": positive_6m or 0, "avg_6m": avg_6m or 0}
 
 
+# Sentinels that mark a compat product_id as collapsed from multiple source
+# identities. Defined once in src/common/enums.py and shared with
+# src/jobs/run_full_load_db.py and src/loaders/review_summary_sidecar_loader.py
+# so the validator and the loaders agree on what a collision looks like.
+_COLLISION_QUALITY = SOURCE_KEY_COLLISION_QUALITY
+_COLLISION_KEY_TYPE = SOURCE_KEY_COLLISION_KEY_TYPE
+_COLLISION_MARKER_PREFIX = SOURCE_KEY_COLLISION_MARKER_PREFIX
+
+
+async def _count_source_identity_collision_violations(pool: asyncpg.Pool) -> dict[str, int]:
+    """Count source-identity collision anomalies in product_master.
+
+    Three independent signals, all scoped to `is_active = true`:
+
+    - `unmarked_structural`: a row carries a collision *structural signature*
+      (comma-joined `source_channel`, `source_key_type = 'source_key_collision'`,
+      or a `source_product_id` beginning with `'source_key_collision:'`) but is
+      NOT marked `source_truth_quality = 'SOURCE_KEY_COLLISION'`. This is the
+      silent-inflow guard: a newly collapsed compat product_id that upstream
+      forgot to mark.
+    - `unmarked_shared_source_id`: two or more distinct `product_id` rows claim
+      the SAME non-null `source_product_id` under DIFFERENT
+      `(source_channel, source_key_type)` identities, and at least one of them is
+      unmarked. A clean one-source contract has `product_id == source_product_id`
+      one-to-one; a shared source_product_id across identities is a collision.
+    - `marked`: rows already marked `SOURCE_KEY_COLLISION` (reported, not a
+      violation — surfaced so operators can watch the count trend).
+    """
+    async with pool.acquire() as conn:
+        unmarked_structural = await conn.fetchval(
+            """
+            SELECT COUNT(*)
+            FROM product_master
+            WHERE is_active = true
+              AND COALESCE(UPPER(source_truth_quality), '') <> $1
+              AND (
+                  source_channel LIKE '%,%'
+                  OR LOWER(COALESCE(source_key_type, '')) = $2
+                  OR source_product_id LIKE $3
+              )
+            """,
+            _COLLISION_QUALITY,
+            _COLLISION_KEY_TYPE,
+            _COLLISION_MARKER_PREFIX + "%",
+        )
+        # Distinct product_id rows sharing one source_product_id across >1
+        # (source_channel, source_key_type) identity, where any sibling is
+        # unmarked. GROUP BY the compat source_product_id; a clean catalog has
+        # exactly one identity per source_product_id.
+        unmarked_shared = await conn.fetchval(
+            """
+            SELECT COUNT(*)
+            FROM (
+                SELECT source_product_id
+                FROM product_master
+                WHERE is_active = true
+                  AND source_product_id IS NOT NULL
+                GROUP BY source_product_id
+                HAVING COUNT(DISTINCT product_id) > 1
+                   AND COUNT(DISTINCT (source_channel, source_key_type)) > 1
+                   AND COUNT(*) FILTER (
+                       WHERE COALESCE(UPPER(source_truth_quality), '') <> $1
+                   ) > 0
+            ) AS shared
+            """,
+            _COLLISION_QUALITY,
+        )
+        marked = await conn.fetchval(
+            """
+            SELECT COUNT(*)
+            FROM product_master
+            WHERE is_active = true
+              AND UPPER(COALESCE(source_truth_quality, '')) = $1
+            """,
+            _COLLISION_QUALITY,
+        )
+    return {
+        "unmarked_structural": unmarked_structural or 0,
+        "unmarked_shared_source_id": unmarked_shared or 0,
+        "marked": marked or 0,
+    }
+
+
+async def _count_collision_clean_join_leaks(pool: asyncpg.Pool) -> int:
+    """Count marked-collision products that leaked into clean source join targets.
+
+    A `SOURCE_KEY_COLLISION` product must never own a `product_review_stats`
+    row (the clean source-stats join target). If one exists, a collision
+    product is being treated as a clean single-source product downstream.
+    """
+    async with pool.acquire() as conn:
+        v = await conn.fetchval(
+            """
+            SELECT COUNT(*)
+            FROM product_review_stats prs
+            JOIN product_master pm ON pm.product_id = prs.product_id
+            WHERE pm.is_active = true
+              AND UPPER(COALESCE(pm.source_truth_quality, '')) = $1
+            """,
+            _COLLISION_QUALITY,
+        )
+        return v or 0
+
+
 async def _count_active_rows(pool: asyncpg.Pool, table: str) -> int:
     async with pool.acquire() as conn:
         v = await conn.fetchval(f"SELECT COUNT(*) FROM {table} WHERE is_active = true")
@@ -408,14 +524,24 @@ async def validate_data(
     enforce_stale_policy: bool = True,
     stale_threshold_days: int = 90,
     enforce_source_grounding: bool = False,
+    enforce_source_identity_collision: bool = True,
 ) -> ContractValidationResult:
     """Validate data readiness with caller-provided expected minimums.
 
     Returns:
       - INVALID for broken invariants (promotion gate, stale-active, ID mismatch,
-        and source-grounding when `enforce_source_grounding=True`).
+        source-grounding when `enforce_source_grounding=True`, and unmarked /
+        leaked source identity collisions when
+        `enforce_source_identity_collision=True`).
       - EMPTY when schema is fine but actual counts fall below expected minimums.
       - OK when minimums are met and no invariants are violated.
+
+    `enforce_source_identity_collision` defaults to True: the collision guard is
+    part of the standard readiness contract, and `validate_all` forwards the same
+    default. Its count helpers query the pool like every other check, so
+    unit-level callers must stub them (see the test suites) rather than relying
+    on an empty-as-success null-pool path. The checks are strictly additive: they
+    only ever append checks/counts.
     """
     checks: list[ContractCheck] = []
     overall = ContractStatus.OK
@@ -581,6 +707,93 @@ async def validate_data(
                 message="source identity and source-backed product truth are consistent",
             ))
 
+    # --- 6. Source identity collision invariants (additive, on by default) ---
+    if enforce_source_identity_collision:
+        collisions = await _count_source_identity_collision_violations(pool)
+        clean_join_leaks = await _count_collision_clean_join_leaks(pool)
+        counts["source_identity_collision.unmarked_structural"] = collisions["unmarked_structural"]
+        counts["source_identity_collision.unmarked_shared_source_id"] = (
+            collisions["unmarked_shared_source_id"]
+        )
+        counts["source_identity_collision.marked"] = collisions["marked"]
+        counts["source_identity_collision.clean_join_leaks"] = clean_join_leaks
+
+        # (a) Unmarked structural collision — silent-inflow guard. This is a
+        # ROW count (product_master rows carrying a collision signature).
+        if collisions["unmarked_structural"] > 0:
+            checks.append(ContractCheck(
+                name="invariant.source_identity_collision.unmarked_structural",
+                status=ContractStatus.INVALID,
+                message=(
+                    f"{collisions['unmarked_structural']} product_master row(s) carry a "
+                    "source identity collision structural signature but are not marked "
+                    "SOURCE_KEY_COLLISION. Mark them so they are excluded from clean "
+                    "source joins."
+                ),
+                actual=collisions["unmarked_structural"],
+            ))
+            overall = ContractStatus.INVALID
+        else:
+            checks.append(ContractCheck(
+                name="invariant.source_identity_collision.unmarked_structural",
+                status=ContractStatus.OK,
+                message="no unmarked structural source identity collisions in product_master",
+            ))
+
+        # (a2) Unmarked shared source_product_id collision. This is a GROUP
+        # count (distinct source_product_id groups), a different unit from the
+        # structural row count above — reported separately, never summed.
+        if collisions["unmarked_shared_source_id"] > 0:
+            checks.append(ContractCheck(
+                name="invariant.source_identity_collision.unmarked_shared_source_id",
+                status=ContractStatus.INVALID,
+                message=(
+                    f"{collisions['unmarked_shared_source_id']} shared source_product_id "
+                    "group(s) span multiple (source_channel, source_key_type) identities "
+                    "with at least one unmarked sibling. Mark the colliding product_master "
+                    "rows SOURCE_KEY_COLLISION so they are excluded from clean source joins."
+                ),
+                actual=collisions["unmarked_shared_source_id"],
+            ))
+            overall = ContractStatus.INVALID
+        else:
+            checks.append(ContractCheck(
+                name="invariant.source_identity_collision.unmarked_shared_source_id",
+                status=ContractStatus.OK,
+                message="no unmarked shared source_product_id collisions in product_master",
+            ))
+
+        # (c) Collision products must not leak into clean source join targets.
+        if clean_join_leaks > 0:
+            checks.append(ContractCheck(
+                name="invariant.source_identity_collision.clean_join",
+                status=ContractStatus.INVALID,
+                message=(
+                    f"{clean_join_leaks} SOURCE_KEY_COLLISION product(s) own a "
+                    "product_review_stats row (clean source join target). Collision "
+                    "products must be excluded from source stats/review-summary joins."
+                ),
+                actual=clean_join_leaks,
+            ))
+            overall = ContractStatus.INVALID
+        else:
+            checks.append(ContractCheck(
+                name="invariant.source_identity_collision.clean_join",
+                status=ContractStatus.OK,
+                message="no collision products leaked into product_review_stats",
+            ))
+
+        # (b) Marked collision count — reported, never a failure.
+        checks.append(ContractCheck(
+            name="report.source_identity_collision.marked",
+            status=ContractStatus.OK,
+            message=(
+                f"{collisions['marked']} product_master row(s) marked "
+                "SOURCE_KEY_COLLISION (excluded from clean source joins)"
+            ),
+            actual=collisions["marked"],
+        ))
+
     return ContractValidationResult(status=overall, checks=tuple(checks), counts=counts)
 
 
@@ -597,6 +810,7 @@ async def validate_all(
     enforce_stale_policy: bool = True,
     stale_threshold_days: int = 90,
     enforce_source_grounding: bool = False,
+    enforce_source_identity_collision: bool = True,
 ) -> ContractValidationResult:
     """Run schema validation, then data validation. Combined result.
 
@@ -619,6 +833,7 @@ async def validate_all(
         enforce_stale_policy=enforce_stale_policy,
         stale_threshold_days=stale_threshold_days,
         enforce_source_grounding=enforce_source_grounding,
+        enforce_source_identity_collision=enforce_source_identity_collision,
     )
     combined_status = _max_status(schema_result.status, data_result.status)
     return ContractValidationResult(

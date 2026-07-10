@@ -3,7 +3,23 @@ version: 1
 # Recommendation-only compatibility map.
 # A generic texture/formulation axis is intentionally absent from user_signals:
 # axis-only preferences must never score without a compatible value and polarity.
+#
+# category_scope (optional, Phase 3.1):
+#   List of recommendation category groups (src/rec/category_groups.py:
+#   skincare, makeup, bodycare, haircare, fragrance, other) a rule may fire for.
+#   Omitted or empty => global (fires for every product), the default and prior
+#   behavior. When set, the rule only fires for products classified into one of
+#   the listed groups; products in other groups (and the "other" fallback) are
+#   skipped. This gates review-graph semantics that are only meaningful in some
+#   categories so they cannot flood unrelated tabs (see
+#   docs/architecture/recommendation_signal_flow_2026_06_23.md
+#   "현재 관측된 Broad Semantic 케이스").
+#   Each rule below carries a "# scope:" note stating global vs scoped + why.
+#   Bias: keep a rule global unless its axis is unambiguously category-specific;
+#   over-restricting silently drops honest cross-category evidence.
 rules:
+  # scope: global — moisturizing/hydration is a core review axis across skincare,
+  # bodycare, haircare, and dewy makeup/base; scoping would drop honest matches.
   - axis: moisture
     value: moist
     polarity: positive
@@ -42,6 +58,8 @@ rules:
         - concept:BEEAttr:bee_attr_oil_control
         - concept:BEEAttr:bee_attr_matte_finish
 
+  # scope: global — a "산뜻/흡수" (fresh, fast-absorbing) texture is described in
+  # skincare, suncare, bodycare, and haircare reviews alike; not category-specific.
   - axis: texture
     value: fresh
     polarity: positive
@@ -77,9 +95,18 @@ rules:
         - concept:Keyword:꾸덕
         - concept:Keyword:끈적
 
+  # scope: makeup, fragrance — "지속력/롱래스팅" as a *review attribute that grants
+  # eligibility* is category-specific: makeup wear-time and fragrance/base scent
+  # longevity. It was leaking into the skincare tab (a global 지속력 goal matched
+  # skincare products' bee_attr_lasting_power with no other evidence), the
+  # documented Broad Semantic case in
+  # docs/architecture/recommendation_signal_flow_2026_06_23.md. "base" makeup is
+  # covered by the makeup group; skincare/bodycare/haircare longevity is too weak
+  # and ambiguous to qualify a candidate on its own.
   - axis: performance
     value: long_lasting
     polarity: positive
+    category_scope: [makeup, fragrance]
     user_signals:
       keywords:
         - concept:Keyword:지속
@@ -100,6 +127,8 @@ rules:
         - id: concept:BEEAttr:bee_attr_lasting_power
           strength: 0.85
 
+  # scope: global — "가벼운/가벼움" light texture appears in skincare, suncare,
+  # bodycare, and haircare reviews; not tied to a single category.
   - axis: texture
     value: light
     polarity: positive
@@ -132,6 +161,8 @@ rules:
         - concept:Keyword:무거움
         - concept:Keyword:꾸덕
 
+  # scope: global — "끈적임 없음" (non-sticky) is praised across skincare, suncare,
+  # bodycare, and haircare; broad texture axis, not category-specific.
   - axis: texture
     value: non_sticky
     polarity: positive
@@ -159,6 +190,11 @@ rules:
         - concept:Keyword:끈적
         - concept:Keyword:리치
 
+  # scope: global — "매트/보송" finish is a makeup base concept but is equally a
+  # review axis for oily-skin skincare and suncare (매트 선크림, 보송한 마무리).
+  # Ambiguous cross-category => stay global (over-restricting would drop honest
+  # skincare/suncare matte evidence). Makeup-only leakage is already prevented at
+  # the preference layer via makeup-scoped keyword collection (scoped_preferences).
   - axis: finish
     value: matte
     polarity: positive
@@ -195,6 +231,8 @@ rules:
         - concept:BEEAttr:bee_attr_moisturizing_power
         - concept:BEEAttr:bee_attr_glow_finish
 
+  # scope: global — oil control is a primary oily-skin *skincare* concern as much
+  # as a makeup/suncare one; scoping to makeup would drop its strongest category.
   - axis: finish
     value: oil_control
     polarity: positive
@@ -234,6 +272,8 @@ rules:
         - concept:BEEAttr:bee_attr_moisturizing_power
         - concept:BEEAttr:bee_attr_glow_finish
 
+  # scope: global — "윤기/광채/글로우" is both a makeup finish and a skincare goal
+  # (radiant skin, e.g. user_dry_30f's 광채/윤기 skincare goals); keep global.
   - axis: finish
     value: glow
     polarity: positive
@@ -265,6 +305,8 @@ rules:
         - concept:Keyword:보송
         - concept:Keyword:유분없음
 
+  # scope: global — "리치/꾸덕" rich texture describes skincare creams, body butters,
+  # and hair masks alike; broad texture axis, not category-specific.
   - axis: texture
     value: rich
     polarity: positive

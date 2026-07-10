@@ -412,7 +412,7 @@ async def sql_prefilter_candidates(
     uow: UnitOfWork,
     avoided_ingredient_ids: list[str],
     preferred_concept_ids: list[str],
-    max_candidates: int = 200,
+    max_candidates: int | None = 200,
 ) -> list[str]:
     """SQL-first candidate prefilter.
 
@@ -424,6 +424,21 @@ async def sql_prefilter_candidates(
     Positive overlap (applied only when preferred_concept_ids is non-empty):
       Require at least one match across brand/category/ingredient/main_benefit
       concept_ids.
+
+      NOTE (Phase 2.2): this positive gate is NOT recall-equivalent to the
+      in-memory full traversal, which also qualifies candidates via review-graph
+      (keyword/bee_attr/semantic/context/concern/concern_bridge/tool/coused),
+      catalog-name text, goal-alias, and purchase-behavior channels that a
+      concept-id set intersection cannot express. The recall-safe default
+      serving path therefore calls this with ``preferred_concept_ids=[]`` (see
+      ServingStore.prefilter_candidate_ids) so only the avoided hard filter —
+      which the full traversal applies identically — narrows the universe.
+
+    max_candidates: cap on the number of returned ids. Pass ``None`` to return
+      ALL matching products with no LIMIT. The default serving path uses ``None``
+      so the top-N truncation happens after in-memory scoring; a bare ``LIMIT``
+      here has no ORDER BY and would otherwise drop products that would have
+      scored into the top-N (silent recall loss).
 
     P0-6: previously the avoided filter was (a) skipped when preferred was empty,
     and (b) only checked raw ingredient_ids — both bugs caused SQL/Python
@@ -446,17 +461,27 @@ async def sql_prefilter_candidates(
     """
 
     if not preferred_concept_ids:
+        params: list[Any] = [avoided_list]
+        limit_clause = ""
+        if max_candidates is not None:
+            params.append(max_candidates)
+            limit_clause = f"LIMIT ${len(params)}"
         rows = await uow.fetch(
             f"""
             SELECT DISTINCT spp.product_id
             FROM serving_product_profile spp
             WHERE {base_where_avoid}
-            LIMIT $2
+            {limit_clause}
             """,
-            avoided_list, max_candidates,
+            *params,
         )
         return [r["product_id"] for r in rows]
 
+    params = [avoided_list, preferred_concept_ids]
+    limit_clause = ""
+    if max_candidates is not None:
+        params.append(max_candidates)
+        limit_clause = f"LIMIT ${len(params)}"
     rows = await uow.fetch(
         f"""
         SELECT DISTINCT spp.product_id
@@ -468,8 +493,8 @@ async def sql_prefilter_candidates(
             OR EXISTS (SELECT 1 FROM jsonb_array_elements_text(spp.ingredient_concept_ids::jsonb) b WHERE b = ANY($2::text[]))
             OR EXISTS (SELECT 1 FROM jsonb_array_elements_text(spp.main_benefit_concept_ids::jsonb) b WHERE b = ANY($2::text[]))
         )
-        LIMIT $3
+        {limit_clause}
         """,
-        avoided_list, preferred_concept_ids, max_candidates,
+        *params,
     )
     return [r["product_id"] for r in rows]

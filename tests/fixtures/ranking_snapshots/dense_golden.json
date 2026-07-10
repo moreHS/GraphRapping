@@ -1,0 +1,2155 @@
+{
+  "combination_count": 42,
+  "combinations": {
+    "user_brand_null_cat::all": {
+      "category_group": "all",
+      "coverage_status": "ok",
+      "products": [
+        {
+          "evidence_families": [
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "100669",
+          "rank": 1,
+          "score_layers": {
+            "master_truth_score": 0.0,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.0,
+            "purchase_behavior_score": 0.02,
+            "review_graph_score": 0.1013,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0465
+          },
+          "total_score": 0.1416
+        },
+        {
+          "evidence_families": [
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "101059",
+          "rank": 6,
+          "score_layers": {
+            "master_truth_score": 0.0,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.0,
+            "purchase_behavior_score": 0.02,
+            "review_graph_score": 0.1013,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0471
+          },
+          "total_score": 0.1404
+        },
+        {
+          "evidence_families": [
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "101057",
+          "rank": 9,
+          "score_layers": {
+            "master_truth_score": 0.0,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.0,
+            "purchase_behavior_score": 0.02,
+            "review_graph_score": 0.1013,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0467
+          },
+          "total_score": 0.1315
+        },
+        {
+          "evidence_families": [
+            "PRODUCT_MASTER_TRUTH",
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "60892",
+          "rank": 2,
+          "score_layers": {
+            "master_truth_score": 0.025,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.0,
+            "purchase_behavior_score": 0.02,
+            "review_graph_score": 0.0507,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.048
+          },
+          "total_score": 0.1226
+        },
+        {
+          "evidence_families": [
+            "PRODUCT_MASTER_TRUTH",
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "63917",
+          "rank": 3,
+          "score_layers": {
+            "master_truth_score": 0.025,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.0,
+            "purchase_behavior_score": 0.02,
+            "review_graph_score": 0.0507,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0483
+          },
+          "total_score": 0.1168
+        },
+        {
+          "evidence_families": [
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "103537",
+          "rank": 7,
+          "score_layers": {
+            "master_truth_score": 0.0,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.0,
+            "purchase_behavior_score": 0.02,
+            "review_graph_score": 0.0507,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0466
+          },
+          "total_score": 0.0974
+        },
+        {
+          "evidence_families": [
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "36903",
+          "rank": 8,
+          "score_layers": {
+            "master_truth_score": 0.0,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.0,
+            "purchase_behavior_score": 0.02,
+            "review_graph_score": 0.0507,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0462
+          },
+          "total_score": 0.0963
+        },
+        {
+          "evidence_families": [
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "50165",
+          "rank": 4,
+          "score_layers": {
+            "master_truth_score": 0.0,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.0,
+            "purchase_behavior_score": 0.02,
+            "review_graph_score": 0.0507,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0473
+          },
+          "total_score": 0.0948
+        },
+        {
+          "evidence_families": [
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "34511",
+          "rank": 10,
+          "score_layers": {
+            "master_truth_score": 0.0,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.0,
+            "purchase_behavior_score": 0.02,
+            "review_graph_score": 0.0507,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0476
+          },
+          "total_score": 0.0941
+        },
+        {
+          "evidence_families": [
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "60766",
+          "rank": 5,
+          "score_layers": {
+            "master_truth_score": 0.0,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.0,
+            "purchase_behavior_score": 0.02,
+            "review_graph_score": 0.028,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0473
+          },
+          "total_score": 0.0731
+        }
+      ],
+      "user_id": "user_brand_null_cat"
+    },
+    "user_brand_null_cat::bodycare": {
+      "category_group": "bodycare",
+      "coverage_status": "no_candidates",
+      "products": [],
+      "user_id": "user_brand_null_cat"
+    },
+    "user_brand_null_cat::fragrance": {
+      "category_group": "fragrance",
+      "coverage_status": "no_candidates",
+      "products": [],
+      "user_id": "user_brand_null_cat"
+    },
+    "user_brand_null_cat::haircare": {
+      "category_group": "haircare",
+      "coverage_status": "no_candidates",
+      "products": [],
+      "user_id": "user_brand_null_cat"
+    },
+    "user_brand_null_cat::makeup": {
+      "category_group": "makeup",
+      "coverage_status": "no_candidates",
+      "products": [],
+      "user_id": "user_brand_null_cat"
+    },
+    "user_brand_null_cat::other": {
+      "category_group": "other",
+      "coverage_status": "no_candidates",
+      "products": [],
+      "user_id": "user_brand_null_cat"
+    },
+    "user_brand_null_cat::skincare": {
+      "category_group": "skincare",
+      "coverage_status": "ok",
+      "products": [
+        {
+          "evidence_families": [
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "100669",
+          "rank": 1,
+          "score_layers": {
+            "master_truth_score": 0.0,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.0,
+            "purchase_behavior_score": 0.02,
+            "review_graph_score": 0.1013,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0465
+          },
+          "total_score": 0.1416
+        },
+        {
+          "evidence_families": [
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "101059",
+          "rank": 6,
+          "score_layers": {
+            "master_truth_score": 0.0,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.0,
+            "purchase_behavior_score": 0.02,
+            "review_graph_score": 0.1013,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0471
+          },
+          "total_score": 0.1404
+        },
+        {
+          "evidence_families": [
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "101057",
+          "rank": 9,
+          "score_layers": {
+            "master_truth_score": 0.0,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.0,
+            "purchase_behavior_score": 0.02,
+            "review_graph_score": 0.1013,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0467
+          },
+          "total_score": 0.1315
+        },
+        {
+          "evidence_families": [
+            "PRODUCT_MASTER_TRUTH",
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "60892",
+          "rank": 2,
+          "score_layers": {
+            "master_truth_score": 0.025,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.0,
+            "purchase_behavior_score": 0.02,
+            "review_graph_score": 0.0507,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.048
+          },
+          "total_score": 0.1226
+        },
+        {
+          "evidence_families": [
+            "PRODUCT_MASTER_TRUTH",
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "63917",
+          "rank": 3,
+          "score_layers": {
+            "master_truth_score": 0.025,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.0,
+            "purchase_behavior_score": 0.02,
+            "review_graph_score": 0.0507,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0483
+          },
+          "total_score": 0.1168
+        },
+        {
+          "evidence_families": [
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "103537",
+          "rank": 7,
+          "score_layers": {
+            "master_truth_score": 0.0,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.0,
+            "purchase_behavior_score": 0.02,
+            "review_graph_score": 0.0507,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0466
+          },
+          "total_score": 0.0974
+        },
+        {
+          "evidence_families": [
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "36903",
+          "rank": 8,
+          "score_layers": {
+            "master_truth_score": 0.0,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.0,
+            "purchase_behavior_score": 0.02,
+            "review_graph_score": 0.0507,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0462
+          },
+          "total_score": 0.0963
+        },
+        {
+          "evidence_families": [
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "50165",
+          "rank": 4,
+          "score_layers": {
+            "master_truth_score": 0.0,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.0,
+            "purchase_behavior_score": 0.02,
+            "review_graph_score": 0.0507,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0473
+          },
+          "total_score": 0.0948
+        },
+        {
+          "evidence_families": [
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "34511",
+          "rank": 10,
+          "score_layers": {
+            "master_truth_score": 0.0,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.0,
+            "purchase_behavior_score": 0.02,
+            "review_graph_score": 0.0507,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0476
+          },
+          "total_score": 0.0941
+        },
+        {
+          "evidence_families": [
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "60766",
+          "rank": 5,
+          "score_layers": {
+            "master_truth_score": 0.0,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.0,
+            "purchase_behavior_score": 0.02,
+            "review_graph_score": 0.028,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0473
+          },
+          "total_score": 0.0731
+        }
+      ],
+      "user_id": "user_brand_null_cat"
+    },
+    "user_dry_30f::all": {
+      "category_group": "all",
+      "coverage_status": "ok",
+      "products": [
+        {
+          "evidence_families": [
+            "PRODUCT_MASTER_TRUTH",
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "63917",
+          "rank": 1,
+          "score_layers": {
+            "master_truth_score": 0.1333,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.01,
+            "purchase_behavior_score": 0.01,
+            "review_graph_score": 0.0507,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0483
+          },
+          "total_score": 0.2047
+        },
+        {
+          "evidence_families": [
+            "PRODUCT_MASTER_TRUTH",
+            "PURCHASE_BEHAVIOR",
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "60892",
+          "rank": 2,
+          "score_layers": {
+            "master_truth_score": 0.0683,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.01,
+            "purchase_behavior_score": 0.035,
+            "review_graph_score": 0.0507,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.048
+          },
+          "total_score": 0.1808
+        },
+        {
+          "evidence_families": [
+            "PRODUCT_MASTER_TRUTH",
+            "PURCHASE_BEHAVIOR",
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "50165",
+          "rank": 3,
+          "score_layers": {
+            "master_truth_score": 0.045,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.01,
+            "purchase_behavior_score": 0.035,
+            "review_graph_score": 0.0507,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0473
+          },
+          "total_score": 0.1511
+        },
+        {
+          "evidence_families": [
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "100669",
+          "rank": 4,
+          "score_layers": {
+            "master_truth_score": 0.0,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.01,
+            "purchase_behavior_score": 0.02,
+            "review_graph_score": 0.1013,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0465
+          },
+          "total_score": 0.1501
+        },
+        {
+          "evidence_families": [
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "101059",
+          "rank": 10,
+          "score_layers": {
+            "master_truth_score": 0.0,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.01,
+            "purchase_behavior_score": 0.02,
+            "review_graph_score": 0.1013,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0471
+          },
+          "total_score": 0.1487
+        },
+        {
+          "evidence_families": [
+            "PRODUCT_MASTER_TRUTH",
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "60766",
+          "rank": 5,
+          "score_layers": {
+            "master_truth_score": 0.06,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.01,
+            "purchase_behavior_score": 0.01,
+            "review_graph_score": 0.028,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0473
+          },
+          "total_score": 0.1192
+        },
+        {
+          "evidence_families": [
+            "PRODUCT_MASTER_TRUTH",
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "68788",
+          "rank": 6,
+          "score_layers": {
+            "master_truth_score": 0.06,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.01,
+            "purchase_behavior_score": 0.01,
+            "review_graph_score": 0.0298,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0477
+          },
+          "total_score": 0.1181
+        },
+        {
+          "evidence_families": [
+            "PRODUCT_MASTER_TRUTH",
+            "PURCHASE_BEHAVIOR",
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "17792",
+          "rank": 7,
+          "score_layers": {
+            "master_truth_score": 0.0433,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.01,
+            "purchase_behavior_score": 0.035,
+            "review_graph_score": 0.0507,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0481
+          },
+          "total_score": 0.1178
+        },
+        {
+          "evidence_families": [
+            "PURCHASE_BEHAVIOR",
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "66964",
+          "rank": 8,
+          "score_layers": {
+            "master_truth_score": 0.0,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.01,
+            "purchase_behavior_score": 0.035,
+            "review_graph_score": 0.0507,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0462
+          },
+          "total_score": 0.0989
+        },
+        {
+          "evidence_families": [
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "52110",
+          "rank": 9,
+          "score_layers": {
+            "master_truth_score": 0.0,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.01,
+            "purchase_behavior_score": 0.02,
+            "review_graph_score": 0.0507,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0468
+          },
+          "total_score": 0.0785
+        }
+      ],
+      "user_id": "user_dry_30f"
+    },
+    "user_dry_30f::bodycare": {
+      "category_group": "bodycare",
+      "coverage_status": "ok",
+      "products": [
+        {
+          "evidence_families": [
+            "PRODUCT_MASTER_TRUTH",
+            "PURCHASE_BEHAVIOR",
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "17792",
+          "rank": 1,
+          "score_layers": {
+            "master_truth_score": 0.0433,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.01,
+            "purchase_behavior_score": 0.035,
+            "review_graph_score": 0.0507,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0481
+          },
+          "total_score": 0.1178
+        },
+        {
+          "evidence_families": [
+            "PRODUCT_MASTER_TRUTH",
+            "PURCHASE_BEHAVIOR",
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "38800",
+          "rank": 4,
+          "score_layers": {
+            "master_truth_score": 0.0433,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.01,
+            "purchase_behavior_score": 0.035,
+            "review_graph_score": 0.028,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0481
+          },
+          "total_score": 0.0986
+        },
+        {
+          "evidence_families": [
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "62454",
+          "rank": 2,
+          "score_layers": {
+            "master_truth_score": 0.0,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.01,
+            "purchase_behavior_score": 0.02,
+            "review_graph_score": 0.028,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0476
+          },
+          "total_score": 0.0736
+        },
+        {
+          "evidence_families": [
+            "PRODUCT_MASTER_TRUTH",
+            "PURCHASE_BEHAVIOR"
+          ],
+          "product_id": "100389",
+          "rank": 3,
+          "score_layers": {
+            "master_truth_score": 0.02,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.01,
+            "purchase_behavior_score": 0.035,
+            "review_graph_score": 0.0,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0467
+          },
+          "total_score": 0.0652
+        }
+      ],
+      "user_id": "user_dry_30f"
+    },
+    "user_dry_30f::fragrance": {
+      "category_group": "fragrance",
+      "coverage_status": "ok",
+      "products": [
+        {
+          "evidence_families": [
+            "PURCHASE_BEHAVIOR"
+          ],
+          "product_id": "35236",
+          "rank": 1,
+          "score_layers": {
+            "master_truth_score": 0.0,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.0,
+            "purchase_behavior_score": 0.035,
+            "review_graph_score": 0.0,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0463
+          },
+          "total_score": 0.0271
+        },
+        {
+          "evidence_families": [
+            "PURCHASE_BEHAVIOR"
+          ],
+          "product_id": "35237",
+          "rank": 2,
+          "score_layers": {
+            "master_truth_score": 0.0,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.0,
+            "purchase_behavior_score": 0.035,
+            "review_graph_score": 0.0,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0468
+          },
+          "total_score": 0.0082
+        },
+        {
+          "evidence_families": [
+            "PURCHASE_BEHAVIOR"
+          ],
+          "product_id": "102622",
+          "rank": 3,
+          "score_layers": {
+            "master_truth_score": 0.0,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.0,
+            "purchase_behavior_score": 0.035,
+            "review_graph_score": 0.0,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.045
+          },
+          "total_score": 0.008
+        }
+      ],
+      "user_id": "user_dry_30f"
+    },
+    "user_dry_30f::haircare": {
+      "category_group": "haircare",
+      "coverage_status": "ok",
+      "products": [
+        {
+          "evidence_families": [
+            "PURCHASE_BEHAVIOR",
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "66964",
+          "rank": 1,
+          "score_layers": {
+            "master_truth_score": 0.0,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.01,
+            "purchase_behavior_score": 0.035,
+            "review_graph_score": 0.0507,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0462
+          },
+          "total_score": 0.0989
+        },
+        {
+          "evidence_families": [
+            "PRODUCT_MASTER_TRUTH",
+            "PURCHASE_BEHAVIOR",
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "19929",
+          "rank": 3,
+          "score_layers": {
+            "master_truth_score": 0.02,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.01,
+            "purchase_behavior_score": 0.035,
+            "review_graph_score": 0.028,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0464
+          },
+          "total_score": 0.0788
+        },
+        {
+          "evidence_families": [
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "52110",
+          "rank": 2,
+          "score_layers": {
+            "master_truth_score": 0.0,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.01,
+            "purchase_behavior_score": 0.02,
+            "review_graph_score": 0.0507,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0468
+          },
+          "total_score": 0.0785
+        },
+        {
+          "evidence_families": [
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "60188",
+          "rank": 4,
+          "score_layers": {
+            "master_truth_score": 0.0,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.01,
+            "purchase_behavior_score": 0.02,
+            "review_graph_score": 0.028,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.046
+          },
+          "total_score": 0.0607
+        }
+      ],
+      "user_id": "user_dry_30f"
+    },
+    "user_dry_30f::makeup": {
+      "category_group": "makeup",
+      "coverage_status": "ok",
+      "products": [
+        {
+          "evidence_families": [
+            "PRODUCT_MASTER_TRUTH",
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "68788",
+          "rank": 1,
+          "score_layers": {
+            "master_truth_score": 0.06,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.01,
+            "purchase_behavior_score": 0.01,
+            "review_graph_score": 0.0298,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0477
+          },
+          "total_score": 0.1181
+        },
+        {
+          "evidence_families": [
+            "PRODUCT_MASTER_TRUTH",
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "61257",
+          "rank": 2,
+          "score_layers": {
+            "master_truth_score": 0.02,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.01,
+            "purchase_behavior_score": 0.02,
+            "review_graph_score": 0.0298,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0475
+          },
+          "total_score": 0.0909
+        },
+        {
+          "evidence_families": [
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "35036",
+          "rank": 3,
+          "score_layers": {
+            "master_truth_score": 0.0,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.01,
+            "purchase_behavior_score": 0.02,
+            "review_graph_score": 0.0298,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0469
+          },
+          "total_score": 0.0835
+        },
+        {
+          "evidence_families": [
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "35100",
+          "rank": 4,
+          "score_layers": {
+            "master_truth_score": 0.0,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.01,
+            "purchase_behavior_score": 0.02,
+            "review_graph_score": 0.0298,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0464
+          },
+          "total_score": 0.0815
+        },
+        {
+          "evidence_families": [
+            "PRODUCT_MASTER_TRUTH",
+            "PURCHASE_BEHAVIOR",
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "58763",
+          "rank": 5,
+          "score_layers": {
+            "master_truth_score": 0.02,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.01,
+            "purchase_behavior_score": -0.03,
+            "review_graph_score": 0.0298,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0401
+          },
+          "total_score": 0.0515
+        }
+      ],
+      "user_id": "user_dry_30f"
+    },
+    "user_dry_30f::other": {
+      "category_group": "other",
+      "coverage_status": "no_candidates",
+      "products": [],
+      "user_id": "user_dry_30f"
+    },
+    "user_dry_30f::skincare": {
+      "category_group": "skincare",
+      "coverage_status": "ok",
+      "products": [
+        {
+          "evidence_families": [
+            "PRODUCT_MASTER_TRUTH",
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "63917",
+          "rank": 1,
+          "score_layers": {
+            "master_truth_score": 0.1333,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.01,
+            "purchase_behavior_score": 0.01,
+            "review_graph_score": 0.0507,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0483
+          },
+          "total_score": 0.2047
+        },
+        {
+          "evidence_families": [
+            "PRODUCT_MASTER_TRUTH",
+            "PURCHASE_BEHAVIOR",
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "60892",
+          "rank": 2,
+          "score_layers": {
+            "master_truth_score": 0.0683,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.01,
+            "purchase_behavior_score": 0.035,
+            "review_graph_score": 0.0507,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.048
+          },
+          "total_score": 0.1808
+        },
+        {
+          "evidence_families": [
+            "PRODUCT_MASTER_TRUTH",
+            "PURCHASE_BEHAVIOR",
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "50165",
+          "rank": 3,
+          "score_layers": {
+            "master_truth_score": 0.045,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.01,
+            "purchase_behavior_score": 0.035,
+            "review_graph_score": 0.0507,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0473
+          },
+          "total_score": 0.1511
+        },
+        {
+          "evidence_families": [
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "100669",
+          "rank": 4,
+          "score_layers": {
+            "master_truth_score": 0.0,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.01,
+            "purchase_behavior_score": 0.02,
+            "review_graph_score": 0.1013,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0465
+          },
+          "total_score": 0.1501
+        },
+        {
+          "evidence_families": [
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "101059",
+          "rank": 6,
+          "score_layers": {
+            "master_truth_score": 0.0,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.01,
+            "purchase_behavior_score": 0.02,
+            "review_graph_score": 0.1013,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0471
+          },
+          "total_score": 0.1487
+        },
+        {
+          "evidence_families": [
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "101057",
+          "rank": 9,
+          "score_layers": {
+            "master_truth_score": 0.0,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.01,
+            "purchase_behavior_score": 0.02,
+            "review_graph_score": 0.1013,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0467
+          },
+          "total_score": 0.1393
+        },
+        {
+          "evidence_families": [
+            "PRODUCT_MASTER_TRUTH",
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "60766",
+          "rank": 5,
+          "score_layers": {
+            "master_truth_score": 0.06,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.01,
+            "purchase_behavior_score": 0.01,
+            "review_graph_score": 0.028,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0473
+          },
+          "total_score": 0.1192
+        },
+        {
+          "evidence_families": [
+            "PURCHASE_BEHAVIOR",
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "103537",
+          "rank": 7,
+          "score_layers": {
+            "master_truth_score": 0.0,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.01,
+            "purchase_behavior_score": 0.035,
+            "review_graph_score": 0.0507,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0466
+          },
+          "total_score": 0.1182
+        },
+        {
+          "evidence_families": [
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "36903",
+          "rank": 8,
+          "score_layers": {
+            "master_truth_score": 0.0,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.01,
+            "purchase_behavior_score": 0.02,
+            "review_graph_score": 0.0507,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0462
+          },
+          "total_score": 0.1046
+        },
+        {
+          "evidence_families": [
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "34511",
+          "rank": 10,
+          "score_layers": {
+            "master_truth_score": 0.0,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.01,
+            "purchase_behavior_score": 0.02,
+            "review_graph_score": 0.0507,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0476
+          },
+          "total_score": 0.1021
+        }
+      ],
+      "user_id": "user_dry_30f"
+    },
+    "user_fragrance_60f::all": {
+      "category_group": "all",
+      "coverage_status": "no_candidates",
+      "products": [],
+      "user_id": "user_fragrance_60f"
+    },
+    "user_fragrance_60f::bodycare": {
+      "category_group": "bodycare",
+      "coverage_status": "no_candidates",
+      "products": [],
+      "user_id": "user_fragrance_60f"
+    },
+    "user_fragrance_60f::fragrance": {
+      "category_group": "fragrance",
+      "coverage_status": "no_candidates",
+      "products": [],
+      "user_id": "user_fragrance_60f"
+    },
+    "user_fragrance_60f::haircare": {
+      "category_group": "haircare",
+      "coverage_status": "no_candidates",
+      "products": [],
+      "user_id": "user_fragrance_60f"
+    },
+    "user_fragrance_60f::makeup": {
+      "category_group": "makeup",
+      "coverage_status": "no_candidates",
+      "products": [],
+      "user_id": "user_fragrance_60f"
+    },
+    "user_fragrance_60f::other": {
+      "category_group": "other",
+      "coverage_status": "no_candidates",
+      "products": [],
+      "user_id": "user_fragrance_60f"
+    },
+    "user_fragrance_60f::skincare": {
+      "category_group": "skincare",
+      "coverage_status": "no_candidates",
+      "products": [],
+      "user_id": "user_fragrance_60f"
+    },
+    "user_makeup_matte_50m::all": {
+      "category_group": "all",
+      "coverage_status": "ok",
+      "products": [
+        {
+          "evidence_families": [
+            "PRODUCT_MASTER_TRUTH",
+            "PURCHASE_BEHAVIOR",
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "35036",
+          "rank": 1,
+          "score_layers": {
+            "master_truth_score": 0.02,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.01,
+            "purchase_behavior_score": 0.035,
+            "review_graph_score": 0.0298,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0469
+          },
+          "total_score": 0.1108
+        },
+        {
+          "evidence_families": [
+            "PRODUCT_MASTER_TRUTH",
+            "PURCHASE_BEHAVIOR",
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "68788",
+          "rank": 2,
+          "score_layers": {
+            "master_truth_score": 0.02,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.01,
+            "purchase_behavior_score": 0.035,
+            "review_graph_score": 0.0298,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0477
+          },
+          "total_score": 0.1068
+        },
+        {
+          "evidence_families": [
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "35100",
+          "rank": 4,
+          "score_layers": {
+            "master_truth_score": 0.0,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.01,
+            "purchase_behavior_score": 0.02,
+            "review_graph_score": 0.0298,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0464
+          },
+          "total_score": 0.0815
+        },
+        {
+          "evidence_families": [
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "61257",
+          "rank": 3,
+          "score_layers": {
+            "master_truth_score": 0.0,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.01,
+            "purchase_behavior_score": 0.02,
+            "review_graph_score": 0.0298,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0475
+          },
+          "total_score": 0.0766
+        },
+        {
+          "evidence_families": [
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "58763",
+          "rank": 5,
+          "score_layers": {
+            "master_truth_score": 0.0,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.01,
+            "purchase_behavior_score": 0.02,
+            "review_graph_score": 0.0298,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0401
+          },
+          "total_score": 0.0736
+        }
+      ],
+      "user_id": "user_makeup_matte_50m"
+    },
+    "user_makeup_matte_50m::bodycare": {
+      "category_group": "bodycare",
+      "coverage_status": "no_candidates",
+      "products": [],
+      "user_id": "user_makeup_matte_50m"
+    },
+    "user_makeup_matte_50m::fragrance": {
+      "category_group": "fragrance",
+      "coverage_status": "no_candidates",
+      "products": [],
+      "user_id": "user_makeup_matte_50m"
+    },
+    "user_makeup_matte_50m::haircare": {
+      "category_group": "haircare",
+      "coverage_status": "no_candidates",
+      "products": [],
+      "user_id": "user_makeup_matte_50m"
+    },
+    "user_makeup_matte_50m::makeup": {
+      "category_group": "makeup",
+      "coverage_status": "ok",
+      "products": [
+        {
+          "evidence_families": [
+            "PRODUCT_MASTER_TRUTH",
+            "PURCHASE_BEHAVIOR",
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "35036",
+          "rank": 1,
+          "score_layers": {
+            "master_truth_score": 0.02,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.01,
+            "purchase_behavior_score": 0.035,
+            "review_graph_score": 0.0298,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0469
+          },
+          "total_score": 0.1108
+        },
+        {
+          "evidence_families": [
+            "PRODUCT_MASTER_TRUTH",
+            "PURCHASE_BEHAVIOR",
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "68788",
+          "rank": 2,
+          "score_layers": {
+            "master_truth_score": 0.02,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.01,
+            "purchase_behavior_score": 0.035,
+            "review_graph_score": 0.0298,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0477
+          },
+          "total_score": 0.1068
+        },
+        {
+          "evidence_families": [
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "35100",
+          "rank": 4,
+          "score_layers": {
+            "master_truth_score": 0.0,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.01,
+            "purchase_behavior_score": 0.02,
+            "review_graph_score": 0.0298,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0464
+          },
+          "total_score": 0.0815
+        },
+        {
+          "evidence_families": [
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "61257",
+          "rank": 3,
+          "score_layers": {
+            "master_truth_score": 0.0,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.01,
+            "purchase_behavior_score": 0.02,
+            "review_graph_score": 0.0298,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0475
+          },
+          "total_score": 0.0766
+        },
+        {
+          "evidence_families": [
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "58763",
+          "rank": 5,
+          "score_layers": {
+            "master_truth_score": 0.0,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.01,
+            "purchase_behavior_score": 0.02,
+            "review_graph_score": 0.0298,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0401
+          },
+          "total_score": 0.0736
+        }
+      ],
+      "user_id": "user_makeup_matte_50m"
+    },
+    "user_makeup_matte_50m::other": {
+      "category_group": "other",
+      "coverage_status": "no_candidates",
+      "products": [],
+      "user_id": "user_makeup_matte_50m"
+    },
+    "user_makeup_matte_50m::skincare": {
+      "category_group": "skincare",
+      "coverage_status": "no_candidates",
+      "products": [],
+      "user_id": "user_makeup_matte_50m"
+    },
+    "user_scalp_care_50m::all": {
+      "category_group": "all",
+      "coverage_status": "ok",
+      "products": [
+        {
+          "evidence_families": [
+            "PRODUCT_MASTER_TRUTH"
+          ],
+          "product_id": "66964",
+          "rank": 1,
+          "score_layers": {
+            "master_truth_score": 0.06,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.01,
+            "purchase_behavior_score": 0.01,
+            "review_graph_score": 0.0,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0462
+          },
+          "total_score": 0.088
+        },
+        {
+          "evidence_families": [
+            "PRODUCT_MASTER_TRUTH",
+            "PURCHASE_BEHAVIOR"
+          ],
+          "product_id": "60188",
+          "rank": 5,
+          "score_layers": {
+            "master_truth_score": 0.06,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.01,
+            "purchase_behavior_score": 0.025,
+            "review_graph_score": 0.0,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.046
+          },
+          "total_score": 0.0822
+        },
+        {
+          "evidence_families": [
+            "PRODUCT_MASTER_TRUTH"
+          ],
+          "product_id": "19929",
+          "rank": 4,
+          "score_layers": {
+            "master_truth_score": 0.06,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.01,
+            "purchase_behavior_score": 0.01,
+            "review_graph_score": 0.0,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0464
+          },
+          "total_score": 0.0714
+        },
+        {
+          "evidence_families": [
+            "PRODUCT_MASTER_TRUTH"
+          ],
+          "product_id": "31573",
+          "rank": 2,
+          "score_layers": {
+            "master_truth_score": 0.0233,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.0,
+            "purchase_behavior_score": 0.02,
+            "review_graph_score": 0.0,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0472
+          },
+          "total_score": 0.0673
+        },
+        {
+          "evidence_families": [
+            "PURCHASE_BEHAVIOR"
+          ],
+          "product_id": "52110",
+          "rank": 3,
+          "score_layers": {
+            "master_truth_score": 0.0,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.01,
+            "purchase_behavior_score": 0.035,
+            "review_graph_score": 0.0,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0468
+          },
+          "total_score": 0.0565
+        }
+      ],
+      "user_id": "user_scalp_care_50m"
+    },
+    "user_scalp_care_50m::bodycare": {
+      "category_group": "bodycare",
+      "coverage_status": "no_candidates",
+      "products": [],
+      "user_id": "user_scalp_care_50m"
+    },
+    "user_scalp_care_50m::fragrance": {
+      "category_group": "fragrance",
+      "coverage_status": "no_candidates",
+      "products": [],
+      "user_id": "user_scalp_care_50m"
+    },
+    "user_scalp_care_50m::haircare": {
+      "category_group": "haircare",
+      "coverage_status": "ok",
+      "products": [
+        {
+          "evidence_families": [
+            "PRODUCT_MASTER_TRUTH"
+          ],
+          "product_id": "66964",
+          "rank": 1,
+          "score_layers": {
+            "master_truth_score": 0.06,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.01,
+            "purchase_behavior_score": 0.01,
+            "review_graph_score": 0.0,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0462
+          },
+          "total_score": 0.088
+        },
+        {
+          "evidence_families": [
+            "PRODUCT_MASTER_TRUTH",
+            "PURCHASE_BEHAVIOR"
+          ],
+          "product_id": "60188",
+          "rank": 4,
+          "score_layers": {
+            "master_truth_score": 0.06,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.01,
+            "purchase_behavior_score": 0.025,
+            "review_graph_score": 0.0,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.046
+          },
+          "total_score": 0.0822
+        },
+        {
+          "evidence_families": [
+            "PRODUCT_MASTER_TRUTH"
+          ],
+          "product_id": "19929",
+          "rank": 3,
+          "score_layers": {
+            "master_truth_score": 0.06,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.01,
+            "purchase_behavior_score": 0.01,
+            "review_graph_score": 0.0,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0464
+          },
+          "total_score": 0.0714
+        },
+        {
+          "evidence_families": [
+            "PURCHASE_BEHAVIOR"
+          ],
+          "product_id": "52110",
+          "rank": 2,
+          "score_layers": {
+            "master_truth_score": 0.0,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.01,
+            "purchase_behavior_score": 0.035,
+            "review_graph_score": 0.0,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0468
+          },
+          "total_score": 0.0565
+        }
+      ],
+      "user_id": "user_scalp_care_50m"
+    },
+    "user_scalp_care_50m::makeup": {
+      "category_group": "makeup",
+      "coverage_status": "ok",
+      "products": [
+        {
+          "evidence_families": [
+            "PRODUCT_MASTER_TRUTH"
+          ],
+          "product_id": "31573",
+          "rank": 1,
+          "score_layers": {
+            "master_truth_score": 0.0233,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.0,
+            "purchase_behavior_score": 0.02,
+            "review_graph_score": 0.0,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0472
+          },
+          "total_score": 0.0673
+        }
+      ],
+      "user_id": "user_scalp_care_50m"
+    },
+    "user_scalp_care_50m::other": {
+      "category_group": "other",
+      "coverage_status": "no_candidates",
+      "products": [],
+      "user_id": "user_scalp_care_50m"
+    },
+    "user_scalp_care_50m::skincare": {
+      "category_group": "skincare",
+      "coverage_status": "no_candidates",
+      "products": [],
+      "user_id": "user_scalp_care_50m"
+    },
+    "user_sensitive_40f::all": {
+      "category_group": "all",
+      "coverage_status": "ok",
+      "products": [
+        {
+          "evidence_families": [
+            "PRODUCT_MASTER_TRUTH",
+            "PURCHASE_BEHAVIOR",
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "60892",
+          "rank": 1,
+          "score_layers": {
+            "master_truth_score": 0.045,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.01,
+            "purchase_behavior_score": 0.035,
+            "review_graph_score": 0.0507,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.048
+          },
+          "total_score": 0.1609
+        },
+        {
+          "evidence_families": [
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "100669",
+          "rank": 2,
+          "score_layers": {
+            "master_truth_score": 0.0,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.01,
+            "purchase_behavior_score": 0.02,
+            "review_graph_score": 0.1013,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0465
+          },
+          "total_score": 0.1501
+        },
+        {
+          "evidence_families": [
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "101059",
+          "rank": 9,
+          "score_layers": {
+            "master_truth_score": 0.0,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.01,
+            "purchase_behavior_score": 0.02,
+            "review_graph_score": 0.1013,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0471
+          },
+          "total_score": 0.1487
+        },
+        {
+          "evidence_families": [
+            "PRODUCT_MASTER_TRUTH",
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "63917",
+          "rank": 3,
+          "score_layers": {
+            "master_truth_score": 0.0483,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.01,
+            "purchase_behavior_score": 0.02,
+            "review_graph_score": 0.0507,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0483
+          },
+          "total_score": 0.1438
+        },
+        {
+          "evidence_families": [
+            "PRODUCT_MASTER_TRUTH",
+            "PURCHASE_BEHAVIOR",
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "50165",
+          "rank": 4,
+          "score_layers": {
+            "master_truth_score": 0.02,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.01,
+            "purchase_behavior_score": 0.05,
+            "review_graph_score": 0.0507,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0473
+          },
+          "total_score": 0.1431
+        },
+        {
+          "evidence_families": [
+            "PRODUCT_MASTER_TRUTH"
+          ],
+          "product_id": "58763",
+          "rank": 5,
+          "score_layers": {
+            "master_truth_score": 0.08,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.01,
+            "purchase_behavior_score": 0.01,
+            "review_graph_score": 0.0,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0401
+          },
+          "total_score": 0.1032
+        },
+        {
+          "evidence_families": [
+            "PRODUCT_MASTER_TRUTH",
+            "PURCHASE_BEHAVIOR"
+          ],
+          "product_id": "17792",
+          "rank": 6,
+          "score_layers": {
+            "master_truth_score": 0.0833,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.0,
+            "purchase_behavior_score": 0.025,
+            "review_graph_score": 0.0,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0481
+          },
+          "total_score": 0.0985
+        },
+        {
+          "evidence_families": [
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "60766",
+          "rank": 7,
+          "score_layers": {
+            "master_truth_score": 0.0,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.01,
+            "purchase_behavior_score": 0.02,
+            "review_graph_score": 0.028,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0473
+          },
+          "total_score": 0.0808
+        },
+        {
+          "evidence_families": [
+            "PRODUCT_MASTER_TRUTH"
+          ],
+          "product_id": "66964",
+          "rank": 8,
+          "score_layers": {
+            "master_truth_score": 0.02,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.01,
+            "purchase_behavior_score": 0.02,
+            "review_graph_score": 0.0,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0462
+          },
+          "total_score": 0.067
+        },
+        {
+          "evidence_families": [
+            "PRODUCT_MASTER_TRUTH"
+          ],
+          "product_id": "46647",
+          "rank": 10,
+          "score_layers": {
+            "master_truth_score": 0.06,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.0,
+            "purchase_behavior_score": 0.01,
+            "review_graph_score": 0.0,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.048
+          },
+          "total_score": 0.0667
+        }
+      ],
+      "user_id": "user_sensitive_40f"
+    },
+    "user_sensitive_40f::bodycare": {
+      "category_group": "bodycare",
+      "coverage_status": "ok",
+      "products": [
+        {
+          "evidence_families": [
+            "PRODUCT_MASTER_TRUTH",
+            "PURCHASE_BEHAVIOR"
+          ],
+          "product_id": "17792",
+          "rank": 1,
+          "score_layers": {
+            "master_truth_score": 0.0833,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.0,
+            "purchase_behavior_score": 0.025,
+            "review_graph_score": 0.0,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0481
+          },
+          "total_score": 0.0985
+        },
+        {
+          "evidence_families": [
+            "PRODUCT_MASTER_TRUTH",
+            "PURCHASE_BEHAVIOR"
+          ],
+          "product_id": "38800",
+          "rank": 4,
+          "score_layers": {
+            "master_truth_score": 0.0833,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.0,
+            "purchase_behavior_score": 0.025,
+            "review_graph_score": 0.0,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0481
+          },
+          "total_score": 0.0938
+        },
+        {
+          "evidence_families": [
+            "PRODUCT_MASTER_TRUTH"
+          ],
+          "product_id": "46647",
+          "rank": 3,
+          "score_layers": {
+            "master_truth_score": 0.06,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.0,
+            "purchase_behavior_score": 0.01,
+            "review_graph_score": 0.0,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.048
+          },
+          "total_score": 0.0667
+        },
+        {
+          "evidence_families": [
+            "PURCHASE_BEHAVIOR"
+          ],
+          "product_id": "100389",
+          "rank": 2,
+          "score_layers": {
+            "master_truth_score": 0.0,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.0,
+            "purchase_behavior_score": 0.035,
+            "review_graph_score": 0.0,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0467
+          },
+          "total_score": 0.0477
+        }
+      ],
+      "user_id": "user_sensitive_40f"
+    },
+    "user_sensitive_40f::fragrance": {
+      "category_group": "fragrance",
+      "coverage_status": "ok",
+      "products": [
+        {
+          "evidence_families": [
+            "PURCHASE_BEHAVIOR"
+          ],
+          "product_id": "35236",
+          "rank": 1,
+          "score_layers": {
+            "master_truth_score": 0.0,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.0,
+            "purchase_behavior_score": 0.035,
+            "review_graph_score": 0.0,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0463
+          },
+          "total_score": 0.0271
+        },
+        {
+          "evidence_families": [
+            "PURCHASE_BEHAVIOR"
+          ],
+          "product_id": "35237",
+          "rank": 2,
+          "score_layers": {
+            "master_truth_score": 0.0,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.0,
+            "purchase_behavior_score": 0.035,
+            "review_graph_score": 0.0,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0468
+          },
+          "total_score": 0.0082
+        },
+        {
+          "evidence_families": [
+            "PURCHASE_BEHAVIOR"
+          ],
+          "product_id": "102622",
+          "rank": 3,
+          "score_layers": {
+            "master_truth_score": 0.0,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.0,
+            "purchase_behavior_score": 0.035,
+            "review_graph_score": 0.0,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.045
+          },
+          "total_score": 0.008
+        }
+      ],
+      "user_id": "user_sensitive_40f"
+    },
+    "user_sensitive_40f::haircare": {
+      "category_group": "haircare",
+      "coverage_status": "ok",
+      "products": [
+        {
+          "evidence_families": [
+            "PRODUCT_MASTER_TRUTH"
+          ],
+          "product_id": "66964",
+          "rank": 1,
+          "score_layers": {
+            "master_truth_score": 0.02,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.01,
+            "purchase_behavior_score": 0.02,
+            "review_graph_score": 0.0,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0462
+          },
+          "total_score": 0.067
+        },
+        {
+          "evidence_families": [
+            "PURCHASE_BEHAVIOR"
+          ],
+          "product_id": "19929",
+          "rank": 2,
+          "score_layers": {
+            "master_truth_score": 0.0,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.01,
+            "purchase_behavior_score": 0.035,
+            "review_graph_score": 0.0,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0464
+          },
+          "total_score": 0.0516
+        }
+      ],
+      "user_id": "user_sensitive_40f"
+    },
+    "user_sensitive_40f::makeup": {
+      "category_group": "makeup",
+      "coverage_status": "ok",
+      "products": [
+        {
+          "evidence_families": [
+            "PRODUCT_MASTER_TRUTH"
+          ],
+          "product_id": "58763",
+          "rank": 1,
+          "score_layers": {
+            "master_truth_score": 0.08,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.01,
+            "purchase_behavior_score": 0.01,
+            "review_graph_score": 0.0,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0401
+          },
+          "total_score": 0.1032
+        },
+        {
+          "evidence_families": [
+            "PRODUCT_MASTER_TRUTH"
+          ],
+          "product_id": "61257",
+          "rank": 2,
+          "score_layers": {
+            "master_truth_score": 0.02,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.01,
+            "purchase_behavior_score": 0.02,
+            "review_graph_score": 0.0,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0475
+          },
+          "total_score": 0.0696
+        }
+      ],
+      "user_id": "user_sensitive_40f"
+    },
+    "user_sensitive_40f::other": {
+      "category_group": "other",
+      "coverage_status": "no_candidates",
+      "products": [],
+      "user_id": "user_sensitive_40f"
+    },
+    "user_sensitive_40f::skincare": {
+      "category_group": "skincare",
+      "coverage_status": "ok",
+      "products": [
+        {
+          "evidence_families": [
+            "PRODUCT_MASTER_TRUTH",
+            "PURCHASE_BEHAVIOR",
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "60892",
+          "rank": 1,
+          "score_layers": {
+            "master_truth_score": 0.045,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.01,
+            "purchase_behavior_score": 0.035,
+            "review_graph_score": 0.0507,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.048
+          },
+          "total_score": 0.1609
+        },
+        {
+          "evidence_families": [
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "100669",
+          "rank": 2,
+          "score_layers": {
+            "master_truth_score": 0.0,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.01,
+            "purchase_behavior_score": 0.02,
+            "review_graph_score": 0.1013,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0465
+          },
+          "total_score": 0.1501
+        },
+        {
+          "evidence_families": [
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "101059",
+          "rank": 6,
+          "score_layers": {
+            "master_truth_score": 0.0,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.01,
+            "purchase_behavior_score": 0.02,
+            "review_graph_score": 0.1013,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0471
+          },
+          "total_score": 0.1487
+        },
+        {
+          "evidence_families": [
+            "PRODUCT_MASTER_TRUTH",
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "63917",
+          "rank": 3,
+          "score_layers": {
+            "master_truth_score": 0.0483,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.01,
+            "purchase_behavior_score": 0.02,
+            "review_graph_score": 0.0507,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0483
+          },
+          "total_score": 0.1438
+        },
+        {
+          "evidence_families": [
+            "PRODUCT_MASTER_TRUTH",
+            "PURCHASE_BEHAVIOR",
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "50165",
+          "rank": 4,
+          "score_layers": {
+            "master_truth_score": 0.02,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.01,
+            "purchase_behavior_score": 0.05,
+            "review_graph_score": 0.0507,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0473
+          },
+          "total_score": 0.1431
+        },
+        {
+          "evidence_families": [
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "101057",
+          "rank": 9,
+          "score_layers": {
+            "master_truth_score": 0.0,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.01,
+            "purchase_behavior_score": 0.02,
+            "review_graph_score": 0.1013,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0467
+          },
+          "total_score": 0.1393
+        },
+        {
+          "evidence_families": [
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "103537",
+          "rank": 7,
+          "score_layers": {
+            "master_truth_score": 0.0,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.01,
+            "purchase_behavior_score": 0.02,
+            "review_graph_score": 0.0507,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0466
+          },
+          "total_score": 0.1057
+        },
+        {
+          "evidence_families": [
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "36903",
+          "rank": 8,
+          "score_layers": {
+            "master_truth_score": 0.0,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.01,
+            "purchase_behavior_score": 0.02,
+            "review_graph_score": 0.0507,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0462
+          },
+          "total_score": 0.1046
+        },
+        {
+          "evidence_families": [
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "34511",
+          "rank": 10,
+          "score_layers": {
+            "master_truth_score": 0.0,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.01,
+            "purchase_behavior_score": 0.02,
+            "review_graph_score": 0.0507,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0476
+          },
+          "total_score": 0.1021
+        },
+        {
+          "evidence_families": [
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "60766",
+          "rank": 5,
+          "score_layers": {
+            "master_truth_score": 0.0,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.01,
+            "purchase_behavior_score": 0.02,
+            "review_graph_score": 0.028,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0473
+          },
+          "total_score": 0.0808
+        }
+      ],
+      "user_id": "user_sensitive_40f"
+    }
+  },
+  "fixture": "dense_golden",
+  "kg_mode": "on",
+  "schema_version": 1,
+  "top_k": 10
+}
