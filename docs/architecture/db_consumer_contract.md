@@ -499,9 +499,10 @@ family 의 현행 분류·의미론과, **신규 family 를 추가할 때 반드
 | Evidence family | overlap concept 타입 (frozenset) | 의미 |
 |---|---|---|
 | `PRODUCT_MASTER_TRUTH` | `brand, category, catalog_keyword, ingredient, goal_master` | 카탈로그 진실과 유저 명시 선호의 일치 |
-| `REVIEW_GRAPH_RELATION` | `keyword, bee_attr, semantic_keyword, semantic_bee_attr, context, concern, concern_bridge, tool, coused, comparison` | 리뷰 그래프 유래(promoted) 신호와의 일치 |
+| `REVIEW_GRAPH_RELATION` | `keyword, bee_attr, semantic_keyword, semantic_bee_attr, context, concern, concern_bridge, tool, coused` | 리뷰 그래프 유래(promoted) 신호와의 일치 |
 | `REVIEW_GRAPH_WEAK_RELATION` | `weak_semantic_keyword, weak_semantic_bee_attr` | 위의 약한(간접 semantic) 변형 |
 | `PURCHASE_BEHAVIOR` | `owned_family, repurchased_family, repurchase_brand, repurchase_category, recent_purchase_brand` | 구매 확정 행동과의 일치 |
+| (boost-only, **자격 불가**) | `comparison, collab, comention` (+Phase 8 `similar` 예정) | `BOOST_ONLY_TYPES` — 결합 시 보정만, 단독으로 eligibility 못 삼. `comparison`만 COMPARE 모드에서 admit(`BOOST_ONLY_ADMISSIBLE_TYPES`). 2026-07 정정: 종전 표가 `comparison`을 review-graph로 오기 |
 
 자격이 **될 수 없는** 것 (기존 규율, 신규 family 에도 그대로):
 - `source_review_*` (source trust/popularity) — trust/tie-break 신호이지 자격

@@ -84,3 +84,28 @@
 - 게이트 ON 맥락(유사상품): top-N이 동일 카테고리 + 납득 가능한 공유 근거로 채워지나
 - 게이트 OFF 맥락(일반 추천): 앵커 상품과 실제로 연관성 높은(공유 노드 多) 상품이 상위인가
 - 커버리지: 유사 이웃 ≥1 보유 상품 비율(빈 위젯 방지)
+
+## 추기 — 3자 재리뷰 + keyword 복합키 재확정 (2026-07-15 후속)
+
+Opus·Sonnet·Codex 3자 재리뷰(논의록을 확정제약으로 공유). 3/3이 **동일 사실오류**
+수렴: keyword 복합키 `(bee_attr_id, keyword_id)`가 **서빙 프로파일엔 없음** —
+`aggregate_product_signals` groupby가 `(product, edge_type, dst_type, dst_id)`라
+bee_attr·polarity를 집계 단계에서 버림. 계획이 근거로 든 `provenance_provider`는
+raw `wrapped_signal`을 읽어(다른 소스) 참이었고, attach가 실제 읽는 서빙엔 재료 없음.
+
+**사용자 재확정(중요)**: 복합키 병합(Option C)은 안 된다. "가볍다"가 제형/발림성/
+패키지에서 **다른 의미**이므로 bee_attr로 구분하는 게 설계 의도이자 주류 케이스다.
+BEE 분류 정확도는 신뢰하고 가며, "보습"이 7개 bee_attr에 퍼진 건 BEE 추출 스팬
+정밀도의 사이드이펙트일 뿐 — 시스템을 모델 부정확 전제로 설계하지 않는다. 즉
+**결정 4(복합키+극성) 유지.**
+
+**해소(사실제약)**: keyword 축만 **raw `wrapped_signal` sidecar**에서 소싱 —
+DB는 `idx_ws_product` 인덱스로 per-product 조회(컬럼 bee_attr_id·keyword_id·polarity
+실재 확인), demo는 `product_signals`. 집계/서빙 keyword 파이프라인 무변경(회귀 0) +
+서빙에서 손실됐던 polarity까지 복구. Option A(집계 변경=기존 keyword_match 회귀)·
+C(병합) 기각, **B(sidecar) 채택**. → 결정 4 문구 개정 불요, 계획서 G1 데이터 소스만 명시.
+
+그 외 3자 지적(G2 graph_view.js 실제 tooltip 작업·이웃 union 대칭·G4 explainer
+_EDGE_MAP+provenance·shared_axes 라벨 sidecar·커버리지 하한 수치·gate-OFF IDF합·
+G3 빈배열/404·demo attach 타이밍·§13.2 comparison 오기 정정)은 계획서/문서에 반영.
+확정 결정과 무관한 보강이라 방향 변경 없음.
