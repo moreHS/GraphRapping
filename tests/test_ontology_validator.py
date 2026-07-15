@@ -15,13 +15,29 @@ Two groups:
   validator's structured output (`rule`/`file`/`item`/`reason`) catches it.
   Fixtures never touch configs/ on disk — `validate_ontology` is a pure
   function over already-loaded dict/list structures.
+- v2 (Phase 7 A5) checks (f)-(i): same two-layer pattern — injection tests
+  prove each detector fires, current-state tests pin what the real configs/
+  code report today (meta count consistent, exactly the 4 known orphan types
+  Color/Volume/AgeBand/Event as warnings, real bridge constants clean). The
+  (h) liveness pipeline run is NOT exercised here (it executes the full
+  in-memory pipeline — covered by the pure `build_liveness_report` diff test
+  instead; the runner backs the manual `validate-ontology --liveness` CLI).
 """
 
 from __future__ import annotations
 
 from typing import Any
 
-from src.kg.ontology_validator import validate_current_ontology_configs, validate_ontology
+from src.kg.ontology_validator import (
+    _load_bridge_constants,
+    build_liveness_report,
+    check_bridge_constant_coverage,
+    check_canonical_map_meta,
+    check_orphan_entity_types,
+    collect_ontology_warnings,
+    validate_current_ontology_configs,
+    validate_ontology,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -334,3 +350,185 @@ def test_detects_duplicate_projection_row_case_insensitive() -> None:
     violations = validate_ontology(_entity_types(), _relation_types(), _valid_contracts(), projections)
     matches = [v for v in violations if v.rule == "duplicate_projection_row"]
     assert len(matches) == 1
+
+
+# ---------------------------------------------------------------------------
+# (f) relation_canonical_map.json meta.total_labels vs actual entry count
+# ---------------------------------------------------------------------------
+
+
+def test_detects_canonical_map_meta_count_mismatch() -> None:
+    """Injected re-creation of the historical 65-vs-68 drift: the declared
+    meta count disagrees with the actual number of label_to_canonical entries."""
+    cfg = {
+        "label_to_canonical": {"used_by": "used_by", "affects": "affects", "owns": "owns"},
+        "meta": {"total_labels": 65},
+    }
+    violations = check_canonical_map_meta(cfg)
+    assert len(violations) == 1
+    v = violations[0]
+    assert v.rule == "canonical_map_meta_count"
+    assert v.file == "relation_canonical_map.json"
+    assert v.severity == "error"
+    assert "65" in v.item and "3 entries" in v.reason
+
+
+def test_canonical_map_meta_count_match_is_clean() -> None:
+    cfg = {
+        "label_to_canonical": {"used_by": "used_by", "affects": "affects"},
+        "meta": {"total_labels": 2},
+    }
+    assert check_canonical_map_meta(cfg) == []
+
+
+def test_canonical_map_without_meta_count_is_not_flagged() -> None:
+    """A file that declares no count makes no claim to verify."""
+    assert check_canonical_map_meta({"label_to_canonical": {"a": "a"}}) == []
+    assert check_canonical_map_meta({"label_to_canonical": {"a": "a"}, "meta": {}}) == []
+
+
+# ---------------------------------------------------------------------------
+# (g) orphan entity types — raw-extracted but referenced by no contract row
+# ---------------------------------------------------------------------------
+
+
+def test_detects_orphan_entity_type_as_warning() -> None:
+    """COL is raw-extracted (node created) but no contract row references
+    Color as subject or object -> warning-severity orphan."""
+    entity_types = _entity_types(types=[
+        {"code": "PRD", "neo4j_label": "PRD"},
+        {"code": "BRD", "neo4j_label": "BRD"},
+        {"code": "COL", "neo4j_label": "COL"},
+        {"code": "지속력", "neo4j_label": "BEE_ATTR", "is_bee": True},
+    ])
+    violations = check_orphan_entity_types(entity_types, _valid_contracts())
+    orphan_items = {v.item for v in violations}
+    assert "Color" in orphan_items
+    color = next(v for v in violations if v.item == "Color")
+    assert color.rule == "orphan_entity_type"
+    assert color.severity == "warning"
+    assert "COL" in color.reason
+    # Product/Brand/BEEAttr are referenced by _valid_contracts() -> not orphans.
+    assert {"Product", "Brand", "BEEAttr"} & orphan_items == set()
+
+
+def test_referenced_type_is_not_an_orphan() -> None:
+    """Adding a contract row that references Color clears the orphan warning."""
+    entity_types = _entity_types(types=[
+        {"code": "PRD", "neo4j_label": "PRD"},
+        {"code": "COL", "neo4j_label": "COL"},
+        {"code": "지속력", "neo4j_label": "BEE_ATTR", "is_bee": True},
+    ])
+    contracts = _valid_contracts() + [
+        _contract_row(
+            predicate="used_for",
+            allowed_subject_types="Product",
+            allowed_object_types="Color",
+            projectable_to_layer3="N",
+        ),
+    ]
+    violations = check_orphan_entity_types(entity_types, contracts)
+    assert "Color" not in {v.item for v in violations}
+
+
+def test_current_configs_orphan_types_are_exactly_the_known_four() -> None:
+    """Current-state pin: the real configs surface exactly Color/Volume/
+    AgeBand/Event as orphan entity types (fable_doc/06 진단 §3), and every
+    static warning is warning-severity (never CI-gating)."""
+    warnings = collect_ontology_warnings()
+    orphans = sorted(v.item for v in warnings if v.rule == "orphan_entity_type")
+    assert orphans == ["AgeBand", "Color", "Event", "Volume"]
+    assert all(v.severity == "warning" for v in warnings)
+
+
+# ---------------------------------------------------------------------------
+# (h) vocabulary liveness — pure diff step (pipeline runner not exercised here)
+# ---------------------------------------------------------------------------
+
+
+def test_liveness_report_diffs_defined_vs_generated() -> None:
+    report = build_liveness_report(
+        fixture="dense_golden",
+        kg_mode="on",
+        total_signals=10,
+        defined_signal_families={"BEE_ATTR", "TOOL", "CONCERN_POS"},
+        generated_signal_families={"BEE_ATTR"},
+        defined_object_types={"BEEAttr", "Tool"},
+        generated_object_types={"BEEAttr"},
+    )
+    assert report.dead_signal_families == ["CONCERN_POS", "TOOL"]
+    assert report.dead_object_types == ["Tool"]
+
+    warnings = report.warnings()
+    assert {(v.rule, v.item) for v in warnings} == {
+        ("dead_signal_family", "CONCERN_POS"),
+        ("dead_signal_family", "TOOL"),
+        ("dead_object_type", "Tool"),
+    }
+    assert all(v.severity == "warning" for v in warnings)
+    assert all(v.file == "projection_registry.csv" for v in warnings)
+
+
+def test_liveness_report_with_full_coverage_has_no_warnings() -> None:
+    report = build_liveness_report(
+        fixture="dense_golden",
+        kg_mode="on",
+        total_signals=10,
+        defined_signal_families={"BEE_ATTR"},
+        generated_signal_families={"BEE_ATTR"},
+        defined_object_types={"BEEAttr"},
+        generated_object_types={"BEEAttr"},
+    )
+    assert report.dead_signal_families == []
+    assert report.dead_object_types == []
+    assert report.warnings() == []
+
+
+# ---------------------------------------------------------------------------
+# (i) 3-layer bridge constant coverage
+# ---------------------------------------------------------------------------
+
+
+def test_detects_bridge_key_missing_from_entity_types() -> None:
+    violations = check_bridge_constant_coverage(
+        _entity_types(),
+        {"_TEST_BRIDGE": {"BOGUS_TAG": "Product"}},
+    )
+    matches = [v for v in violations if v.rule == "bridge_key_in_entity_types"]
+    assert len(matches) == 1
+    assert matches[0].severity == "error"
+    assert "BOGUS_TAG" in matches[0].item
+    assert matches[0].file == "_TEST_BRIDGE"
+
+
+def test_detects_bridge_value_outside_entity_universe() -> None:
+    violations = check_bridge_constant_coverage(
+        _entity_types(),
+        {"_TEST_BRIDGE": {"PRD": "NotARealCanonicalType"}},
+    )
+    matches = [v for v in violations if v.rule == "bridge_value_in_entity_universe"]
+    assert len(matches) == 1
+    assert matches[0].severity == "error"
+    assert "NotARealCanonicalType" in matches[0].item
+
+
+def test_clean_bridge_constant_passes() -> None:
+    violations = check_bridge_constant_coverage(
+        _entity_types(),
+        {"_TEST_BRIDGE": {"PRD": "Product", "BRD": "Brand"}},
+    )
+    assert violations == []
+
+
+def test_real_bridge_constants_are_covered_by_entity_types() -> None:
+    """Current-state pin: the real _NER_TO_CANONICAL_TYPE (run_daily_pipeline)
+    and _KG_TYPE_TO_GR_TYPE (kg/adapter) constants are fully covered by the
+    real kg_entity_types.json. If this fails, a bridge map and the type
+    registry drifted apart."""
+    from src.common.config_loader import load_json
+
+    bridges = _load_bridge_constants()
+    assert set(bridges) == {"_NER_TO_CANONICAL_TYPE", "_KG_TYPE_TO_GR_TYPE"}
+    assert all(bridge for bridge in bridges.values()), "bridge maps must be non-empty"
+    violations = check_bridge_constant_coverage(load_json("kg_entity_types.json"), bridges)
+    assert violations == [], f"bridge constants drifted from kg_entity_types.json: {violations}"

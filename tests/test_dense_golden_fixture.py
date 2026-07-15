@@ -411,6 +411,21 @@ def test_dense_full_load_has_materially_more_promoted_relation_density(
         dense["promoted_count"] / dense["product_count"]
         > (wide["promoted_count"] / wide["product_count"]) * 5
     )
-    assert dense["promoted_by_edge"]["HAS_BEE_ATTR_SIGNAL"] > wide["promoted_by_edge"]["HAS_BEE_ATTR_SIGNAL"] * 2
-    assert dense["top_field_product_counts"]["top_bee_attr_ids"] > wide["top_field_product_counts"]["top_bee_attr_ids"]
-    assert dense["top_field_item_counts"]["top_bee_attr_ids"] >= wide["top_field_item_counts"]["top_bee_attr_ids"] * 3
+    # Phase 7 C2 lowered the all/90d promotion gate 3->2, raising wide's
+    # ABSOLUTE promoted counts — wide now surfaces more products (90) in
+    # absolute terms than the 32-product dense fixture even contains. The
+    # invariant this test guards is per-product promoted-relation DENSITY, so
+    # these compare rates, not absolute counts.
+    # See DECISIONS/2026-07-13_phase7_c2_promotion_gate.md.
+    assert (
+        dense["promoted_by_edge"]["HAS_BEE_ATTR_SIGNAL"] / dense["product_count"]
+        > (wide["promoted_by_edge"]["HAS_BEE_ATTR_SIGNAL"] / wide["product_count"]) * 5
+    )
+    assert (
+        dense["top_field_product_counts"]["top_bee_attr_ids"] / dense["product_count"]
+        > wide["top_field_product_counts"]["top_bee_attr_ids"] / wide["product_count"]
+    )
+    assert (
+        dense["top_field_item_counts"]["top_bee_attr_ids"] / dense["product_count"]
+        >= (wide["top_field_item_counts"]["top_bee_attr_ids"] / wide["product_count"]) * 3
+    )

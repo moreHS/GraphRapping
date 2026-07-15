@@ -1,0 +1,117 @@
+# Ingredient → Concern bridge mapping (P7-2 C1, 2026-07-13)
+#
+# Curated, high-confidence Korean-skincare ingredient/concern associations —
+# textbook-level pairings only (retinol/wrinkles, salicylic acid/acne, etc.),
+# not derived from data mining. Same shape/consumption contract as
+# concern_bee_attr_map.yaml (ingredient_surface_form → {concern_id, weight,
+# label_ko}); weight is a discount factor, always lower than an explicit
+# review-derived concern signal.
+#
+# Keys are raw Korean surface forms as they appear in review NER extraction
+# (ING entity_group) / product MAIN_INGREDIENT — not INCI-normalized IDs,
+# since no canonical ingredient_dict.yaml exists yet (Ingredient IRIs are
+# built from normalize_text(word), see src/kg/adapter.py::to_graphrapping_iri).
+# Common surface-form variants for the same ingredient are listed as separate
+# keys (bee_attr_dict.yaml already does the same for BEE English aliases).
+#
+# SCOPE NOTE: this file is config-only. Wiring a consumer (a compute_bridged_
+# concerns-style lookup over product ingredient facts, analogous to
+# src/rec/concern_bridge.py's BEE_ATTR bridge) requires touching src/rec/**,
+# which is outside this task's allowed-file scope (owned by a concurrent
+# agent this session). See the P7-2 C1 completion report for the follow-up
+# task this unblocks.
+
+레티놀:
+  concern_id: concern_wrinkles
+  weight: 0.7
+  label_ko: "레티놀 → 주름 개선 (대표적 항노화 성분)"
+
+아데노신:
+  concern_id: concern_wrinkles
+  weight: 0.6
+  label_ko: "아데노신 → 주름 개선 (식약처 기능성 고시 성분)"
+
+콜라겐:
+  concern_id: concern_wrinkles
+  weight: 0.5
+  label_ko: "콜라겐 → 탄력/주름 관련 (보습 겸용이라 가중치 낮춤)"
+
+나이아신아마이드:
+  concern_id: concern_pigmentation
+  weight: 0.6
+  label_ko: "나이아신아마이드 → 색소침착 개선 (식약처 기능성 고시 성분)"
+
+비타민c:
+  concern_id: concern_pigmentation
+  weight: 0.6
+  label_ko: "비타민C → 색소침착/미백 (표면형 변형 다수 — 비타민C/비타씨 등)"
+
+비타씨:
+  concern_id: concern_pigmentation
+  weight: 0.6
+  label_ko: "비타민C 구어체 표기 → 색소침착/미백"
+
+글루타치온:
+  concern_id: concern_pigmentation
+  weight: 0.5
+  label_ko: "글루타치온 → 미백/색소침착 (경구 보조제 성분으로도 흔함)"
+
+아르부틴:
+  concern_id: concern_pigmentation
+  weight: 0.6
+  label_ko: "아르부틴 → 색소침착 개선 (식약처 기능성 고시 성분)"
+
+살리실릭애씨드:
+  concern_id: concern_acne
+  weight: 0.7
+  label_ko: "살리실산(BHA) → 여드름/트러블 (각질 용해 통한 모공 관리)"
+
+티트리:
+  concern_id: concern_acne
+  weight: 0.6
+  label_ko: "티트리 → 여드름/트러블 (항균 효능으로 널리 알려짐)"
+
+프로폴리스:
+  concern_id: concern_acne
+  weight: 0.4
+  label_ko: "프로폴리스 → 여드름/트러블 (항균·진정 겸용이라 가중치 낮춤)"
+
+세라마이드:
+  concern_id: concern_dryness
+  weight: 0.7
+  label_ko: "세라마이드 → 건조함 (피부장벽 보습 대표 성분)"
+
+하이알루로닉애씨드:
+  concern_id: concern_dryness
+  weight: 0.7
+  label_ko: "하이알루로닉애씨드(히알루론산) → 건조함 (대표 수분 성분)"
+
+병풀추출물:
+  concern_id: concern_irritation
+  weight: 0.6
+  label_ko: "병풀추출물(시카) → 자극 진정 (마데카식산 계열 대표 진정 성분)"
+
+마데카소사이드:
+  concern_id: concern_irritation
+  weight: 0.6
+  label_ko: "마데카소사이드 → 자극 진정 (병풀 유래 성분)"
+
+어성초추출물:
+  concern_id: concern_irritation
+  weight: 0.5
+  label_ko: "어성초추출물 → 자극 진정"
+
+판테놀:
+  concern_id: concern_irritation
+  weight: 0.5
+  label_ko: "판테놀 → 자극 진정 (피부 재생·진정 보조)"
+
+알란토인:
+  concern_id: concern_irritation
+  weight: 0.5
+  label_ko: "알란토인 → 자극 진정"
+
+알로에:
+  concern_id: concern_irritation
+  weight: 0.5
+  label_ko: "알로에(베라) → 자극 진정"

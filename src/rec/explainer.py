@@ -56,6 +56,9 @@ _EDGE_MAP = {
     "ingredient": ("PREFERS_INGREDIENT", "HAS_INGREDIENT"),
     "tool": ("PREFERS_TOOL", "USED_WITH_TOOL_SIGNAL"),
     "coused": ("OWNS_PRODUCT", "USED_WITH_PRODUCT_SIGNAL"),
+    "comparison": ("OWNS_PRODUCT", "COMPARED_WITH_SIGNAL"),
+    "collab": ("SIMILAR_USER_AFFINITY", "PREFERRED_BY_SIMILAR_USERS"),
+    "comention": ("OWNS_PRODUCT", "CO_MENTIONED_WITH_SIGNAL"),
     "owned_family": ("OWNS_FAMILY", "HAS_VARIANT_FAMILY"),
     "repurchased_family": ("REPURCHASES_FAMILY", "HAS_VARIANT_FAMILY"),
     "repurchase_brand": ("REPURCHASES_BRAND", "HAS_BRAND"),
@@ -132,6 +135,9 @@ def _concept_to_feature(concept_type: str) -> str:
         "ingredient": "ingredient_match",
         "tool": "tool_alignment",
         "coused": "coused_product_bonus",
+        "comparison": "comparison_alternative",
+        "collab": "collaborative_affinity",
+        "comention": "comention_product_bonus",
         "owned_family": "owned_family_penalty",
         "repurchased_family": "repurchase_family_affinity",
         "repurchase_brand": "purchase_loyalty_score",
@@ -214,6 +220,12 @@ def _generate_summary_ko(paths: list[ExplanationPath]) -> str:
             parts.append(f"'{p.concept_id}' 도구와 함께 사용 패턴")
         elif p.concept_type == "coused":
             parts.append(f"'{p.concept_id}' 제품과 함께 사용 패턴")
+        elif p.concept_type == "comparison":
+            parts.append(f"보유하신 '{p.concept_id}' 제품과 비교되는 상품")
+        elif p.concept_type == "collab":
+            parts.append("취향이 비슷한 고객들이 선호한 상품")
+        elif p.concept_type == "comention":
+            parts.append(f"보유하신 '{p.concept_id}' 제품과 리뷰에서 함께 언급되는 상품")
         elif p.concept_type == "owned_family":
             parts.append("현재 사용 중인 제품과 같은 라인")
         elif p.concept_type == "repurchased_family":

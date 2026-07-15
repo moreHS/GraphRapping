@@ -1,0 +1,26 @@
+# Keyword canonical alias map — Phase 7 B2 (동일 개념 접힘)
+#
+# Maps an *alias* keyword_id onto its *canonical* keyword_id. Applied at keyword
+# resolution time (src/normalize/bee_normalizer.resolve_surface_keywords), so a
+# review phrase that resolves to a dispersed id is folded onto one concept
+# BEFORE aggregation. Downstream agg/serving then concentrate support on the
+# canonical id (helps the promotion gate) and stop double-counting a single
+# mention across sibling ids.
+#
+# Scope discipline (see DECISIONS/2026-07-13_phase7_b2_keyword_alias.md):
+#   - Fold ONLY obviously-same concepts (diagnosis 06 §4 moisture cluster).
+#   - The canonical target MUST NOT itself be an alias key (no chaining); the
+#     loader raises on cycles and flattens single-hop chains defensively, and
+#     tests/test_keyword_alias.py enforces acyclicity + canonical-is-terminal.
+#   - Ambiguous neighbours (수분감/산뜻/시원/깔끔) are deliberately NOT folded —
+#     tracked as candidates in the DECISIONS record.
+#
+# Effect on the moisture cluster ("촉촉한" formerly emitted kw_moist + MoistLike):
+#   kw_moist (촉촉함) + MoistLike (촉촉한 texture keyword) → kw_moisturizing (보습좋음)
+
+version: v1
+
+# alias_keyword_id: canonical_keyword_id
+aliases:
+  kw_moist: kw_moisturizing
+  MoistLike: kw_moisturizing

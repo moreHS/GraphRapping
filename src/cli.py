@@ -14,11 +14,16 @@ reference scripts/tests already do, then delegates:
                   existed for this entrypoint)
   validate     -> src.db.contract_validator.validate_all
   validate-ontology -> src.kg.ontology_validator.validate_current_ontology_configs
-                  (static cross-check of the 4 core KG ontology config files —
+                  (static cross-check of the core KG ontology config files —
                   configs/kg_entity_types.json, kg_relation_types.json,
-                  predicate_contracts.csv, projection_registry.csv — for
-                  internal consistency. No DB/pool involved; distinct from
-                  `validate` above, which checks DB-persisted data contracts.)
+                  predicate_contracts.csv, projection_registry.csv,
+                  relation_canonical_map.json — for internal consistency.
+                  Exit code gates on ERROR-severity violations only; warning-
+                  severity findings (orphan entity types, and the optional
+                  --liveness dead-vocabulary report which runs the in-memory
+                  demo pipeline) are printed but never fail. No DB/pool
+                  involved; distinct from `validate` above, which checks
+                  DB-persisted data contracts.)
   monitor      -> src.db.retention_monitor.run_retention_monitor
                   (read-only unbounded-growth risk report: quarantine_*,
                   agg_product_signal/agg_user_preference, raw-layer row
@@ -87,7 +92,12 @@ from src.db.retention_monitor import (
 from src.jobs.run_full_load import FullLoadConfig
 from src.jobs.run_full_load_db import run_full_load_to_db
 from src.jobs.run_incremental_pipeline_db import run_incremental_to_db
-from src.kg.ontology_validator import OntologyViolation, validate_current_ontology_configs
+from src.kg.ontology_validator import (
+    OntologyViolation,
+    collect_liveness_report,
+    collect_ontology_warnings,
+    validate_current_ontology_configs,
+)
 
 DEFAULT_REVIEW_JSON = "mockdata/review_triples_raw.json"
 DEFAULT_PRODUCT_JSON = "mockdata/product_catalog_es.json"
@@ -286,24 +296,46 @@ def _print_ontology_violations(violations: list[OntologyViolation]) -> None:
         print(f"  [{v.rule}] {v.file}: {v.item} - {v.reason}")
 
 
-async def _run_validate_ontology() -> int:
-    """Cross-check the 4 core ontology config files (no DB/pool needed).
+async def _run_validate_ontology(args: argparse.Namespace) -> int:
+    """Cross-check the core ontology config files (no DB/pool needed).
 
-    Takes no arguments (there is nothing to parameterize — configs/ paths are
-    fixed, see src.common.config_loader.CONFIGS_DIR) and stays `async def`
-    purely so it fits `_DISPATCH`'s Coroutine-returning Callable type and
-    `main()`'s single `asyncio.run(...)` call site can stay uniform across
-    subcommands — mirrors `_run_snapshot`'s rationale. Distinct from
-    `_run_validate` (DB-persisted data contracts, requires --dsn); this checks
-    static config files only.
+    Only ERROR-severity static cross-config violations gate the exit code
+    (1 on any). WARNING-severity findings are printed for visibility but never
+    change the exit code: (g) orphan entity types are shown on every run
+    (cheap static analysis), and (h) the vocabulary-liveness report is added
+    when --liveness is passed — which runs the demo pipeline in-process, hence
+    it is opt-in and not part of the default/CI step.
+
+    Stays `async def` so it fits `_DISPATCH`'s Coroutine-returning Callable type
+    and `main()`'s single `asyncio.run(...)` call site — mirrors `_run_snapshot`.
+    Distinct from `_run_validate` (DB-persisted data contracts, requires --dsn);
+    this checks static config files (plus, with --liveness, one pipeline run).
     """
     violations = validate_current_ontology_configs()
-    if not violations:
+    if violations:
+        print(f"status: {len(violations)} violation(s)")
+        _print_ontology_violations(violations)
+    else:
         print("status: OK")
-        return 0
-    print(f"status: {len(violations)} violation(s)")
-    _print_ontology_violations(violations)
-    return 1
+
+    warnings = collect_ontology_warnings()
+    if args.liveness:
+        report = collect_liveness_report(fixture=args.fixture)
+        print(
+            f"liveness: fixture={report.fixture} kg_mode={report.kg_mode} "
+            f"signals={report.total_signals} "
+            f"dead_families={report.dead_signal_families} "
+            f"dead_object_types={report.dead_object_types}"
+        )
+        warnings = warnings + report.warnings()
+
+    if warnings:
+        print(f"warnings: {len(warnings)} (non-failing)")
+        _print_ontology_violations(warnings)
+    else:
+        print("warnings: none")
+
+    return 1 if violations else 0
 
 
 # ---------------------------------------------------------------------------
@@ -495,12 +527,26 @@ def build_parser() -> argparse.ArgumentParser:
         help="Enable production source-grounding invariants (off by default).",
     )
 
-    subparsers.add_parser(
+    validate_ontology_p = subparsers.add_parser(
         "validate-ontology",
         help=(
             "Cross-check kg_entity_types/kg_relation_types/predicate_contracts/"
-            "projection_registry configs for internal consistency (no DB)."
+            "projection_registry/relation_canonical_map configs for internal "
+            "consistency (no DB). Exit code reflects ERROR-severity violations "
+            "only; warnings (orphan types, --liveness report) are informational."
         ),
+    )
+    validate_ontology_p.add_argument(
+        "--liveness", action="store_true",
+        help=(
+            "Also run the in-memory demo pipeline (no DB) and report vocabulary "
+            "defined in projection_registry.csv but generated 0 times "
+            "(warning-only; not part of the default/CI step)."
+        ),
+    )
+    validate_ontology_p.add_argument(
+        "--fixture", choices=("dense_golden", "wide"), default="dense_golden",
+        help="Fixture for the --liveness pipeline run (default: %(default)s).",
     )
 
     monitor_p = subparsers.add_parser(
@@ -585,7 +631,7 @@ _DISPATCH: dict[str, Callable[[argparse.Namespace], Coroutine[Any, Any, int]]] =
     "full-load": _run_full_load,
     "incremental": _run_incremental,
     "validate": _run_validate,
-    "validate-ontology": lambda args: _run_validate_ontology(),
+    "validate-ontology": _run_validate_ontology,
     "monitor": _run_monitor,
     "snapshot": _run_snapshot,
 }

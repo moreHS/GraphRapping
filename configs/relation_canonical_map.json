@@ -70,7 +70,7 @@
     "family_member_of": "family_member_of"
   },
   "meta": {
-    "total_labels": 65,
-    "note": "65 canonical identity mapping. BEE attr names removed (NER-BeE skip handles them)."
+    "total_labels": 68,
+    "note": "68 canonical identity mapping. BEE attr names removed (NER-BeE skip handles them)."
   }
 }

@@ -56,20 +56,24 @@ def test_30d_blocks_at_one_review() -> None:
     assert not is_corpus_promoted(_row(window_type="30d", distinct_review_count=1))
 
 
-def test_90d_blocks_at_two_reviews() -> None:
-    assert not is_corpus_promoted(_row(window_type="90d", distinct_review_count=2))
+def test_90d_blocks_at_one_review() -> None:
+    # Phase 7 C2: 90d threshold lowered 3→2; a single review still blocks.
+    assert not is_corpus_promoted(_row(window_type="90d", distinct_review_count=1))
 
 
-def test_90d_promotes_at_three_reviews() -> None:
-    assert is_corpus_promoted(_row(window_type="90d", distinct_review_count=3))
+def test_90d_promotes_at_two_reviews() -> None:
+    # Phase 7 C2: 90d now promotes at ≥2 (was ≥3).
+    assert is_corpus_promoted(_row(window_type="90d", distinct_review_count=2))
 
 
-def test_all_blocks_at_two_reviews() -> None:
-    assert not is_corpus_promoted(_row(window_type="all", distinct_review_count=2))
+def test_all_blocks_at_one_review() -> None:
+    # Phase 7 C2: all threshold lowered 3→2; a single review still blocks.
+    assert not is_corpus_promoted(_row(window_type="all", distinct_review_count=1))
 
 
-def test_all_promotes_at_three_reviews() -> None:
-    assert is_corpus_promoted(_row(window_type="all", distinct_review_count=3))
+def test_all_promotes_at_two_reviews() -> None:
+    # Phase 7 C2: all now promotes at ≥2 (was ≥3).
+    assert is_corpus_promoted(_row(window_type="all", distinct_review_count=2))
 
 
 def test_unknown_window_falls_back_to_strict_threshold() -> None:
@@ -195,13 +199,11 @@ def test_aggregate_promotes_30d_signal_with_two_distinct_reviews() -> None:
         f"30d row with distinct_review_count=2 should promote: {[(r.distinct_review_count, r.is_promoted) for r in rows_30d]}"
 
 
-def test_aggregate_blocks_90d_signal_with_two_distinct_reviews() -> None:
-    """Two distinct 90d reviews must still block (90d threshold ≥3)."""
+def _make_90d_signals(now: datetime, count: int) -> list[dict]:
     from datetime import timedelta
-    now = datetime.now(timezone.utc)
     # 60 days ago — within 90d but outside 30d window.
     sixty_days_ago = (now - timedelta(days=60)).isoformat()
-    signals = [
+    return [
         {
             "target_product_id": "p1",
             "edge_type": "HAS_BEE_ATTR_SIGNAL",
@@ -214,10 +216,25 @@ def test_aggregate_blocks_90d_signal_with_two_distinct_reviews() -> None:
             "source_confidence": 0.7,
             "signal_family": "BEE_ATTR",
         }
-        for i in range(2)
+        for i in range(count)
     ]
-    rows = aggregate_product_signals(signals, now=now)
+
+
+def test_aggregate_promotes_90d_signal_with_two_distinct_reviews() -> None:
+    """Phase 7 C2: two distinct 90d reviews now promote (90d threshold ≥2)."""
+    now = datetime.now(timezone.utc)
+    rows = aggregate_product_signals(_make_90d_signals(now, 2), now=now)
+    rows_90d = [r for r in rows if r.window_type == "90d"]
+    assert rows_90d, "no 90d row produced"
+    assert all(r.is_promoted for r in rows_90d), \
+        "90d row with distinct_review_count=2 should promote (Phase 7 C2 threshold≥2)"
+
+
+def test_aggregate_blocks_90d_signal_with_one_distinct_review() -> None:
+    """A single 90d review must still block (90d threshold ≥2)."""
+    now = datetime.now(timezone.utc)
+    rows = aggregate_product_signals(_make_90d_signals(now, 1), now=now)
     rows_90d = [r for r in rows if r.window_type == "90d"]
     assert rows_90d, "no 90d row produced"
     assert all(not r.is_promoted for r in rows_90d), \
-        "90d row with distinct_review_count=2 should NOT promote (threshold≥3)"
+        "90d row with distinct_review_count=1 should NOT promote (threshold≥2)"

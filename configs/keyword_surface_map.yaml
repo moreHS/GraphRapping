@@ -47,6 +47,98 @@
   - keyword_id: kw_portable
     label_ko: 휴대편함
 
+# --- Phase 7 B1: missing attribute concepts + inflection stems ---
+# Registered from quarantine unknown_keyword frequency (mockdata 906 reviews,
+# kg_mode=on). Stems resolve inflected forms via substring + korean_morph
+# folding; only skincare-general product attributes are registered (commerce/
+# behavioral noise — 재구매/배송/가격/포장 — is intentionally left quarantined).
+# Negation-lexicalized concepts (non-sticky 등) are omitted to avoid polarity
+# ambiguity.
+순하:              # 순하고(13)/순해서(6)/순해요(3)/순한 — mild
+  - keyword_id: kw_mild
+    label_ko: 순함
+순해:
+  - keyword_id: kw_mild
+    label_ko: 순함
+순한:
+  - keyword_id: kw_mild
+    label_ko: 순함
+발림성:            # 발림성도 좋고(11)/발림성 좋아요(6)/발림성 좋고(4) — spreadability
+  - keyword_id: kw_good_spread
+    label_ko: 발림성좋음
+잘 발려:            # 잘 발려요(4) — applies well
+  - keyword_id: kw_good_spread
+    label_ko: 발림성좋음
+잘발려:
+  - keyword_id: kw_good_spread
+    label_ko: 발림성좋음
+펴발림:
+  - keyword_id: kw_good_spread
+    label_ko: 발림성좋음
+자극없:            # 자극없이(8)/자극없고(8) — no irritation (없 mid-token: no polarity flip)
+  - keyword_id: kw_no_irritation
+    label_ko: 자극없음
+무자극:
+  - keyword_id: kw_no_irritation
+    label_ko: 자극없음
+부드러:            # 부드러워요/부드러움 — soft
+  - keyword_id: kw_soft
+    label_ko: 부드러움
+부드럽:            # 부드럽고(7)/부드러운 — soft
+  - keyword_id: kw_soft
+    label_ko: 부드러움
+보들:
+  - keyword_id: kw_soft
+    label_ko: 부드러움
+시원:              # 시원하고(5)/시원한 — cooling
+  - keyword_id: kw_cooling
+    label_ko: 시원함
+세정력:            # 세정력도 좋고(4) — cleansing power
+  - keyword_id: kw_good_cleansing
+    label_ko: 세정력좋음
+지속력:            # 지속력도 좋아요(3)/지속력도 좋고(3) — long lasting
+  - keyword_id: kw_long_lasting
+    label_ko: 지속력좋음
+가성비:            # 가성비좋고(3)/가성비 갑(3) — good value
+  - keyword_id: kw_good_value
+    label_ko: 가성비좋음
+진정:              # 진정(3) — soothing
+  - keyword_id: kw_soothing
+    label_ko: 진정
+흡수:              # 흡수력/빠른 흡수 — absorption
+  - keyword_id: kw_absorption
+    label_ko: 흡수좋음
+산뜻:              # 산뜻하고/산뜻함 — fresh feel
+  - keyword_id: kw_fresh_feel
+    label_ko: 산뜻함
+깔끔:              # 깔끔하고/깔끔함 — clean feel
+  - keyword_id: kw_clean_feel
+    label_ko: 깔끔함
+수분감:            # 수분감이 좋아요 — hydration
+  - keyword_id: kw_hydration
+    label_ko: 수분감
+탄력:              # 탄력 있어요 — elasticity
+  - keyword_id: kw_elasticity
+    label_ko: 탄력
+거품:              # 거품도 잘나고(5)/거품 잘나고(2)/거품이 풍성 — foam (cleansing)
+  - keyword_id: kw_foam
+    label_ko: 거품좋음
+향좋:              # 향좋음/향좋아요 — good scent
+  - keyword_id: kw_good_scent
+    label_ko: 향좋음
+향이 좋:            # 향이 좋아요 — good scent
+  - keyword_id: kw_good_scent
+    label_ko: 향좋음
+향도 좋:            # 향도 좋고(10) — good scent
+  - keyword_id: kw_good_scent
+    label_ko: 향좋음
+향이좋:
+  - keyword_id: kw_good_scent
+    label_ko: 향좋음
+향도좋:
+  - keyword_id: kw_good_scent
+    label_ko: 향좋음
+
 # AUTO-GENERATED from texture_keyword_map.yaml — DO NOT EDIT MANUALLY
 # Run tests/test_texture_taxonomy_alignment.py to verify sync
 크리미:

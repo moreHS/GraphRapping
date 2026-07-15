@@ -31,12 +31,50 @@ REVIEW_GRAPH_TYPES = frozenset({
     "concern_bridge",
     "tool",
     "coused",
-    "comparison",
 })
 
 REVIEW_GRAPH_WEAK_TYPES = frozenset({
     "weak_semantic_keyword",
     "weak_semantic_bee_attr",
+})
+
+# Boost-only evidence: user-aligned but too weak to qualify a candidate on its
+# own (evidence-first discipline). Boost-only paths NEVER set `eligible` in
+# STRICT/EXPLORE. This bucket is the shared extension point for weak signals.
+#
+#   `comparison` ("this candidate is compared-with a product you own") — a weak
+#     "alternative" signal; being compared against is not, by itself, a reason
+#     to recommend. A mode may opt it in (COMPARE admits comparison neighbors)
+#     via build_candidate_eligibility(..., boost_only_qualifies=True).
+#   `collab` (Phase 7 D1 — "users with taste similar to yours preferred this
+#     product") — a collaborative-affinity signal derived from user-user
+#     similarity (src/rec/user_similarity.py). It NEVER qualifies a candidate on
+#     its own in ANY mode (see BOOST_ONLY_ADMISSIBLE_TYPES): "similar users like
+#     it" must always ride on first-class evidence, never substitute for it.
+#   `comention` (Phase 7 D2 — "this product is mentioned together with a
+#     product you own, across reviews") — a product-product co-mention signal
+#     derived from review co-occurrence (src/mart/product_comention.py). Like
+#     `collab`, it NEVER qualifies a candidate on its own in ANY mode: being
+#     talked about alongside something you own is relatedness, not a
+#     stand-alone reason to recommend.
+#
+# NOTE (terminology): this is a recommendation *evidence family* concept
+# (frozenset of overlap-concept prefixes), distinct from SignalFamily — the
+# product-signal enum in src/common/enums.py.
+BOOST_ONLY_TYPES = frozenset({
+    "comparison",
+    "collab",
+    "comention",
+})
+
+# Of the boost-only types, only these may be *admitted* as eligibility-buying
+# when a mode opts in (build_candidate_eligibility(boost_only_qualifies=True)).
+# `comparison` is admitted by COMPARE mode. `collab` and `comention` are
+# intentionally absent: both are pure boosts that must always be accompanied by
+# first-class evidence in every mode (D1/D2 contract: "cannot qualify alone"),
+# so they never appear here and thus never buy eligibility.
+BOOST_ONLY_ADMISSIBLE_TYPES = frozenset({
+    "comparison",
 })
 
 PURCHASE_BEHAVIOR_TYPES = frozenset({
@@ -57,6 +95,11 @@ class CandidateEligibility:
     review_graph_paths: list[str] = field(default_factory=list)
     weak_review_graph_paths: list[str] = field(default_factory=list)
     purchase_paths: list[str] = field(default_factory=list)
+    # Boost-only paths (e.g. comparison). Reported for explainability/scoring but
+    # deliberately NOT part of `eligibility_reasons`/`evidence_families`: they do
+    # not, on their own, make a candidate eligible (see BOOST_ONLY_TYPES). A mode
+    # may still admit them via `boost_only_qualifies` (COMPARE).
+    boost_only_paths: list[str] = field(default_factory=list)
     rejection_reasons: list[str] = field(default_factory=list)
 
     @property
@@ -85,13 +128,19 @@ class CandidateEligibility:
             "review_graph_paths": self.review_graph_paths,
             "weak_review_graph_paths": self.weak_review_graph_paths,
             "purchase_paths": self.purchase_paths,
+            "boost_only_paths": self.boost_only_paths,
             "rejection_reasons": self.rejection_reasons,
         }
 
 
+def _overlap_type(concept: str) -> str:
+    """Return the type prefix of an overlap concept string (part before ':')."""
+    return concept.split(":", 1)[0] if ":" in concept else concept
+
+
 def classify_overlap(concept: str) -> str | None:
     """Return the evidence family for an overlap concept string."""
-    ctype = concept.split(":", 1)[0] if ":" in concept else concept
+    ctype = _overlap_type(concept)
     if ctype in MASTER_TRUTH_TYPES:
         return "master_truth"
     if ctype in REVIEW_GRAPH_TYPES:
@@ -100,11 +149,25 @@ def classify_overlap(concept: str) -> str | None:
         return "weak_review_graph"
     if ctype in PURCHASE_BEHAVIOR_TYPES:
         return "purchase"
+    if ctype in BOOST_ONLY_TYPES:
+        return "boost_only"
     return None
 
 
-def build_candidate_eligibility(overlap_concepts: list[str]) -> CandidateEligibility:
-    """Classify matched paths and decide whether a candidate is evidence-qualified."""
+def build_candidate_eligibility(
+    overlap_concepts: list[str],
+    *,
+    boost_only_qualifies: bool = False,
+) -> CandidateEligibility:
+    """Classify matched paths and decide whether a candidate is evidence-qualified.
+
+    Boost-only paths do not qualify a candidate on their own. Only *admissible*
+    boost-only paths (``BOOST_ONLY_ADMISSIBLE_TYPES``, currently ``comparison``)
+    can contribute to eligibility, and only when ``boost_only_qualifies`` is True
+    (COMPARE mode admits comparison neighbors). Non-admissible boost-only paths
+    (``collab``) are recorded for scoring/explainability but NEVER buy
+    eligibility in any mode, keeping the evidence-first contract intact.
+    """
     eligibility = CandidateEligibility()
     for concept in overlap_concepts:
         family = classify_overlap(concept)
@@ -116,12 +179,20 @@ def build_candidate_eligibility(overlap_concepts: list[str]) -> CandidateEligibi
             eligibility.weak_review_graph_paths.append(concept)
         elif family == "purchase":
             eligibility.purchase_paths.append(concept)
+        elif family == "boost_only":
+            eligibility.boost_only_paths.append(concept)
 
+    admissible_boost_paths = [
+        concept
+        for concept in eligibility.boost_only_paths
+        if _overlap_type(concept) in BOOST_ONLY_ADMISSIBLE_TYPES
+    ]
     eligibility.eligible = bool(
         eligibility.master_truth_paths
         or eligibility.review_graph_paths
         or eligibility.weak_review_graph_paths
         or eligibility.purchase_paths
+        or (boost_only_qualifies and admissible_boost_paths)
     )
     if not eligibility.eligible:
         eligibility.rejection_reasons.append("NO_USER_ALIGNED_EVIDENCE")

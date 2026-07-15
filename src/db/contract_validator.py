@@ -192,11 +192,15 @@ async def validate_schema(pool: asyncpg.Pool) -> ContractValidationResult:
     return ContractValidationResult(status=overall, checks=tuple(checks))
 
 
-# Window → minimum distinct_review_count for is_corpus_promoted (Wave 2.8).
+# Window → minimum distinct_review_count for is_corpus_promoted.
+# MUST mirror src/mart/aggregate_product_signals._PROMOTION_MIN_REVIEWS_BY_WINDOW
+# (compute side) or the DB serving invariant would reject legitimately-promoted
+# rows. Phase 7 C2 (2026-07-13): D90/ALL lowered 3→2 in lock-step with the
+# compute gate. See DECISIONS/2026-07-13_phase7_c2_promotion_gate.md.
 _PROMOTION_MIN_REVIEWS: dict[str, int] = {
     "30d": 2,
-    "90d": 3,
-    "all": 3,
+    "90d": 2,
+    "all": 2,
 }
 # Unknown windows fall back to the strictest bar.
 _PROMOTION_DEFAULT_MIN_REVIEWS = 3

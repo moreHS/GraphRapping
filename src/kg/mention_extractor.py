@@ -12,8 +12,37 @@ import logging
 from src.kg.config import KGConfig
 from src.common.text_normalize import normalize_text
 from src.kg.models import EntityMention, RelationMention, KeywordMention, SameEntityPair
+from src.normalize.bee_normalizer import resolve_surface_keywords
 
 logger = logging.getLogger(__name__)
+
+# Keyword surface dictionary, loaded once and shared across all per-review
+# MentionExtractor instances (the map is static config). Phase 7 B1: the
+# candidate queue must consult the same dictionary the signal path uses so a
+# dictionary-resolvable surface (`촉촉하고`, `무향`, inflected stems) is routed
+# to the keyword path instead of leaking into unknown_keyword quarantine.
+_KEYWORD_MAP_CACHE: dict[str, list[dict]] | None = None
+
+
+def _keyword_map() -> dict[str, list[dict]]:
+    global _KEYWORD_MAP_CACHE
+    if _KEYWORD_MAP_CACHE is None:
+        from src.common.config_loader import load_yaml
+        _KEYWORD_MAP_CACHE = load_yaml("keyword_surface_map.yaml")
+    return _KEYWORD_MAP_CACHE
+
+
+def _resolves_to_known_keyword(text: str) -> bool:
+    """True when `text` is resolvable via the shared keyword dictionary.
+
+    Used to keep dictionary-backed surfaces out of unknown_keyword quarantine.
+    The actual keyword signal is produced by the dictionary-backed helper
+    (kg_on) / legacy BEE path (off/shadow); this only suppresses the redundant
+    quarantine entry so the two resolution paths agree.
+    """
+    if not text:
+        return False
+    return bool(resolve_surface_keywords(text, _keyword_map()))
 
 
 class MentionExtractor:
@@ -107,9 +136,11 @@ class MentionExtractor:
                     target_linked=False,
                     attribution_source="unlinked",
                 ))
-                # Route unmatched phrase to keyword candidate queue (no auto entity creation)
+                # Route unmatched phrase to keyword candidate queue (no auto entity creation).
+                # B1: skip when the phrase resolves via the keyword dictionary —
+                # such surfaces belong to the keyword path, not unknown quarantine.
                 auto_kw = normalize_text(mention.word)[:30]
-                if auto_kw:
+                if auto_kw and not _resolves_to_known_keyword(mention.word):
                     self.keyword_candidates.append({
                         "review_id": review_id,
                         "surface_text": auto_kw,
@@ -240,9 +271,10 @@ class MentionExtractor:
                     keywords=obj_keywords,
                 )
             else:
-                # No keywords — route to candidate queue (no auto entity creation)
+                # No keywords — route to candidate queue (no auto entity creation).
+                # B1: skip dictionary-resolvable phrases (keyword path, not quarantine).
                 phrase = rel_row.get("obj_text", "")
-                if phrase and len(phrase) > 1:
+                if phrase and len(phrase) > 1 and not _resolves_to_known_keyword(phrase):
                     auto_kw = normalize_text(phrase)[:30]
                     if auto_kw:
                         self.keyword_candidates.append({

@@ -327,13 +327,82 @@ def test_validate_ontology_dispatches_and_returns_zero_on_clean_configs(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     """Real execution, no mocking: validate-ontology needs no DB/pool and the
-    current configs/ files have zero violations (see
+    current configs/ files have zero ERROR-severity violations (see
     src.kg.ontology_validator), so exercising main()'s actual dispatch
-    end-to-end is fast and safe."""
+    end-to-end is fast and safe. Warning-severity findings (the 4 known orphan
+    entity types) are printed but never affect the exit code."""
     rc = cli.main(["validate-ontology"])
 
+    out = capsys.readouterr().out
     assert rc == 0
-    assert "status: OK" in capsys.readouterr().out
+    assert "status: OK" in out
+    # v2: the known orphan types are surfaced as non-failing warnings.
+    assert "warnings: 4 (non-failing)" in out
+    assert "[orphan_entity_type]" in out
+
+
+def test_validate_ontology_returns_one_on_error_violations(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """ERROR-severity violations gate the exit code; warnings do not."""
+    from src.kg.ontology_validator import OntologyViolation
+
+    monkeypatch.setattr(
+        cli, "validate_current_ontology_configs",
+        lambda: [OntologyViolation(
+            rule="canonical_map_meta_count",
+            file="relation_canonical_map.json",
+            item="meta.total_labels=65",
+            reason="meta.total_labels declares 65 but label_to_canonical has 68 entries",
+        )],
+    )
+    monkeypatch.setattr(cli, "collect_ontology_warnings", lambda: [])
+
+    rc = cli.main(["validate-ontology"])
+
+    out = capsys.readouterr().out
+    assert rc == 1
+    assert "status: 1 violation(s)" in out
+    assert "[canonical_map_meta_count]" in out
+
+
+@pytest.mark.asyncio
+async def test_validate_ontology_liveness_flag_reports_dead_vocab_without_failing(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """--liveness adds the (data-dependent) dead-vocabulary report as warnings
+    only: exit stays 0 on clean configs. The heavy pipeline runner is
+    monkeypatched — its real execution is a manual/documented step, not CI."""
+    from src.kg.ontology_validator import build_liveness_report
+
+    captured_kwargs: dict[str, Any] = {}
+
+    def _fake_collect(*, fixture: str) -> Any:
+        captured_kwargs["fixture"] = fixture
+        return build_liveness_report(
+            fixture=fixture,
+            kg_mode="on",
+            total_signals=42,
+            defined_signal_families={"BEE_ATTR", "TOOL"},
+            generated_signal_families={"BEE_ATTR"},
+            defined_object_types={"BEEAttr", "Tool"},
+            generated_object_types={"BEEAttr"},
+        )
+
+    monkeypatch.setattr(cli, "collect_liveness_report", _fake_collect)
+    args = cli.build_parser().parse_args(["validate-ontology", "--liveness", "--fixture", "wide"])
+
+    exit_code = await cli._run_validate_ontology(args)
+
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    assert captured_kwargs["fixture"] == "wide"
+    assert "liveness: fixture=wide" in out
+    assert "dead_families=['TOOL']" in out
+    assert "[dead_signal_family]" in out
+    assert "[dead_object_type]" in out
 
 
 # ---------------------------------------------------------------------------

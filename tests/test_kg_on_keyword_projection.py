@@ -170,7 +170,10 @@ def test_kg_on_surface_map_bee_keyword_helper_emits_signal_without_attribute_dup
         if signal.edge_type == "HAS_BEE_KEYWORD_SIGNAL"
     ]
     assert len(keyword_signals) == 1
-    assert keyword_signals[0].dst_id == "concept:Keyword:kw_moist"
+    # Phase 7 B2: kw_moist is a keyword alias folded onto canonical kw_moisturizing
+    # at resolution time (see configs/keyword_alias_map.yaml), so the projected
+    # signal carries the canonical concept id.
+    assert keyword_signals[0].dst_id == "concept:Keyword:kw_moisturizing"
     assert keyword_signals[0].evidence_kind == "BEE_DICT"
     assert keyword_signals[0].source_confidence is not None
     assert keyword_signals[0].source_confidence >= 0.6

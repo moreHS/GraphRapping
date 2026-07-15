@@ -30,6 +30,29 @@ features:
   tool_alignment: 0.02
   coused_product_bonus: 0.02
 
+# Collaborative-affinity boost (Phase 7 D1). Kept OUT of the `features:` map
+# above on purpose: `features:` is mirrored byte-for-byte by the frontend
+# DEFAULT_WEIGHTS slider set (test_frontend_default_weights_match_yaml_features),
+# so putting this there would force a src/static edit. This is instead a
+# non-tunable backend boost, read directly by Scorer.load_config and applied in
+# every mode. Conservative by design (anchored to coused_product_bonus, the
+# closest "products connected to you" analog) and dormant until
+# src/rec/user_similarity populates collaborative overlaps — so the default
+# recommendation path stays unchanged.
+collaborative_affinity_weight: 0.02
+
+# Co-mention product boost (Phase 7 D2). Same rationale as
+# collaborative_affinity_weight: kept OUT of the `features:` map (frontend
+# slider contract), a non-tunable backend boost read directly by
+# Scorer.load_config and applied in every mode. Conservative by design
+# (anchored to coused_product_bonus, the sibling "products connected to you"
+# channel) and dormant until src/mart/product_comention.attach_comention_signals
+# populates comention overlaps — so the default recommendation path stays
+# unchanged. Measured density (2026-07-14): real-real co-mention is 0 in the
+# review-only fixtures, so this is wired-but-waiting on real multi-product
+# review data (DECISIONS/2026-07-14_phase7_d2_comention.md).
+comention_product_weight: 0.02
+
 # Evidence shrinkage: shrinked = raw * (support / (support + k))
 shrinkage_k: 10
 
@@ -40,12 +63,17 @@ brand_confidence:
   chat_weak: 0.4
 
 # Recommendation modes
+#
+# Category-mismatch gating (STRICT hard-filters off-category candidates; EXPLORE
+# and COMPARE keep them) is realized directly in src/rec/candidate_generator.py.
+# The former `category_mismatch`/`category_penalty` keys were dead documentation
+# (read by no code); an EXPLORE-mode `category_penalty` cannot be added without
+# shifting the EXPLORE golden ranking snapshot, so they are removed rather than
+# implemented. Only keys actually consumed by code live here (no dead keys).
 modes:
-  strict:
-    category_mismatch: zero_out
-  explore:
-    category_mismatch: penalty
-    category_penalty: 0.3
   compare:
-    category_mismatch: allow
-    comparison_neighbor: true
+    # comparison_alternative feature weight, applied ONLY in COMPARE mode (0 in
+    # every other mode → default scoring path unchanged). Boosts candidates that
+    # reviews compared against a product the user owns. Consumed by
+    # src/rec/scorer.py::Scorer._comparison_weight.
+    comparison_neighbor: 0.08

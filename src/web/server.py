@@ -565,13 +565,13 @@ async def _run_scored_pipeline(
     for c in candidates:
         p = product_map.get(c.product_id)
         if p:
-            s = scorer.score(user_profile, p, c.overlap_concepts)
+            s = scorer.score(user_profile, p, c.overlap_concepts, mode=mode)
             scored.append((c, s))
 
     scored.sort(key=lambda x: x[1].final_score, reverse=True)
 
     reranked = rerank([s for _, s in scored], product_profiles=product_map,
-                      diversity_weight=diversity_weight, top_k=top_k)
+                      diversity_weight=diversity_weight, top_k=top_k, mode=mode)
     summary_by_product = await fetch_sidecar_summaries([r.product_id for r in reranked])
 
     # Pre-pass: pair each reranked product with its candidate/score/explanation.

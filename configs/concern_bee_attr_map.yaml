@@ -27,3 +27,28 @@ bee_attr_absorption:
   concern_id: concern_dryness
   weight: 0.5
   label_ko: "흡수력 → 건조함 대응"
+
+# P7-2 C1 (2026-07-13) 추가분 — concern_dict × bee_attr_dict 대조로 도출한
+# 추가 고정밀 매핑. 39개 BEE 속성 중 스킨 컨선과 무관한 항목(색상/펄감/
+# 컬링볼륨/휴대성/배송 등 메이크업·커머스 축)이 다수라, "수십 쌍" 목표 대비
+# 이번 배치는 보수적으로 4쌍만 추가(총 9쌍) — 나머지 후보는 계획 문서
+# 완료 보고의 "도메인 감수 필요" 목록 참조.
+bee_attr_breakdown:
+  concern_id: concern_breakdown
+  weight: 0.8
+  label_ko: "무너짐 → 무너짐 직접 대응 (BEE 속성명과 concern명이 동일 현상)"
+
+bee_attr_smudging:
+  concern_id: concern_breakdown
+  weight: 0.5
+  label_ko: "번짐 → 무너짐 관련 (화장 무너짐의 하위 현상)"
+
+bee_attr_scent:
+  concern_id: concern_odor
+  weight: 0.5
+  label_ko: "향 → 냄새 대응 (신규 concern_odor)"
+
+bee_attr_ingredient_quality:
+  concern_id: concern_sensitivity
+  weight: 0.4
+  label_ko: "성분품질(순함/저자극) → 민감함 대응"

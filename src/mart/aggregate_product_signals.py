@@ -47,19 +47,33 @@ class AggProductSignalRow:
     review_ids: list[str] = field(default_factory=list)
 
 
+# Window → minimum distinct_review_count for corpus promotion.
+# Phase 7 C2 (2026-07-13): D90/ALL lowered 3→2 (D30 already 2). In a wide
+# real-shaped catalog (517 products), the absolute ≥3 bar collapsed wide
+# serving reach to 5.0% even though every product has ≥1 review — the review
+# graph effectively vanished from serving. ≥2 preserves a minimal cross-review
+# check (two independent reviews) while restoring reach to ~17.4%. The
+# confidence (≥0.6) and synthetic_ratio (≤0.5) gates are deliberately
+# UNCHANGED — only the support axis is relaxed, and shrinkage keeps low-support
+# signals from dominating rankings. This is a tunable parameter: as real review
+# volume grows the threshold can be raised again (no code change), tracked
+# alongside retention_monitor metrics.
+# Rationale + trade-offs: DECISIONS/2026-07-13_phase7_c2_promotion_gate.md.
 _PROMOTION_MIN_REVIEWS_BY_WINDOW: dict[str, int] = {
     WindowType.D30.value: 2,
-    WindowType.D90.value: 3,
-    WindowType.ALL.value: 3,
+    WindowType.D90.value: 2,
+    WindowType.ALL.value: 2,
 }
 
 
 def is_corpus_promoted(row: AggProductSignalRow) -> bool:
     """Check if a signal group meets corpus promotion thresholds.
 
-    P3-3: per-window threshold — 30d gates at distinct_review_count≥2 so fresh
-    activity surfaces, while 90d/all require ≥3 for statistical stability.
-    Unknown window_type falls back to the strictest bar.
+    P3-3: per-window threshold on distinct_review_count.
+    Phase 7 C2 (2026-07-13): all configured windows now gate at ≥2 (D90/ALL
+    lowered from 3). An unknown window_type still falls back to a conservative
+    ≥3 bar (unrecognized window ⇒ be strict).
+    See DECISIONS/2026-07-13_phase7_c2_promotion_gate.md.
     """
     min_reviews = _PROMOTION_MIN_REVIEWS_BY_WINDOW.get(row.window_type, 3)
     return (

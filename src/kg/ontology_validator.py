@@ -12,6 +12,31 @@ Config files covered:
                                         types + Layer-3 projectability flag
   - configs/projection_registry.csv  — Layer 2 -> Layer 2.5 signal projection
                                         rules
+  - configs/relation_canonical_map.json — label->canonical identity map,
+                                        carries a self-declared meta count
+                                        (v2 check (f))
+
+v2 extension (Phase 7 A5) — beyond the static cross-config checks (a)-(e),
+four additional detectors surface vocabulary drift and dead vocabulary. They
+carry a `severity` on each `OntologyViolation`: (f)/(i) are ERROR-severity
+(they join the CI gate `validate_current_ontology_configs`), while (g) and the
+liveness report are WARNING-severity (informational; never fail CI because
+they are data-dependent):
+  (f) relation_canonical_map.json's declared meta.total_labels must equal the
+      actual number of label_to_canonical entries (ERROR).
+  (g) orphan entity types — a raw-extracted concept type (a node IS created
+      for it) that is referenced by NO predicate_contracts.csv row (neither
+      subject nor object) can never form a projectable edge (WARNING). Current
+      configs surface exactly Color/Volume/AgeBand/Event.
+  (h) vocabulary liveness — signal families / object types defined in
+      projection_registry.csv but generated 0 times by an actual demo-fixture
+      pipeline run (WARNING, data-dependent). Not part of the static CI step
+      because it must execute the pipeline; exposed via `collect_liveness_report`
+      and the `validate-ontology --liveness` CLI flag.
+  (i) 3-layer bridge constant coverage — the hardcoded NER/KG->canonical type
+      bridge maps (`src/jobs/run_daily_pipeline._NER_TO_CANONICAL_TYPE`,
+      `src/kg/adapter._KG_TYPE_TO_GR_TYPE`) must reference only recognized
+      kg_entity_types.json tags (keys) and canonical types (values) (ERROR).
 
 Checks performed:
   (a) every predicate in predicate_contracts.csv exists in
@@ -96,13 +121,17 @@ class OntologyViolation:
     produced this violation (useful for tests/tooling to filter by check).
     `file` is the config file the violation is reported against. `item`
     identifies the specific predicate/type/row at fault. `reason` is a
-    human-readable explanation.
+    human-readable explanation. `severity` is `"error"` (CI-failing, the
+    default so every existing construction site keeps its meaning) or
+    `"warning"` (informational — surfaced but never fails the CI gate; used by
+    the v2 vocabulary-liveness checks that are data-dependent by nature).
     """
 
     rule: str
     file: str
     item: str
     reason: str
+    severity: str = "error"
 
 
 # ---------------------------------------------------------------------------
@@ -450,6 +479,328 @@ def _check_duplicates(
 
 
 # ---------------------------------------------------------------------------
+# v2 checks (f)-(i) — vocabulary consistency & liveness (Phase 7 A5)
+# ---------------------------------------------------------------------------
+
+
+def check_canonical_map_meta(
+    canonical_map_cfg: dict[str, Any],
+) -> list[OntologyViolation]:
+    """(f) relation_canonical_map.json meta.total_labels vs actual entry count.
+
+    The file carries a self-declared `meta.total_labels`; it must equal the
+    number of `label_to_canonical` entries. A mismatch (the historical 65-vs-68
+    drift) means the count was hand-edited out of step — the exact class of
+    silent inconsistency this validator exists to catch. ERROR severity.
+    """
+    if not isinstance(canonical_map_cfg, dict):
+        return []
+    label_map = canonical_map_cfg.get("label_to_canonical")
+    if not isinstance(label_map, dict):
+        return []
+    actual = len(label_map)
+    meta = canonical_map_cfg.get("meta")
+    declared = meta.get("total_labels") if isinstance(meta, dict) else None
+    if declared is None:
+        return []
+    if declared != actual:
+        return [OntologyViolation(
+            rule="canonical_map_meta_count",
+            file="relation_canonical_map.json",
+            item=f"meta.total_labels={declared}",
+            reason=(
+                f"meta.total_labels declares {declared} but label_to_canonical "
+                f"has {actual} entries"
+            ),
+            severity="error",
+        )]
+    return []
+
+
+def check_orphan_entity_types(
+    entity_types_cfg: dict[str, Any],
+    contracts: list[dict[str, str]],
+) -> list[OntologyViolation]:
+    """(g) orphan entity types — nodes created but no predicate references them.
+
+    A raw-extracted concept type (present in kg_entity_types.json, so a node IS
+    created for it) that appears in NO predicate_contracts.csv row — neither
+    allowed_subject_types nor allowed_object_types — can never form a valid,
+    let alone projectable, edge. Its nodes are dead weight and any NLP relation
+    touching them is quarantined (e.g. `has_attribute|Product->Color`). WARNING
+    severity: this is a real design smell but not a config typo, and clearing
+    it is a modelling decision (add a contract or stop extracting the type).
+
+    Current configs surface exactly Color/Volume/AgeBand/Event.
+    """
+    types_list = entity_types_cfg.get("types", []) if isinstance(entity_types_cfg, dict) else []
+    codes: set[str] = set()
+    labels: set[str] = set()
+    for t in types_list:
+        if not isinstance(t, dict):
+            continue
+        if t.get("code"):
+            codes.add(t["code"])
+        if t.get("neo4j_label"):
+            labels.add(t["neo4j_label"])
+
+    # canonical types that are actually produced by raw extraction (a node is
+    # created), keyed back to the raw tag for a legible reason string.
+    extracted: dict[str, str] = {
+        canonical: raw_tag
+        for raw_tag, canonical in _EXTRACTION_TYPE_TRANSLATION.items()
+        if raw_tag in codes or raw_tag in labels
+    }
+
+    referenced: set[str] = set()
+    for row in contracts:
+        referenced |= _split_types(row.get("allowed_subject_types"))
+        referenced |= _split_types(row.get("allowed_object_types"))
+
+    violations: list[OntologyViolation] = []
+    for canonical, raw_tag in sorted(extracted.items()):
+        if canonical not in referenced:
+            violations.append(OntologyViolation(
+                rule="orphan_entity_type",
+                file="predicate_contracts.csv",
+                item=canonical,
+                reason=(
+                    f"entity type '{canonical}' is raw-extracted (nodes created "
+                    f"via tag '{raw_tag}') but referenced by no predicate_contracts.csv "
+                    "row (neither subject nor object) — it can never form a "
+                    "projectable edge"
+                ),
+                severity="warning",
+            ))
+    return violations
+
+
+def check_bridge_constant_coverage(
+    entity_types_cfg: dict[str, Any],
+    bridge_constants: dict[str, dict[str, str]],
+) -> list[OntologyViolation]:
+    """(i) 3-layer bridge constants must stay in sync with kg_entity_types.json.
+
+    The hardcoded NER/KG->canonical type maps scattered in the pipeline
+    (`_NER_TO_CANONICAL_TYPE`, `_KG_TYPE_TO_GR_TYPE`) are a known consolidation
+    debt (module docstring / fable_doc issue A2). Until they are unified, this
+    check pins them: every KEY must be a recognized raw kg_entity_types.json
+    tag (code or neo4j_label) and every VALUE must be a recognized canonical
+    type. Catches drift where a bridge maps a tag the registry never defines,
+    or emits a canonical type outside the known universe. ERROR severity.
+
+    `bridge_constants` maps a constant's display name to its dict, so callers
+    (and tests) inject the real or synthetic maps without this module importing
+    the heavy pipeline modules at import time.
+    """
+    types_list = entity_types_cfg.get("types", []) if isinstance(entity_types_cfg, dict) else []
+    raw_tags: set[str] = set()
+    for t in types_list:
+        if not isinstance(t, dict):
+            continue
+        if t.get("code"):
+            raw_tags.add(t["code"])
+        if t.get("neo4j_label"):
+            raw_tags.add(t["neo4j_label"])
+    universe = _entity_type_universe(entity_types_cfg)
+
+    violations: list[OntologyViolation] = []
+    for const_name, mapping in sorted(bridge_constants.items()):
+        for raw_tag, canonical in mapping.items():
+            if raw_tag not in raw_tags:
+                violations.append(OntologyViolation(
+                    rule="bridge_key_in_entity_types",
+                    file=const_name,
+                    item=f"{const_name}[{raw_tag!r}]",
+                    reason=(
+                        f"bridge key '{raw_tag}' is not a recognized kg_entity_types.json "
+                        "tag (code or neo4j_label)"
+                    ),
+                    severity="error",
+                ))
+            if canonical not in universe:
+                violations.append(OntologyViolation(
+                    rule="bridge_value_in_entity_universe",
+                    file=const_name,
+                    item=f"{const_name}[{raw_tag!r}]={canonical}",
+                    reason=(
+                        f"bridge value '{canonical}' (key '{raw_tag}') is not a "
+                        "recognized entity/concept type"
+                    ),
+                    severity="error",
+                ))
+    return violations
+
+
+# ---------------------------------------------------------------------------
+# (h) vocabulary liveness report — data-dependent, WARNING-only
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class LivenessReport:
+    """Vocabulary defined in projection_registry.csv vs actually generated by a
+    demo-fixture pipeline run. `dead_*` are the defined-but-never-generated
+    entries; they are WARNING material, not CI failures, because whether a
+    family/type fires is data-dependent.
+    """
+
+    fixture: str
+    kg_mode: str
+    total_signals: int
+    defined_signal_families: list[str]
+    generated_signal_families: list[str]
+    dead_signal_families: list[str]
+    defined_object_types: list[str]
+    generated_object_types: list[str]
+    dead_object_types: list[str]
+
+    def warnings(self) -> list[OntologyViolation]:
+        violations: list[OntologyViolation] = []
+        for family in self.dead_signal_families:
+            violations.append(OntologyViolation(
+                rule="dead_signal_family",
+                file="projection_registry.csv",
+                item=family,
+                reason=(
+                    f"signal family '{family}' is defined in projection_registry.csv "
+                    f"but 0 signals were generated on fixture '{self.fixture}' "
+                    f"(kg_mode={self.kg_mode})"
+                ),
+                severity="warning",
+            ))
+        for object_type in self.dead_object_types:
+            violations.append(OntologyViolation(
+                rule="dead_object_type",
+                file="projection_registry.csv",
+                item=object_type,
+                reason=(
+                    f"object type '{object_type}' is a defined projection output_dst_type "
+                    f"but 0 signals produced it on fixture '{self.fixture}' "
+                    f"(kg_mode={self.kg_mode})"
+                ),
+                severity="warning",
+            ))
+        return violations
+
+
+def build_liveness_report(
+    *,
+    fixture: str,
+    kg_mode: str,
+    total_signals: int,
+    defined_signal_families: set[str],
+    generated_signal_families: set[str],
+    defined_object_types: set[str],
+    generated_object_types: set[str],
+) -> LivenessReport:
+    """Pure diff step — testable without running the pipeline."""
+    return LivenessReport(
+        fixture=fixture,
+        kg_mode=kg_mode,
+        total_signals=total_signals,
+        defined_signal_families=sorted(defined_signal_families),
+        generated_signal_families=sorted(generated_signal_families),
+        dead_signal_families=sorted(defined_signal_families - generated_signal_families),
+        defined_object_types=sorted(defined_object_types),
+        generated_object_types=sorted(generated_object_types),
+        dead_object_types=sorted(defined_object_types - generated_object_types),
+    )
+
+
+def collect_liveness_report(
+    *,
+    fixture: str = "dense_golden",
+    kg_mode: str = "on",
+) -> LivenessReport:
+    """(h) Run the in-memory demo pipeline and diff generated vs defined vocab.
+
+    Executes `run_full_load` over a fixture (the same primitive the audit uses;
+    no DB, no network, no src/rec scoring) and collects the signal families and
+    destination types that actually appeared on emitted signals, then diffs them
+    against projection_registry.csv's defined vocabulary. Heavy (runs the
+    pipeline), so imports are deferred and this is NOT part of the static CI
+    step — it backs `validate-ontology --liveness` for manual/documented use.
+    """
+    import contextlib
+    import io
+    import json as _json
+    from pathlib import Path
+
+    from src.common.config_loader import load_csv
+    from src.jobs.run_full_load import FullLoadConfig, run_full_load
+
+    root = Path(__file__).resolve().parents[2]
+    fixture_dirs = {
+        "wide": root / "mockdata",
+        "dense_golden": root / "mockdata" / "dense_golden",
+    }
+    fixture_dir = fixture_dirs.get(fixture)
+    if fixture_dir is None:
+        raise ValueError(f"unknown fixture: {fixture} (choose from {sorted(fixture_dirs)})")
+
+    products = _json.loads((fixture_dir / "product_catalog_es.json").read_text(encoding="utf-8"))
+    users = _json.loads((fixture_dir / "user_profiles_normalized.json").read_text(encoding="utf-8"))
+
+    with contextlib.redirect_stdout(io.StringIO()):
+        result = run_full_load(FullLoadConfig(
+            review_json_path=str(fixture_dir / "review_triples_raw.json"),
+            product_es_records=products,
+            user_profiles=users,
+            kg_mode=kg_mode,
+        ))
+
+    generated_families: set[str] = set()
+    generated_object_types: set[str] = set()
+    for bundle in result.batch_result.get("all_bundles", []):
+        for signal in getattr(bundle, "wrapped_signals", []):
+            family = getattr(signal, "signal_family", None)
+            dst_type = getattr(signal, "dst_type", None)
+            if family:
+                generated_families.add(str(family))
+            if dst_type:
+                generated_object_types.add(str(dst_type))
+
+    projections = load_csv("projection_registry.csv")
+    defined_families = {
+        (row.get("output_signal_family") or "").strip()
+        for row in projections
+        if (row.get("output_signal_family") or "").strip()
+    }
+    defined_object_types = {
+        (row.get("output_dst_type") or "").strip()
+        for row in projections
+        if (row.get("output_dst_type") or "").strip()
+    }
+
+    return build_liveness_report(
+        fixture=fixture,
+        kg_mode=kg_mode,
+        total_signals=result.signal_count,
+        defined_signal_families=defined_families,
+        generated_signal_families=generated_families,
+        defined_object_types=defined_object_types,
+        generated_object_types=generated_object_types,
+    )
+
+
+def _load_bridge_constants() -> dict[str, dict[str, str]]:
+    """Import the real 3-layer bridge maps for check (i).
+
+    Deferred import: keeps `import src.kg.ontology_validator` cheap and avoids
+    coupling the module's import graph to the daily pipeline. src/jobs and
+    src/kg are not part of the concurrently-edited surface.
+    """
+    from src.jobs.run_daily_pipeline import _NER_TO_CANONICAL_TYPE
+    from src.kg.adapter import _KG_TYPE_TO_GR_TYPE
+
+    return {
+        "_NER_TO_CANONICAL_TYPE": dict(_NER_TO_CANONICAL_TYPE),
+        "_KG_TYPE_TO_GR_TYPE": dict(_KG_TYPE_TO_GR_TYPE),
+    }
+
+
+# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
@@ -482,12 +833,36 @@ def validate_ontology(
 
 
 def validate_current_ontology_configs() -> list[OntologyViolation]:
-    """Load the 4 core ontology configs from configs/ and cross-validate them.
+    """Load the core ontology configs and return CI-gating (ERROR) violations.
 
-    Convenience I/O wrapper around `validate_ontology` — the CI entry point.
+    The CI entry point. Extends the static `validate_ontology` cross-checks
+    (a)-(e) with the v2 ERROR-severity checks (f) relation_canonical_map.json
+    meta count and (i) 3-layer bridge-constant coverage. WARNING-severity
+    findings (orphan types, liveness) are intentionally excluded here so this
+    stays an empty-list-means-clean gate — use `collect_ontology_warnings()`
+    and `collect_liveness_report()` for those.
     """
     entity_types_cfg = load_json("kg_entity_types.json")
     relation_types_cfg = load_json("kg_relation_types.json")
     contracts = load_csv("predicate_contracts.csv")
     projections = load_csv("projection_registry.csv")
-    return validate_ontology(entity_types_cfg, relation_types_cfg, contracts, projections)
+    canonical_map_cfg = load_json("relation_canonical_map.json")
+
+    violations: list[OntologyViolation] = []
+    violations.extend(validate_ontology(entity_types_cfg, relation_types_cfg, contracts, projections))
+    violations.extend(check_canonical_map_meta(canonical_map_cfg))
+    violations.extend(check_bridge_constant_coverage(entity_types_cfg, _load_bridge_constants()))
+    return [v for v in violations if v.severity == "error"]
+
+
+def collect_ontology_warnings() -> list[OntologyViolation]:
+    """Static WARNING-severity findings that never fail the CI gate.
+
+    Currently (g) orphan entity types. Data-independent (pure config analysis),
+    so safe to compute in-process and display alongside the CI gate. The (h)
+    liveness warnings require an actual pipeline run — see
+    `collect_liveness_report`.
+    """
+    entity_types_cfg = load_json("kg_entity_types.json")
+    contracts = load_csv("predicate_contracts.csv")
+    return check_orphan_entity_types(entity_types_cfg, contracts)

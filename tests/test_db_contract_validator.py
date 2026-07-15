@@ -489,11 +489,11 @@ def test_promotion_violation_passes_when_all_metrics_above_threshold() -> None:
 @pytest.mark.parametrize("window, dist, expected_violation", [
     ("30d", 1, True),    # 30d needs >=2
     ("30d", 2, False),
-    ("90d", 2, True),    # 90d needs >=3
-    ("90d", 3, False),
-    ("all", 2, True),
-    ("all", 3, False),
-    ("unknown", 2, True),  # fallback >=3
+    ("90d", 1, True),    # Phase 7 C2: 90d needs >=2 (was >=3)
+    ("90d", 2, False),
+    ("all", 1, True),    # Phase 7 C2: all needs >=2 (was >=3)
+    ("all", 2, False),
+    ("unknown", 2, True),  # fallback >=3 (unknown window stays strict)
     ("unknown", 3, False),
 ])
 def test_promotion_violation_window_threshold(
@@ -509,11 +509,25 @@ def test_promotion_violation_window_threshold(
 
 
 def test_promotion_min_reviews_matches_wave2_thresholds() -> None:
-    """Wave 2.8 window-aware thresholds: 30d>=2, 90d>=3, all>=3."""
+    """Phase 7 C2 window-aware thresholds: 30d>=2, 90d>=2, all>=2 (D90/ALL
+    lowered from 3). Must mirror the compute-side gate in
+    src/mart/aggregate_product_signals. Unknown windows still fall back to >=3.
+    See DECISIONS/2026-07-13_phase7_c2_promotion_gate.md."""
     assert contract_validator._PROMOTION_MIN_REVIEWS["30d"] == 2
-    assert contract_validator._PROMOTION_MIN_REVIEWS["90d"] == 3
-    assert contract_validator._PROMOTION_MIN_REVIEWS["all"] == 3
+    assert contract_validator._PROMOTION_MIN_REVIEWS["90d"] == 2
+    assert contract_validator._PROMOTION_MIN_REVIEWS["all"] == 2
     assert contract_validator._PROMOTION_DEFAULT_MIN_REVIEWS == 3
+
+
+def test_promotion_thresholds_mirror_compute_side_gate() -> None:
+    """The DB-validate threshold must stay in lock-step with the compute-side
+    gate; a drift would make the validator reject legitimately-promoted rows.
+    Keys differ (contract uses window strings, mart uses WindowType enum values)
+    but the values must match window-for-window."""
+    from src.mart.aggregate_product_signals import _PROMOTION_MIN_REVIEWS_BY_WINDOW
+    assert (
+        contract_validator._PROMOTION_MIN_REVIEWS == _PROMOTION_MIN_REVIEWS_BY_WINDOW
+    ), "contract_validator and aggregate_product_signals promotion gates diverged"
 
 
 @pytest.mark.asyncio

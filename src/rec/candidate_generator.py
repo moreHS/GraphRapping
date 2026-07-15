@@ -83,6 +83,16 @@ def generate_candidates(
     owned_family_ids = {fid[len("product:"):] if fid.startswith("product:") else fid for fid in owned_family_ids_raw}
     repurchased_families = {fid[len("product:"):] if fid.startswith("product:") else fid for fid in repurchased_family_ids_raw}
 
+    # Collaborative-affinity signals (Phase 7 D1): product_id -> signal dict,
+    # precomputed by src/rec/user_similarity.attach_collaborative_signals. Absent
+    # (empty) unless an upstream caller populated the field → the signal is
+    # dormant and no `collab` overlap is generated (default path unchanged).
+    collaborative_by_product = {
+        str(entry["id"]): entry
+        for entry in (user_profile.get("collaborative_product_ids") or [])
+        if isinstance(entry, dict) and entry.get("id")
+    }
+
     candidates: list[CandidateProduct] = []
 
     for product in product_profiles:
@@ -294,6 +304,59 @@ def generate_candidates(
         for co in owned_product_ids & product_coused:
             overlap.append(f"coused:{co}")
 
+        # Comparison overlap (user owned products × product comparison signals).
+        # The candidate is compared-with a product the user owns → boost-only
+        # "alternative" signal. `top_comparison_product_ids` carries product IRIs
+        # ("product:<pid>"); owned_product_ids is prefix-stripped above, so match
+        # on the shared join key. Boost-only: this does NOT qualify the candidate
+        # on its own (see build_candidate_eligibility); COMPARE mode admits it.
+        product_comparison_keys = {
+            _join_key(v)
+            for v in _extract_signal_ids(product.get("top_comparison_product_ids", []))
+        }
+        for owned in sorted(owned_product_ids & product_comparison_keys):
+            overlap.append(f"comparison:{owned}")
+
+        # Collaborative-affinity overlap (Phase 7 D1). Users with taste similar
+        # to this user own this product → boost-only "collaborative" signal.
+        # concept_id carries the supporter count (for readability); the score
+        # magnitude rides on the `|strength=` channel. Boost-only: this NEVER
+        # qualifies the candidate on its own in any mode (see
+        # BOOST_ONLY_ADMISSIBLE_TYPES) — it only boosts candidates already
+        # eligible via first-class evidence.
+        collab_entry = collaborative_by_product.get(pid)
+        if collab_entry and not candidate.already_owned:
+            supporter_count = int(collab_entry.get("supporter_count", 0) or 0)
+            try:
+                strength = float(collab_entry.get("strength", 0.0) or 0.0)
+            except (TypeError, ValueError):
+                strength = 0.0
+            if supporter_count > 0 and strength > 0.0:
+                overlap.append(f"collab:{supporter_count}|strength={strength}")
+
+        # Co-mention product overlap (Phase 7 D2). Products co-mentioned in the
+        # same reviews as a product the user owns → boost-only "connected via
+        # reviews" signal. `comention_product_ids` (ephemeral, populated by
+        # src/mart/product_comention.attach_comention_signals) lists products
+        # co-mentioned WITH this candidate; when one is a product the user owns,
+        # the candidate is surfaced as review-connected. Boost-only: NEVER
+        # qualifies a candidate on its own in ANY mode (see
+        # BOOST_ONLY_ADMISSIBLE_TYPES) — like collab, it must ride on first-class
+        # evidence. Dormant unless attach is called (default path unchanged).
+        if not candidate.already_owned:
+            for entry in (product.get("comention_product_ids") or []):
+                if not isinstance(entry, dict):
+                    continue
+                co_id = _join_key(str(entry.get("id", "")))
+                if not co_id or co_id not in owned_product_ids:
+                    continue
+                try:
+                    strength = float(entry.get("strength", 0.0) or 0.0)
+                except (TypeError, ValueError):
+                    strength = 0.0
+                if strength > 0.0:
+                    overlap.append(f"comention:{co_id}|strength={strength}")
+
         # Purchase-behavior brand overlaps. These qualify candidates because
         # the match is user behavior aligned, not just product catalog presence.
         for b in _matching_ids(repurchase_brand_ids, product_brands):
@@ -309,7 +372,13 @@ def generate_candidates(
 
         candidate.overlap_concepts = overlap
         candidate.overlap_score = len(overlap)
-        candidate.eligibility = build_candidate_eligibility(overlap)
+        # COMPARE mode admits comparison neighbors: boost-only comparison paths
+        # can qualify a candidate here (only here). STRICT/EXPLORE keep the
+        # evidence-first gate (comparison alone never qualifies).
+        candidate.eligibility = build_candidate_eligibility(
+            overlap,
+            boost_only_qualifies=(mode == RecommendationMode.COMPARE),
+        )
         if require_evidence and not candidate.eligibility.eligible:
             candidate.hard_filtered = True
             candidate.filter_reason = "NO_USER_ALIGNED_EVIDENCE"

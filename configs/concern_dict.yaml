@@ -50,3 +50,15 @@
 무너짐:
   concept_id: concern_breakdown
   label_ko: 무너짐
+# P7-2 C1 (2026-07-13): 실측 잔류 미등재 concern 등재 — 유저측 skin_concerns/
+# 리뷰 표면형에서 원문 잔류 확인된 표면형만 (사전 멤버십 게이트이므로 신규
+# 등재 자체가 곧 신규 재타이핑/매칭 대상 확대).
+피지:
+  concept_id: concern_oiliness
+  label_ko: 번들거림
+등드름:
+  concept_id: concern_acne
+  label_ko: 여드름
+냄새:
+  concept_id: concern_odor
+  label_ko: 냄새

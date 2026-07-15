@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from src.common.enums import RecommendationMode
 from src.rec.scorer import ScoredProduct
 
 
@@ -29,14 +30,24 @@ def rerank(
     product_profiles: dict[str, dict] | None = None,
     diversity_weight: float = 0.05,
     top_k: int = 20,
+    *,
+    mode: RecommendationMode = RecommendationMode.EXPLORE,
 ) -> list[RerankedProduct]:
     """Rerank scored products with brand/category diversity.
 
     Products of the same brand/category as recently selected items
     get a penalty to encourage diversity in the top-k.
+
+    ``mode`` COMPARE relaxes diversity (no brand/category penalty) so comparable
+    alternatives — which are typically same-brand/category — surface together
+    instead of being spread apart. STRICT/EXPLORE keep the diversity penalty, so
+    the default reranking path is unchanged.
     """
     if not scored_products:
         return []
+
+    if mode == RecommendationMode.COMPARE:
+        diversity_weight = 0.0
 
     # Sort by shrinked_score
     sorted_products = sorted(scored_products, key=lambda s: s.final_score, reverse=True)

@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from src.common.config_loader import load_yaml
+from src.common.enums import RecommendationMode
 
 
 SCORING_FEATURE_KEYS = (
@@ -61,12 +62,42 @@ class Scorer:
         self._weights: dict[str, float] = {}
         self._shrinkage_k: float = 10.0
         self._brand_confidence: dict[str, float] = {}
+        # Mode-scoped scoring config (e.g. modes.compare.comparison_neighbor).
+        # Populated by load_config; load_from_dict leaves it empty so weight-only
+        # callers get no mode-scoped scoring (the comparison weight stays 0).
+        self._mode_config: dict[str, Any] = {}
+        # Collaborative-affinity (Phase 7 D1) weight. Kept OUT of the `features`
+        # contract map (which is mirrored byte-for-byte by the frontend
+        # DEFAULT_WEIGHTS slider set), so it is a non-tunable backend boost.
+        # Applied in ALL modes (unlike comparison, which is mode-scoped), but
+        # conservative and dormant until user_similarity populates collab
+        # overlaps. load_config sets it; load_from_dict leaves it (fresh scorers
+        # default to 0.0), mirroring _mode_config.
+        self._collaborative_affinity_weight: float = 0.0
+        # Co-mention product boost (Phase 7 D2). Same discipline as the
+        # collaborative weight: kept OUT of the `features` map (non-tunable
+        # backend boost), applied in ALL modes, and dormant until
+        # src/mart/product_comention populates comention overlaps.
+        self._comention_product_weight: float = 0.0
 
     def load_config(self, filename: str = "scoring_weights.yaml") -> None:
         config = load_yaml(filename)
         self._weights = config.get("features", {})
         self._shrinkage_k = config.get("shrinkage_k", 10.0)
         self._brand_confidence = config.get("brand_confidence", {})
+        self._mode_config = config.get("modes", {}) or {}
+        try:
+            self._collaborative_affinity_weight = max(
+                0.0, float(config.get("collaborative_affinity_weight", 0.0) or 0.0)
+            )
+        except (TypeError, ValueError):
+            self._collaborative_affinity_weight = 0.0
+        try:
+            self._comention_product_weight = max(
+                0.0, float(config.get("comention_product_weight", 0.0) or 0.0)
+            )
+        except (TypeError, ValueError):
+            self._comention_product_weight = 0.0
 
     def load_from_dict(self, weights: dict, shrinkage_k: float = 10.0) -> None:
         self._weights = weights
@@ -87,10 +118,16 @@ class Scorer:
         product_profile: dict[str, Any],
         overlap_concepts: list[str] | None = None,
         brand_source: str = "purchase",
+        *,
+        mode: RecommendationMode = RecommendationMode.EXPLORE,
     ) -> ScoredProduct:
         """Score a single product against user preferences.
 
         Uses residual BEE_ATTR scoring to avoid double-counting with keywords.
+
+        ``mode`` gates mode-scoped scoring: the ``comparison_alternative``
+        feature is weighted only in COMPARE mode (0 otherwise), so the default
+        (STRICT/EXPLORE) scoring path is byte-identical to the pre-mode behavior.
         """
         pid = product_profile["product_id"]
         contributions: dict[str, float] = {}
@@ -167,6 +204,45 @@ class Scorer:
             for k, v in features.items()
             if v != 0
         }
+
+        # comparison_alternative: mode-scoped boost-only feature. Its weight is 0
+        # outside COMPARE mode, so it contributes nothing (and stays out of
+        # `contributions`/`score_layers`) on the default path — keeping existing
+        # snapshots/expected-sets byte-identical. The weight is sourced from
+        # modes.compare.comparison_neighbor, not the `features` map, so it is not
+        # a user-tunable slider (kept out of the frontend feature contract).
+        comparison_value = min(overlaps_by_type.get("comparison", 0) / 2.0, 1.0)
+        comparison_weight = self._comparison_weight(mode)
+        comparison_contribution = comparison_weight * comparison_value
+        if comparison_contribution != 0:
+            raw_score += comparison_contribution
+            contributions["comparison_alternative"] = comparison_contribution
+
+        # collaborative_affinity: boost-only feature (Phase 7 D1). Its magnitude
+        # rides on the `collab:*|strength=` overlap channel, so the value is 0
+        # whenever no collaborative overlap is present — keeping the default path
+        # (no upstream collab wiring) byte-identical regardless of the weight.
+        # Applied in every mode; weight sourced from the top-level
+        # collaborative_affinity_weight config key, not the `features` map, so it
+        # stays out of the frontend feature contract (like comparison).
+        collab_value = min(overlap_strength_by_type.get("collab", 0.0), 1.0)
+        collab_contribution = self._collaborative_affinity_weight * collab_value
+        if collab_contribution != 0:
+            raw_score += collab_contribution
+            contributions["collaborative_affinity"] = collab_contribution
+
+        # comention_product_bonus: boost-only feature (Phase 7 D2). Magnitude
+        # rides on the `comention:*|strength=` overlap channel, so the value is 0
+        # whenever no co-mention overlap is present — keeping the default path
+        # (no upstream comention wiring) byte-identical regardless of the weight.
+        # Applied in every mode; weight from the top-level comention_product_weight
+        # config key, kept OUT of the `features` map (like collaborative_affinity).
+        comention_value = min(overlap_strength_by_type.get("comention", 0.0), 1.0)
+        comention_contribution = self._comention_product_weight * comention_value
+        if comention_contribution != 0:
+            raw_score += comention_contribution
+            contributions["comention_product_bonus"] = comention_contribution
+
         score_layers = _score_layers(contributions)
 
         # Evidence shrinkage
@@ -183,6 +259,22 @@ class Scorer:
             support_count=support_count,
             score_layers=score_layers,
         )
+
+    def _comparison_weight(self, mode: RecommendationMode) -> float:
+        """Weight for the comparison_alternative feature.
+
+        Non-zero only in COMPARE mode, sourced from
+        ``modes.compare.comparison_neighbor``. Every other mode returns 0.0 so
+        comparison never affects the default scoring path. Absent config (e.g.
+        load_from_dict callers) also yields 0.0.
+        """
+        if mode != RecommendationMode.COMPARE:
+            return 0.0
+        compare_cfg = self._mode_config.get("compare", {}) or {}
+        try:
+            return max(0.0, float(compare_cfg.get("comparison_neighbor", 0.0) or 0.0))
+        except (TypeError, ValueError):
+            return 0.0
 
 
 def _score_layers(contributions: dict[str, float]) -> dict[str, float]:
@@ -202,6 +294,9 @@ def _score_layers(contributions: dict[str, float]) -> dict[str, float]:
             "concern_bridge_fit",
             "tool_alignment",
             "coused_product_bonus",
+            "comparison_alternative",
+            "collaborative_affinity",
+            "comention_product_bonus",
         },
         "review_graph_weak_evidence_score": {
             "review_graph_weak_relation_match",

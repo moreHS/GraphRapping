@@ -7,62 +7,11 @@
       "products": [
         {
           "evidence_families": [
-            "REVIEW_GRAPH_RELATION"
-          ],
-          "product_id": "100669",
-          "rank": 1,
-          "score_layers": {
-            "master_truth_score": 0.0,
-            "product_activity_score": 0.0,
-            "profile_fit_score": 0.0,
-            "purchase_behavior_score": 0.02,
-            "review_graph_score": 0.1013,
-            "review_graph_weak_evidence_score": 0.0,
-            "source_trust_score": 0.0465
-          },
-          "total_score": 0.1416
-        },
-        {
-          "evidence_families": [
-            "REVIEW_GRAPH_RELATION"
-          ],
-          "product_id": "101059",
-          "rank": 6,
-          "score_layers": {
-            "master_truth_score": 0.0,
-            "product_activity_score": 0.0,
-            "profile_fit_score": 0.0,
-            "purchase_behavior_score": 0.02,
-            "review_graph_score": 0.1013,
-            "review_graph_weak_evidence_score": 0.0,
-            "source_trust_score": 0.0471
-          },
-          "total_score": 0.1404
-        },
-        {
-          "evidence_families": [
-            "REVIEW_GRAPH_RELATION"
-          ],
-          "product_id": "101057",
-          "rank": 9,
-          "score_layers": {
-            "master_truth_score": 0.0,
-            "product_activity_score": 0.0,
-            "profile_fit_score": 0.0,
-            "purchase_behavior_score": 0.02,
-            "review_graph_score": 0.1013,
-            "review_graph_weak_evidence_score": 0.0,
-            "source_trust_score": 0.0467
-          },
-          "total_score": 0.1315
-        },
-        {
-          "evidence_families": [
             "PRODUCT_MASTER_TRUTH",
             "REVIEW_GRAPH_RELATION"
           ],
           "product_id": "60892",
-          "rank": 2,
+          "rank": 1,
           "score_layers": {
             "master_truth_score": 0.025,
             "product_activity_score": 0.0,
@@ -80,7 +29,7 @@
             "REVIEW_GRAPH_RELATION"
           ],
           "product_id": "63917",
-          "rank": 3,
+          "rank": 2,
           "score_layers": {
             "master_truth_score": 0.025,
             "product_activity_score": 0.0,
@@ -91,6 +40,57 @@
             "source_trust_score": 0.0483
           },
           "total_score": 0.1168
+        },
+        {
+          "evidence_families": [
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "35117",
+          "rank": 3,
+          "score_layers": {
+            "master_truth_score": 0.0,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.0,
+            "purchase_behavior_score": 0.02,
+            "review_graph_score": 0.0507,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0474
+          },
+          "total_score": 0.1016
+        },
+        {
+          "evidence_families": [
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "100669",
+          "rank": 6,
+          "score_layers": {
+            "master_truth_score": 0.0,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.0,
+            "purchase_behavior_score": 0.02,
+            "review_graph_score": 0.0507,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0465
+          },
+          "total_score": 0.0989
+        },
+        {
+          "evidence_families": [
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "101059",
+          "rank": 9,
+          "score_layers": {
+            "master_truth_score": 0.0,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.0,
+            "purchase_behavior_score": 0.02,
+            "review_graph_score": 0.0507,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0471
+          },
+          "total_score": 0.0981
         },
         {
           "evidence_families": [
@@ -171,11 +171,11 @@
             "product_activity_score": 0.0,
             "profile_fit_score": 0.0,
             "purchase_behavior_score": 0.02,
-            "review_graph_score": 0.028,
+            "review_graph_score": 0.0507,
             "review_graph_weak_evidence_score": 0.0,
             "source_trust_score": 0.0473
           },
-          "total_score": 0.0731
+          "total_score": 0.0917
         }
       ],
       "user_id": "user_brand_null_cat"
@@ -216,62 +216,11 @@
       "products": [
         {
           "evidence_families": [
-            "REVIEW_GRAPH_RELATION"
-          ],
-          "product_id": "100669",
-          "rank": 1,
-          "score_layers": {
-            "master_truth_score": 0.0,
-            "product_activity_score": 0.0,
-            "profile_fit_score": 0.0,
-            "purchase_behavior_score": 0.02,
-            "review_graph_score": 0.1013,
-            "review_graph_weak_evidence_score": 0.0,
-            "source_trust_score": 0.0465
-          },
-          "total_score": 0.1416
-        },
-        {
-          "evidence_families": [
-            "REVIEW_GRAPH_RELATION"
-          ],
-          "product_id": "101059",
-          "rank": 6,
-          "score_layers": {
-            "master_truth_score": 0.0,
-            "product_activity_score": 0.0,
-            "profile_fit_score": 0.0,
-            "purchase_behavior_score": 0.02,
-            "review_graph_score": 0.1013,
-            "review_graph_weak_evidence_score": 0.0,
-            "source_trust_score": 0.0471
-          },
-          "total_score": 0.1404
-        },
-        {
-          "evidence_families": [
-            "REVIEW_GRAPH_RELATION"
-          ],
-          "product_id": "101057",
-          "rank": 9,
-          "score_layers": {
-            "master_truth_score": 0.0,
-            "product_activity_score": 0.0,
-            "profile_fit_score": 0.0,
-            "purchase_behavior_score": 0.02,
-            "review_graph_score": 0.1013,
-            "review_graph_weak_evidence_score": 0.0,
-            "source_trust_score": 0.0467
-          },
-          "total_score": 0.1315
-        },
-        {
-          "evidence_families": [
             "PRODUCT_MASTER_TRUTH",
             "REVIEW_GRAPH_RELATION"
           ],
           "product_id": "60892",
-          "rank": 2,
+          "rank": 1,
           "score_layers": {
             "master_truth_score": 0.025,
             "product_activity_score": 0.0,
@@ -289,7 +238,7 @@
             "REVIEW_GRAPH_RELATION"
           ],
           "product_id": "63917",
-          "rank": 3,
+          "rank": 2,
           "score_layers": {
             "master_truth_score": 0.025,
             "product_activity_score": 0.0,
@@ -300,6 +249,57 @@
             "source_trust_score": 0.0483
           },
           "total_score": 0.1168
+        },
+        {
+          "evidence_families": [
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "35117",
+          "rank": 3,
+          "score_layers": {
+            "master_truth_score": 0.0,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.0,
+            "purchase_behavior_score": 0.02,
+            "review_graph_score": 0.0507,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0474
+          },
+          "total_score": 0.1016
+        },
+        {
+          "evidence_families": [
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "100669",
+          "rank": 6,
+          "score_layers": {
+            "master_truth_score": 0.0,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.0,
+            "purchase_behavior_score": 0.02,
+            "review_graph_score": 0.0507,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0465
+          },
+          "total_score": 0.0989
+        },
+        {
+          "evidence_families": [
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "101059",
+          "rank": 9,
+          "score_layers": {
+            "master_truth_score": 0.0,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.0,
+            "purchase_behavior_score": 0.02,
+            "review_graph_score": 0.0507,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0471
+          },
+          "total_score": 0.0981
         },
         {
           "evidence_families": [
@@ -380,11 +380,11 @@
             "product_activity_score": 0.0,
             "profile_fit_score": 0.0,
             "purchase_behavior_score": 0.02,
-            "review_graph_score": 0.028,
+            "review_graph_score": 0.0507,
             "review_graph_weak_evidence_score": 0.0,
             "source_trust_score": 0.0473
           },
-          "total_score": 0.0731
+          "total_score": 0.0917
         }
       ],
       "user_id": "user_brand_null_cat"
@@ -451,55 +451,40 @@
         },
         {
           "evidence_families": [
-            "REVIEW_GRAPH_RELATION"
-          ],
-          "product_id": "100669",
-          "rank": 4,
-          "score_layers": {
-            "master_truth_score": 0.0,
-            "product_activity_score": 0.0,
-            "profile_fit_score": 0.01,
-            "purchase_behavior_score": 0.02,
-            "review_graph_score": 0.1013,
-            "review_graph_weak_evidence_score": 0.0,
-            "source_trust_score": 0.0465
-          },
-          "total_score": 0.1501
-        },
-        {
-          "evidence_families": [
-            "REVIEW_GRAPH_RELATION"
-          ],
-          "product_id": "101059",
-          "rank": 10,
-          "score_layers": {
-            "master_truth_score": 0.0,
-            "product_activity_score": 0.0,
-            "profile_fit_score": 0.01,
-            "purchase_behavior_score": 0.02,
-            "review_graph_score": 0.1013,
-            "review_graph_weak_evidence_score": 0.0,
-            "source_trust_score": 0.0471
-          },
-          "total_score": 0.1487
-        },
-        {
-          "evidence_families": [
             "PRODUCT_MASTER_TRUTH",
             "REVIEW_GRAPH_RELATION"
           ],
           "product_id": "60766",
-          "rank": 5,
+          "rank": 4,
           "score_layers": {
             "master_truth_score": 0.06,
             "product_activity_score": 0.0,
             "profile_fit_score": 0.01,
             "purchase_behavior_score": 0.01,
-            "review_graph_score": 0.028,
+            "review_graph_score": 0.0507,
             "review_graph_weak_evidence_score": 0.0,
             "source_trust_score": 0.0473
           },
-          "total_score": 0.1192
+          "total_score": 0.1384
+        },
+        {
+          "evidence_families": [
+            "PRODUCT_MASTER_TRUTH",
+            "PURCHASE_BEHAVIOR",
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "17792",
+          "rank": 5,
+          "score_layers": {
+            "master_truth_score": 0.0433,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.01,
+            "purchase_behavior_score": 0.035,
+            "review_graph_score": 0.0507,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0481
+          },
+          "total_score": 0.1203
         },
         {
           "evidence_families": [
@@ -517,26 +502,42 @@
             "review_graph_weak_evidence_score": 0.0,
             "source_trust_score": 0.0477
           },
-          "total_score": 0.1181
+          "total_score": 0.119
         },
         {
           "evidence_families": [
-            "PRODUCT_MASTER_TRUTH",
             "PURCHASE_BEHAVIOR",
             "REVIEW_GRAPH_RELATION"
           ],
-          "product_id": "17792",
+          "product_id": "103537",
           "rank": 7,
           "score_layers": {
-            "master_truth_score": 0.0433,
+            "master_truth_score": 0.0,
             "product_activity_score": 0.0,
             "profile_fit_score": 0.01,
             "purchase_behavior_score": 0.035,
             "review_graph_score": 0.0507,
             "review_graph_weak_evidence_score": 0.0,
-            "source_trust_score": 0.0481
+            "source_trust_score": 0.0466
           },
-          "total_score": 0.1178
+          "total_score": 0.1182
+        },
+        {
+          "evidence_families": [
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "35117",
+          "rank": 10,
+          "score_layers": {
+            "master_truth_score": 0.0,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.01,
+            "purchase_behavior_score": 0.02,
+            "review_graph_score": 0.0507,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0474
+          },
+          "total_score": 0.1103
         },
         {
           "evidence_families": [
@@ -554,13 +555,13 @@
             "review_graph_weak_evidence_score": 0.0,
             "source_trust_score": 0.0462
           },
-          "total_score": 0.0989
+          "total_score": 0.1001
         },
         {
           "evidence_families": [
             "REVIEW_GRAPH_RELATION"
           ],
-          "product_id": "52110",
+          "product_id": "62454",
           "rank": 9,
           "score_layers": {
             "master_truth_score": 0.0,
@@ -569,9 +570,9 @@
             "purchase_behavior_score": 0.02,
             "review_graph_score": 0.0507,
             "review_graph_weak_evidence_score": 0.0,
-            "source_trust_score": 0.0468
+            "source_trust_score": 0.0476
           },
-          "total_score": 0.0785
+          "total_score": 0.0894
         }
       ],
       "user_id": "user_dry_30f"
@@ -597,7 +598,7 @@
             "review_graph_weak_evidence_score": 0.0,
             "source_trust_score": 0.0481
           },
-          "total_score": 0.1178
+          "total_score": 0.1203
         },
         {
           "evidence_families": [
@@ -606,24 +607,60 @@
             "REVIEW_GRAPH_RELATION"
           ],
           "product_id": "38800",
-          "rank": 4,
+          "rank": 5,
           "score_layers": {
             "master_truth_score": 0.0433,
             "product_activity_score": 0.0,
             "profile_fit_score": 0.01,
             "purchase_behavior_score": 0.035,
-            "review_graph_score": 0.028,
+            "review_graph_score": 0.0507,
             "review_graph_weak_evidence_score": 0.0,
             "source_trust_score": 0.0481
           },
-          "total_score": 0.0986
+          "total_score": 0.1151
+        },
+        {
+          "evidence_families": [
+            "PRODUCT_MASTER_TRUTH",
+            "PURCHASE_BEHAVIOR",
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "100389",
+          "rank": 2,
+          "score_layers": {
+            "master_truth_score": 0.02,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.01,
+            "purchase_behavior_score": 0.035,
+            "review_graph_score": 0.0507,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0467
+          },
+          "total_score": 0.0947
         },
         {
           "evidence_families": [
             "REVIEW_GRAPH_RELATION"
           ],
           "product_id": "62454",
-          "rank": 2,
+          "rank": 3,
+          "score_layers": {
+            "master_truth_score": 0.0,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.01,
+            "purchase_behavior_score": 0.02,
+            "review_graph_score": 0.0507,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0476
+          },
+          "total_score": 0.0894
+        },
+        {
+          "evidence_families": [
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "46647",
+          "rank": 4,
           "score_layers": {
             "master_truth_score": 0.0,
             "product_activity_score": 0.0,
@@ -631,27 +668,9 @@
             "purchase_behavior_score": 0.02,
             "review_graph_score": 0.028,
             "review_graph_weak_evidence_score": 0.0,
-            "source_trust_score": 0.0476
+            "source_trust_score": 0.048
           },
-          "total_score": 0.0736
-        },
-        {
-          "evidence_families": [
-            "PRODUCT_MASTER_TRUTH",
-            "PURCHASE_BEHAVIOR"
-          ],
-          "product_id": "100389",
-          "rank": 3,
-          "score_layers": {
-            "master_truth_score": 0.02,
-            "product_activity_score": 0.0,
-            "profile_fit_score": 0.01,
-            "purchase_behavior_score": 0.035,
-            "review_graph_score": 0.0,
-            "review_graph_weak_evidence_score": 0.0,
-            "source_trust_score": 0.0467
-          },
-          "total_score": 0.0652
+          "total_score": 0.0618
         }
       ],
       "user_id": "user_dry_30f"
@@ -675,31 +694,14 @@
             "review_graph_weak_evidence_score": 0.0,
             "source_trust_score": 0.0463
           },
-          "total_score": 0.0271
-        },
-        {
-          "evidence_families": [
-            "PURCHASE_BEHAVIOR"
-          ],
-          "product_id": "35237",
-          "rank": 2,
-          "score_layers": {
-            "master_truth_score": 0.0,
-            "product_activity_score": 0.0,
-            "profile_fit_score": 0.0,
-            "purchase_behavior_score": 0.035,
-            "review_graph_score": 0.0,
-            "review_graph_weak_evidence_score": 0.0,
-            "source_trust_score": 0.0468
-          },
-          "total_score": 0.0082
+          "total_score": 0.0305
         },
         {
           "evidence_families": [
             "PURCHASE_BEHAVIOR"
           ],
           "product_id": "102622",
-          "rank": 3,
+          "rank": 2,
           "score_layers": {
             "master_truth_score": 0.0,
             "product_activity_score": 0.0,
@@ -709,7 +711,24 @@
             "review_graph_weak_evidence_score": 0.0,
             "source_trust_score": 0.045
           },
-          "total_score": 0.008
+          "total_score": 0.0185
+        },
+        {
+          "evidence_families": [
+            "PURCHASE_BEHAVIOR"
+          ],
+          "product_id": "35237",
+          "rank": 3,
+          "score_layers": {
+            "master_truth_score": 0.0,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.0,
+            "purchase_behavior_score": 0.035,
+            "review_graph_score": 0.0,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0468
+          },
+          "total_score": 0.0136
         }
       ],
       "user_id": "user_dry_30f"
@@ -734,7 +753,7 @@
             "review_graph_weak_evidence_score": 0.0,
             "source_trust_score": 0.0462
           },
-          "total_score": 0.0989
+          "total_score": 0.1001
         },
         {
           "evidence_families": [
@@ -749,11 +768,28 @@
             "product_activity_score": 0.0,
             "profile_fit_score": 0.01,
             "purchase_behavior_score": 0.035,
-            "review_graph_score": 0.028,
+            "review_graph_score": 0.0507,
             "review_graph_weak_evidence_score": 0.0,
             "source_trust_score": 0.0464
           },
-          "total_score": 0.0788
+          "total_score": 0.0916
+        },
+        {
+          "evidence_families": [
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "61090",
+          "rank": 4,
+          "score_layers": {
+            "master_truth_score": 0.0,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.01,
+            "purchase_behavior_score": 0.02,
+            "review_graph_score": 0.0507,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0465
+          },
+          "total_score": 0.0833
         },
         {
           "evidence_families": [
@@ -770,24 +806,24 @@
             "review_graph_weak_evidence_score": 0.0,
             "source_trust_score": 0.0468
           },
-          "total_score": 0.0785
+          "total_score": 0.082
         },
         {
           "evidence_families": [
             "REVIEW_GRAPH_RELATION"
           ],
           "product_id": "60188",
-          "rank": 4,
+          "rank": 5,
           "score_layers": {
             "master_truth_score": 0.0,
             "product_activity_score": 0.0,
             "profile_fit_score": 0.01,
             "purchase_behavior_score": 0.02,
-            "review_graph_score": 0.028,
+            "review_graph_score": 0.0507,
             "review_graph_weak_evidence_score": 0.0,
             "source_trust_score": 0.046
           },
-          "total_score": 0.0607
+          "total_score": 0.076
         }
       ],
       "user_id": "user_dry_30f"
@@ -812,7 +848,7 @@
             "review_graph_weak_evidence_score": 0.0,
             "source_trust_score": 0.0477
           },
-          "total_score": 0.1181
+          "total_score": 0.119
         },
         {
           "evidence_families": [
@@ -864,13 +900,12 @@
             "review_graph_weak_evidence_score": 0.0,
             "source_trust_score": 0.0464
           },
-          "total_score": 0.0815
+          "total_score": 0.082
         },
         {
           "evidence_families": [
             "PRODUCT_MASTER_TRUTH",
-            "PURCHASE_BEHAVIOR",
-            "REVIEW_GRAPH_RELATION"
+            "PURCHASE_BEHAVIOR"
           ],
           "product_id": "58763",
           "rank": 5,
@@ -879,11 +914,11 @@
             "product_activity_score": 0.0,
             "profile_fit_score": 0.01,
             "purchase_behavior_score": -0.03,
-            "review_graph_score": 0.0298,
+            "review_graph_score": 0.0,
             "review_graph_weak_evidence_score": 0.0,
             "source_trust_score": 0.0401
           },
-          "total_score": 0.0515
+          "total_score": 0.0296
         }
       ],
       "user_id": "user_dry_30f"
@@ -956,72 +991,21 @@
         },
         {
           "evidence_families": [
-            "REVIEW_GRAPH_RELATION"
-          ],
-          "product_id": "100669",
-          "rank": 4,
-          "score_layers": {
-            "master_truth_score": 0.0,
-            "product_activity_score": 0.0,
-            "profile_fit_score": 0.01,
-            "purchase_behavior_score": 0.02,
-            "review_graph_score": 0.1013,
-            "review_graph_weak_evidence_score": 0.0,
-            "source_trust_score": 0.0465
-          },
-          "total_score": 0.1501
-        },
-        {
-          "evidence_families": [
-            "REVIEW_GRAPH_RELATION"
-          ],
-          "product_id": "101059",
-          "rank": 6,
-          "score_layers": {
-            "master_truth_score": 0.0,
-            "product_activity_score": 0.0,
-            "profile_fit_score": 0.01,
-            "purchase_behavior_score": 0.02,
-            "review_graph_score": 0.1013,
-            "review_graph_weak_evidence_score": 0.0,
-            "source_trust_score": 0.0471
-          },
-          "total_score": 0.1487
-        },
-        {
-          "evidence_families": [
-            "REVIEW_GRAPH_RELATION"
-          ],
-          "product_id": "101057",
-          "rank": 9,
-          "score_layers": {
-            "master_truth_score": 0.0,
-            "product_activity_score": 0.0,
-            "profile_fit_score": 0.01,
-            "purchase_behavior_score": 0.02,
-            "review_graph_score": 0.1013,
-            "review_graph_weak_evidence_score": 0.0,
-            "source_trust_score": 0.0467
-          },
-          "total_score": 0.1393
-        },
-        {
-          "evidence_families": [
             "PRODUCT_MASTER_TRUTH",
             "REVIEW_GRAPH_RELATION"
           ],
           "product_id": "60766",
-          "rank": 5,
+          "rank": 4,
           "score_layers": {
             "master_truth_score": 0.06,
             "product_activity_score": 0.0,
             "profile_fit_score": 0.01,
             "purchase_behavior_score": 0.01,
-            "review_graph_score": 0.028,
+            "review_graph_score": 0.0507,
             "review_graph_weak_evidence_score": 0.0,
             "source_trust_score": 0.0473
           },
-          "total_score": 0.1192
+          "total_score": 0.1384
         },
         {
           "evidence_families": [
@@ -1029,7 +1013,7 @@
             "REVIEW_GRAPH_RELATION"
           ],
           "product_id": "103537",
-          "rank": 7,
+          "rank": 5,
           "score_layers": {
             "master_truth_score": 0.0,
             "product_activity_score": 0.0,
@@ -1040,6 +1024,57 @@
             "source_trust_score": 0.0466
           },
           "total_score": 0.1182
+        },
+        {
+          "evidence_families": [
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "35117",
+          "rank": 6,
+          "score_layers": {
+            "master_truth_score": 0.0,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.01,
+            "purchase_behavior_score": 0.02,
+            "review_graph_score": 0.0507,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0474
+          },
+          "total_score": 0.1103
+        },
+        {
+          "evidence_families": [
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "100669",
+          "rank": 7,
+          "score_layers": {
+            "master_truth_score": 0.0,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.01,
+            "purchase_behavior_score": 0.02,
+            "review_graph_score": 0.0507,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0465
+          },
+          "total_score": 0.1073
+        },
+        {
+          "evidence_families": [
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "101059",
+          "rank": 9,
+          "score_layers": {
+            "master_truth_score": 0.0,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.01,
+            "purchase_behavior_score": 0.02,
+            "review_graph_score": 0.0507,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0471
+          },
+          "total_score": 0.1065
         },
         {
           "evidence_families": [
@@ -1160,7 +1195,7 @@
             "review_graph_weak_evidence_score": 0.0,
             "source_trust_score": 0.0477
           },
-          "total_score": 0.1068
+          "total_score": 0.1077
         },
         {
           "evidence_families": [
@@ -1177,7 +1212,7 @@
             "review_graph_weak_evidence_score": 0.0,
             "source_trust_score": 0.0464
           },
-          "total_score": 0.0815
+          "total_score": 0.082
         },
         {
           "evidence_families": [
@@ -1195,23 +1230,6 @@
             "source_trust_score": 0.0475
           },
           "total_score": 0.0766
-        },
-        {
-          "evidence_families": [
-            "REVIEW_GRAPH_RELATION"
-          ],
-          "product_id": "58763",
-          "rank": 5,
-          "score_layers": {
-            "master_truth_score": 0.0,
-            "product_activity_score": 0.0,
-            "profile_fit_score": 0.01,
-            "purchase_behavior_score": 0.02,
-            "review_graph_score": 0.0298,
-            "review_graph_weak_evidence_score": 0.0,
-            "source_trust_score": 0.0401
-          },
-          "total_score": 0.0736
         }
       ],
       "user_id": "user_makeup_matte_50m"
@@ -1274,7 +1292,7 @@
             "review_graph_weak_evidence_score": 0.0,
             "source_trust_score": 0.0477
           },
-          "total_score": 0.1068
+          "total_score": 0.1077
         },
         {
           "evidence_families": [
@@ -1291,7 +1309,7 @@
             "review_graph_weak_evidence_score": 0.0,
             "source_trust_score": 0.0464
           },
-          "total_score": 0.0815
+          "total_score": 0.082
         },
         {
           "evidence_families": [
@@ -1309,23 +1327,6 @@
             "source_trust_score": 0.0475
           },
           "total_score": 0.0766
-        },
-        {
-          "evidence_families": [
-            "REVIEW_GRAPH_RELATION"
-          ],
-          "product_id": "58763",
-          "rank": 5,
-          "score_layers": {
-            "master_truth_score": 0.0,
-            "product_activity_score": 0.0,
-            "profile_fit_score": 0.01,
-            "purchase_behavior_score": 0.02,
-            "review_graph_score": 0.0298,
-            "review_graph_weak_evidence_score": 0.0,
-            "source_trust_score": 0.0401
-          },
-          "total_score": 0.0736
         }
       ],
       "user_id": "user_makeup_matte_50m"
@@ -1361,7 +1362,7 @@
             "review_graph_weak_evidence_score": 0.0,
             "source_trust_score": 0.0462
           },
-          "total_score": 0.088
+          "total_score": 0.0891
         },
         {
           "evidence_families": [
@@ -1379,7 +1380,7 @@
             "review_graph_weak_evidence_score": 0.0,
             "source_trust_score": 0.046
           },
-          "total_score": 0.0822
+          "total_score": 0.0846
         },
         {
           "evidence_families": [
@@ -1413,7 +1414,7 @@
             "review_graph_weak_evidence_score": 0.0,
             "source_trust_score": 0.0472
           },
-          "total_score": 0.0673
+          "total_score": 0.0679
         },
         {
           "evidence_families": [
@@ -1430,7 +1431,7 @@
             "review_graph_weak_evidence_score": 0.0,
             "source_trust_score": 0.0468
           },
-          "total_score": 0.0565
+          "total_score": 0.059
         }
       ],
       "user_id": "user_scalp_care_50m"
@@ -1466,7 +1467,7 @@
             "review_graph_weak_evidence_score": 0.0,
             "source_trust_score": 0.0462
           },
-          "total_score": 0.088
+          "total_score": 0.0891
         },
         {
           "evidence_families": [
@@ -1484,7 +1485,7 @@
             "review_graph_weak_evidence_score": 0.0,
             "source_trust_score": 0.046
           },
-          "total_score": 0.0822
+          "total_score": 0.0846
         },
         {
           "evidence_families": [
@@ -1518,7 +1519,7 @@
             "review_graph_weak_evidence_score": 0.0,
             "source_trust_score": 0.0468
           },
-          "total_score": 0.0565
+          "total_score": 0.059
         }
       ],
       "user_id": "user_scalp_care_50m"
@@ -1542,7 +1543,7 @@
             "review_graph_weak_evidence_score": 0.0,
             "source_trust_score": 0.0472
           },
-          "total_score": 0.0673
+          "total_score": 0.0679
         }
       ],
       "user_id": "user_scalp_care_50m"
@@ -1584,45 +1585,11 @@
         },
         {
           "evidence_families": [
-            "REVIEW_GRAPH_RELATION"
-          ],
-          "product_id": "100669",
-          "rank": 2,
-          "score_layers": {
-            "master_truth_score": 0.0,
-            "product_activity_score": 0.0,
-            "profile_fit_score": 0.01,
-            "purchase_behavior_score": 0.02,
-            "review_graph_score": 0.1013,
-            "review_graph_weak_evidence_score": 0.0,
-            "source_trust_score": 0.0465
-          },
-          "total_score": 0.1501
-        },
-        {
-          "evidence_families": [
-            "REVIEW_GRAPH_RELATION"
-          ],
-          "product_id": "101059",
-          "rank": 9,
-          "score_layers": {
-            "master_truth_score": 0.0,
-            "product_activity_score": 0.0,
-            "profile_fit_score": 0.01,
-            "purchase_behavior_score": 0.02,
-            "review_graph_score": 0.1013,
-            "review_graph_weak_evidence_score": 0.0,
-            "source_trust_score": 0.0471
-          },
-          "total_score": 0.1487
-        },
-        {
-          "evidence_families": [
             "PRODUCT_MASTER_TRUTH",
             "REVIEW_GRAPH_RELATION"
           ],
           "product_id": "63917",
-          "rank": 3,
+          "rank": 2,
           "score_layers": {
             "master_truth_score": 0.0483,
             "product_activity_score": 0.0,
@@ -1641,7 +1608,7 @@
             "REVIEW_GRAPH_RELATION"
           ],
           "product_id": "50165",
-          "rank": 4,
+          "rank": 3,
           "score_layers": {
             "master_truth_score": 0.02,
             "product_activity_score": 0.0,
@@ -1652,6 +1619,40 @@
             "source_trust_score": 0.0473
           },
           "total_score": 0.1431
+        },
+        {
+          "evidence_families": [
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "35117",
+          "rank": 4,
+          "score_layers": {
+            "master_truth_score": 0.0,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.01,
+            "purchase_behavior_score": 0.02,
+            "review_graph_score": 0.0507,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0474
+          },
+          "total_score": 0.1103
+        },
+        {
+          "evidence_families": [
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "100669",
+          "rank": 9,
+          "score_layers": {
+            "master_truth_score": 0.0,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.01,
+            "purchase_behavior_score": 0.02,
+            "review_graph_score": 0.0507,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0465
+          },
+          "total_score": 0.1073
         },
         {
           "evidence_families": [
@@ -1686,7 +1687,7 @@
             "review_graph_weak_evidence_score": 0.0,
             "source_trust_score": 0.0481
           },
-          "total_score": 0.0985
+          "total_score": 0.1005
         },
         {
           "evidence_families": [
@@ -1699,28 +1700,11 @@
             "product_activity_score": 0.0,
             "profile_fit_score": 0.01,
             "purchase_behavior_score": 0.02,
-            "review_graph_score": 0.028,
+            "review_graph_score": 0.0507,
             "review_graph_weak_evidence_score": 0.0,
             "source_trust_score": 0.0473
           },
-          "total_score": 0.0808
-        },
-        {
-          "evidence_families": [
-            "PRODUCT_MASTER_TRUTH"
-          ],
-          "product_id": "66964",
-          "rank": 8,
-          "score_layers": {
-            "master_truth_score": 0.02,
-            "product_activity_score": 0.0,
-            "profile_fit_score": 0.01,
-            "purchase_behavior_score": 0.02,
-            "review_graph_score": 0.0,
-            "review_graph_weak_evidence_score": 0.0,
-            "source_trust_score": 0.0462
-          },
-          "total_score": 0.067
+          "total_score": 0.0995
         },
         {
           "evidence_families": [
@@ -1737,7 +1721,24 @@
             "review_graph_weak_evidence_score": 0.0,
             "source_trust_score": 0.048
           },
-          "total_score": 0.0667
+          "total_score": 0.0688
+        },
+        {
+          "evidence_families": [
+            "PRODUCT_MASTER_TRUTH"
+          ],
+          "product_id": "66964",
+          "rank": 8,
+          "score_layers": {
+            "master_truth_score": 0.02,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.01,
+            "purchase_behavior_score": 0.02,
+            "review_graph_score": 0.0,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0462
+          },
+          "total_score": 0.0679
         }
       ],
       "user_id": "user_sensitive_40f"
@@ -1762,7 +1763,7 @@
             "review_graph_weak_evidence_score": 0.0,
             "source_trust_score": 0.0481
           },
-          "total_score": 0.0985
+          "total_score": 0.1005
         },
         {
           "evidence_families": [
@@ -1780,7 +1781,7 @@
             "review_graph_weak_evidence_score": 0.0,
             "source_trust_score": 0.0481
           },
-          "total_score": 0.0938
+          "total_score": 0.0962
         },
         {
           "evidence_families": [
@@ -1797,7 +1798,7 @@
             "review_graph_weak_evidence_score": 0.0,
             "source_trust_score": 0.048
           },
-          "total_score": 0.0667
+          "total_score": 0.0688
         },
         {
           "evidence_families": [
@@ -1838,31 +1839,14 @@
             "review_graph_weak_evidence_score": 0.0,
             "source_trust_score": 0.0463
           },
-          "total_score": 0.0271
-        },
-        {
-          "evidence_families": [
-            "PURCHASE_BEHAVIOR"
-          ],
-          "product_id": "35237",
-          "rank": 2,
-          "score_layers": {
-            "master_truth_score": 0.0,
-            "product_activity_score": 0.0,
-            "profile_fit_score": 0.0,
-            "purchase_behavior_score": 0.035,
-            "review_graph_score": 0.0,
-            "review_graph_weak_evidence_score": 0.0,
-            "source_trust_score": 0.0468
-          },
-          "total_score": 0.0082
+          "total_score": 0.0305
         },
         {
           "evidence_families": [
             "PURCHASE_BEHAVIOR"
           ],
           "product_id": "102622",
-          "rank": 3,
+          "rank": 2,
           "score_layers": {
             "master_truth_score": 0.0,
             "product_activity_score": 0.0,
@@ -1872,7 +1856,24 @@
             "review_graph_weak_evidence_score": 0.0,
             "source_trust_score": 0.045
           },
-          "total_score": 0.008
+          "total_score": 0.0185
+        },
+        {
+          "evidence_families": [
+            "PURCHASE_BEHAVIOR"
+          ],
+          "product_id": "35237",
+          "rank": 3,
+          "score_layers": {
+            "master_truth_score": 0.0,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.0,
+            "purchase_behavior_score": 0.035,
+            "review_graph_score": 0.0,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0468
+          },
+          "total_score": 0.0136
         }
       ],
       "user_id": "user_sensitive_40f"
@@ -1896,7 +1897,7 @@
             "review_graph_weak_evidence_score": 0.0,
             "source_trust_score": 0.0462
           },
-          "total_score": 0.067
+          "total_score": 0.0679
         },
         {
           "evidence_families": [
@@ -1990,45 +1991,11 @@
         },
         {
           "evidence_families": [
-            "REVIEW_GRAPH_RELATION"
-          ],
-          "product_id": "100669",
-          "rank": 2,
-          "score_layers": {
-            "master_truth_score": 0.0,
-            "product_activity_score": 0.0,
-            "profile_fit_score": 0.01,
-            "purchase_behavior_score": 0.02,
-            "review_graph_score": 0.1013,
-            "review_graph_weak_evidence_score": 0.0,
-            "source_trust_score": 0.0465
-          },
-          "total_score": 0.1501
-        },
-        {
-          "evidence_families": [
-            "REVIEW_GRAPH_RELATION"
-          ],
-          "product_id": "101059",
-          "rank": 6,
-          "score_layers": {
-            "master_truth_score": 0.0,
-            "product_activity_score": 0.0,
-            "profile_fit_score": 0.01,
-            "purchase_behavior_score": 0.02,
-            "review_graph_score": 0.1013,
-            "review_graph_weak_evidence_score": 0.0,
-            "source_trust_score": 0.0471
-          },
-          "total_score": 0.1487
-        },
-        {
-          "evidence_families": [
             "PRODUCT_MASTER_TRUTH",
             "REVIEW_GRAPH_RELATION"
           ],
           "product_id": "63917",
-          "rank": 3,
+          "rank": 2,
           "score_layers": {
             "master_truth_score": 0.0483,
             "product_activity_score": 0.0,
@@ -2047,7 +2014,7 @@
             "REVIEW_GRAPH_RELATION"
           ],
           "product_id": "50165",
-          "rank": 4,
+          "rank": 3,
           "score_layers": {
             "master_truth_score": 0.02,
             "product_activity_score": 0.0,
@@ -2063,18 +2030,52 @@
           "evidence_families": [
             "REVIEW_GRAPH_RELATION"
           ],
-          "product_id": "101057",
+          "product_id": "35117",
+          "rank": 4,
+          "score_layers": {
+            "master_truth_score": 0.0,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.01,
+            "purchase_behavior_score": 0.02,
+            "review_graph_score": 0.0507,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0474
+          },
+          "total_score": 0.1103
+        },
+        {
+          "evidence_families": [
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "100669",
+          "rank": 6,
+          "score_layers": {
+            "master_truth_score": 0.0,
+            "product_activity_score": 0.0,
+            "profile_fit_score": 0.01,
+            "purchase_behavior_score": 0.02,
+            "review_graph_score": 0.0507,
+            "review_graph_weak_evidence_score": 0.0,
+            "source_trust_score": 0.0465
+          },
+          "total_score": 0.1073
+        },
+        {
+          "evidence_families": [
+            "REVIEW_GRAPH_RELATION"
+          ],
+          "product_id": "101059",
           "rank": 9,
           "score_layers": {
             "master_truth_score": 0.0,
             "product_activity_score": 0.0,
             "profile_fit_score": 0.01,
             "purchase_behavior_score": 0.02,
-            "review_graph_score": 0.1013,
+            "review_graph_score": 0.0507,
             "review_graph_weak_evidence_score": 0.0,
-            "source_trust_score": 0.0467
+            "source_trust_score": 0.0471
           },
-          "total_score": 0.1393
+          "total_score": 0.1065
         },
         {
           "evidence_families": [
@@ -2138,11 +2139,11 @@
             "product_activity_score": 0.0,
             "profile_fit_score": 0.01,
             "purchase_behavior_score": 0.02,
-            "review_graph_score": 0.028,
+            "review_graph_score": 0.0507,
             "review_graph_weak_evidence_score": 0.0,
             "source_trust_score": 0.0473
           },
-          "total_score": 0.0808
+          "total_score": 0.0995
         }
       ],
       "user_id": "user_sensitive_40f"
