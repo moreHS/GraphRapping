@@ -330,4 +330,162 @@ A·B는 병렬 가능, C는 B에 일부 의존, D는 독립, E는 계약(E0)과 
 
 ## 완료 보고 (실행 후 누적)
 
-_(비어 있음)_
+### P7-1 완료 — 2026-07-13 (Opus×2 병렬, 중간 세션리밋 1회 재개 완주)
+
+**A1+A2 (P7-1a)**: comparison boost-only 배선 — `BOOST_ONLY_TYPES` +
+`CandidateEligibility.boost_only_paths` 버킷 신설(eligible OR·evidence_families
+제외 → 기존 계약 불변, D1 재사용 확장점), 유저 앵커=owned_product_ids,
+COMPARE만 `boost_only_qualifies` opt-in. feature는 SCORING_FEATURE_KEYS에
+넣지 않고 mode-scoped 가중(`modes.compare.comparison_neighbor: 0.08`)으로 —
+프론트 계약 테스트가 금지 파일 수정을 강요하는 것을 회피하며 A2 의미 실체화
+동시 해결. scorer/reranker에 mode 인자 배선(COMPARE: comparison 가중 활성 +
+diversity=0), `category_penalty`류 죽은 키 전부 제거(구현 시 byte-identical
+위반이라 제거가 유일 정합 — 근거 주석). 기본 경로 불변 3중 증거(데이터
+프로브·구조·스냅샷 24 passed + fixtures git 무변경). 신규 테스트 15.
+
+**A4+A5+E0 (P7-1b)**:
+- **A4 핵심 발견**: wide 517상품 전부 리뷰≥1(이론 천장 100%, 실질 99.6%) —
+  **리뷰 0 상품은 병목이 아니며 5% 붕괴는 전적으로 승격 게이트**. 완화 곡선
+  실측: ≥3(현행)=5.0% / **≥2=17.4%** / ≥1=99.6%. wide 랭킹 실측: top-10
+  그래프 등장률 72.9%→**2.3%**, score 기여 28.5%→**0.9%**, top-3 마스터
+  90.6% vs 그래프 3.9% — "카탈로그 진실 수렴"이 랭킹 레벨에서 실증.
+  C2 1차 목표 제안 = ALL/90d 3→2 (5%→17%, 3.5배). wide 스냅샷 베이스라인
+  (wide_golden.json, 350조합) 생성 + 회귀 케이스 추가. 06 문서 추기 완료
+- **A5**: ontology_validator v2 — severity 체계 + 검출기 4종(meta 정합
+  [65→68 오기 수정+주입 테스트], 고아 타입[현행 4종 정확 검출, warning],
+  어휘 生-死 리포트[--liveness, 死 family 4종 재현], 브리지 상수 커버).
+  CI 게이트에 error 2종 편입, warning은 표시 전용
+- **E0**: db_consumer_contract §13 — SignalFamily/evidence family 용어
+  이원화, 현행 자격 의미론, 신규 family 5조건(기본 boost-only), 예고 3종
+
+**게이트 (Fable 직접 실측)**: ruff/mypy(113) ✅, validate-ontology exit 0
+(경고 4 표면화), pytest **1113 passed, 50 skipped, 0 failed** (+31).
+Fable 리뷰: 승인 — 두 산출물 접점(comparison 기본가중 0 ↔ wide 베이스라인)
+이 상호 실증됨(dense 스냅샷 무변경이 병렬 안전성 증거).
+
+### P7-2 완료 — 2026-07-13 (B1 Opus / C1 Sonnet 병렬, 소유권 분리)
+
+**B1 (keyword 경로 통합 + 형태론)**:
+- 경로 통합: mention_extractor의 quarantine 생성 두 지점이 격리 전
+  `resolve_surface_keywords`(bee_normalizer 로직 공용 추출 — 부분문자열 +
+  형태론 2-pass) 조회. 신규 korean_morph.py(화이트리스트 어미 접기, 해→하
+  축약, 어간 사전 존재 시만, **부정 감지 시 접기 skip**)
+- 누락 어간 ~21종 등재(순함/발림성/자극없음 등, 빈도 근거 주석). 커머스
+  노이즈(재구매/배송/가격)는 의도적 비등재
+- **실측 (clean isolation)**: unknown_keyword 2,784→**2,088 (−25.0%)**,
+  BEE_KEYWORD 신호 238→**802 (+564)**, top_keyword 보유 상품 5→7
+- **50% 목표 미달의 정직 판정 (Fable 승인)**: 잔여 76%가 진성 open-vocab
+  (신조어/타도메인/부정어휘/성분)이고 상위 잔여는 커머스 노이즈 — 등재 시
+  신호 오염이라 **격리 유지가 정답**. 50%는 예측 오류로 기록, 잔여 tail은
+  B3(임베딩) 영역. 랭킹 스냅샷·기대셋 무변경(신규 신호가 weak 계층),
+  corpus 승격 베이스라인만 의도 갱신(DECISIONS/2026-07-13_phase7_b1 기록)
+
+**C1 (concern/goal 소생 + 타입 해소층)**:
+- adapter에 타입 해소층(사전 정확-키 멤버십만, additive-only, contract 축
+  준수, 원 타입 provenance qualifier 보존) → 재타이핑 19건(예측 일치)
+- **CONCERN family 生 0 → 9 (POS 8/NEG 1)** — 死 family 4종→**2종**(SEGMENT·
+  TOOL 잔존), --liveness 도구로 독립 검증. concern_bee_attr 5→9쌍(고신뢰
+  상한 — 후보 3쌍은 확신 부족으로 보고만), ingredient_concern_map 19쌍
+  신설(소비 배선은 후속), 유저측 미등재 concern/goal 등재
+- concern_bridge_fit 발화 0 원인 규명: fixture BEE polarity 대부분 중립 →
+  score 0.0 (map과 무관한 데이터 특성). **새 CONCERN 신호는 승격 게이트에
+  걸려 서빙 미도달 — 정확히 C2가 풀 문제로 연결됨**
+
+**게이트 (Fable 직접 실측)**: ruff/mypy(114) ✅, validate-ontology exit 0,
+pytest **1139 passed, 50 skipped, 0 failed** (+26)
+
+**Follow-up (P7-3 이후)**: ① ingredient_concern_map 소비 배선(src/rec —
+C2 이후 서빙 도달과 함께) ② Goal의 SignalFamily/EdgeType 부재(enums 확장
+— 별도 결정) ③ 브리지 후보 3쌍 도메인 감수
+
+### P7-3 B2 + C2 완료 — 2026-07-13~14
+
+**B2 (개념 접힘, Opus)**: keyword_alias_map 신설(kw_moist·MoistLike→
+kw_moisturizing), `resolve_surface_keywords`에 canonical 재매핑+dedup,
+순환/체이닝 방어 로더. 실측: 보습 클러스터 3 id→1(support 249행→157),
+이중계상 제거로 BEE_KEYWORD 802→710, **moisture 서빙 상품 18→24**(지지도
+통합이 승격 통과). taxonomy 병존은 "정당한 병렬"(축별 소비처 상이) 판정 —
+cross-axis 규칙 불필요. 스냅샷 의도 재승인(dense/wide NEW8·DROP8), docs/
+architecture/keyword_alias_and_taxonomy 문서 + DECISIONS 기록. 게이트 1148
+
+**C2 (승격 게이트 3→2, Opus·중간 세션리밋 재개, 사용자 승인·DECISIONS 확정)**:
+D90·ALL 임계 3→2(D30 불변), contract_validator 미러 락스텝. **실측(임계
+토글): wide bee_attr 서빙 도달 5.0%→17.4%(26→90, A4 예측 정확 일치), dense
+90.6%→100%, wide keyword 7→30.** ⚠️ **정직한 한계**: C1 CONCERN 신호(support
+-1)는 임계 2에도 서빙 미도달(before/after 0) — 게이트가 아니라 concern 데이터
+희소성. 임계 1 완화는 기각 유지, 해소는 concern 밀도 확보(relation 모델 개선
+/ingredient_concern 배선). 스냅샷·corpus 베이스라인 의도 갱신, 게이트 **1150
+passed, 50 skipped, 0 failed**
+
+**P7-3 종합**: 서빙 도달 회복(리뷰 그래프가 wide에서 3.5배 부활)은 달성.
+"연결성 신호 첫 발화(0건 탈출)"는 comparison(데이터 0)·concern(support-1
+희소) 모두 이번엔 미발화 — Phase 7 목표는 **P7-4(user-user/co-mention, 진짜
+그래프 신호)** 로 이월. 이는 예상된 순서(진단이 concern/co-use를 "데이터/
+희소" 원인으로 분류했고, D 트랙이 데이터 없이도 계산 가능한 신호였음)
+
+### P7-3 B2 완료 — 2026-07-13 (동일 개념 접힘 + taxonomy 우선순위)
+
+**접힘 계층**: `configs/keyword_alias_map.yaml`(신규, alias→canonical) +
+`resolve_surface_keywords`(bee_normalizer.py)에 canonical 재매핑·dedup을 얹음
+(신호 생성/quarantine 공용 단일 경로 → 하류 agg 자동 통합). `apply_alias` 인자로
+해소 mechanic 테스트를 alias 정책과 격리. 로더 `_flatten_alias_chains`가 순환/
+자기참조를 load 시 ValueError로 거부 + 체인 종단 해소.
+
+**접힘 대상(실측 기반)**: 채택 = `kw_moist`+`MoistLike`+`kw_moisturizing`→
+canonical `kw_moisturizing`(진단 명시 확신 클러스터). 후보(미접힘) = 수분감.
+기각 = 극성 반대쌍·refreshing 계열·feel↔texture type. `촉촉한`이 `촉촉`을
+부분포함해 `kw_moist`+`MoistLike` 동시 방출(이중계상)을 실증.
+
+**효과(dense kg_on)**: 보습 클러스터 지지도 3 id(118/87/44, 249행)→**1 id 157행**
+(92행은 동일 mention 이중계상, dedup). BEE_KEYWORD 802→**710**. moisture 서빙
+상품 18→**24**(+6 승격), 행 36→**24**(중복 나열 제거). wide moisture 서빙 5→**6**.
+
+**taxonomy 병존 = 정당한 병렬로 판정**(cross-axis 재배정 불필요). goal(유저 전용)/
+keyword/bee_attr/concern은 서로 다른 입력·feature가 소비. 실측: 상품 concern
+신호는 acne/flaking/wrinkles 등 독립 개념뿐(moisture 재파생 없음). 유일한 실재
+이중계상은 keyword 축 내부 sibling id → alias 접힘으로 해소. 규칙 명문화:
+`docs/architecture/keyword_alias_and_taxonomy_priority_2026_07_13.md`.
+
+**스냅샷/베이스라인(의도 변경, 재승인 대상)**: 랭킹 스냅샷 재생성(dense NEW8/
+DROP8/rank20/score19, wide NEW8/DROP8/rank26/score16 — 방향: 이중계상 상품 하락+
+신규 승격 상품 상승, 둘 다 접힘의 올바른 귀결). corpus signal_count 갱신(kg_on
+3,340→3,248, kg_off 3,365→3,273; quarantine·top_* 불변). 기대셋 green. 소급
+마이그레이션 불요(재적재만으로 해소 시점 소급). 근거·diff: `DECISIONS/
+2026-07-13_phase7_b2_keyword_alias.md`.
+
+**게이트**: ruff/mypy(114) ✅, validate-ontology exit 0(경고 4 불변), pytest
+**1,148 passed, 50 skipped, 0 failed**(+9: test_keyword_alias.py — fold·
+double-count dedup·순환/체이닝 오류 클래스).
+
+**Follow-up**: 유저측 texture alias 대칭 적용(personal_agent_adapter — B2 범위
+밖; 현재 상품측만으로 회귀 없음 실측) / 접힘 후보(수분감·산뜻·시원·깔끔) 감수.
+
+### P7-4 D2 완료 — 2026-07-14 (co-mention 상품-상품, Opus)
+
+**co-mention 밀도 실측(kg_mode=on)**: canonical_fact를 review_id로 그룹핑,
+상품을 REAL(카탈로그 연결)/GHOST(`concept:Product:*` 미해소)로 분류.
+**리뷰당 ≥2 REAL 상품 = 0, REAL-REAL distinct 쌍 = 0** (dense·wide 공통).
+모든 리뷰는 정확히 1 REAL 상품에 대한 것이고 두 번째 상품 언급은 전부 ghost
+(`다른라인`/`미니어처`/`에센스`…). product-object fact 1067건이나 object는
+리뷰 대상 자기 자신 또는 ghost. comparison_with 8건도 전부 ghost. → co-use
+(실SKU 0)와 **동일한 데이터 부재를 다른 각도로 재확인**.
+
+**판정 = 배선 완성 + 실데이터 대기** (D-트랙 위임 규칙 자동 전환). 골든 프로필
+발화 0(예상). Phase 7 "0건 탈출"은 D2도 미발화 — co-mention이 성립하려면 한
+리뷰가 2+ REAL 상품을 언급해야 하고(relation 모델의 ghost→real 해소 또는 멀티
+상품 리뷰 유입), 이는 B/E 트랙 의존. 회귀 가드
+`test_comention.py::test_real_fixture_has_no_real_real_comention`가 "대기" 상태 락.
+
+**필드 결정 = 신설**(재사용 아님): `top_coused_product_ids` 재사용은 provenance
+거짓 + DDL/`src/db`(금지) 정합 침해 → D1 패턴 답습, **ephemeral 필드
+`comention_product_ids`**(영속 안 됨·서빙 컬럼 아님, attach 시에만 생성 → 기본
+경로 byte-identical). boost-only(어느 모드도 단독 자격 불가, collab과 동일 비-
+admissible). polarity 필터(NEG=비하 comparison 제외), 최소 지지도 2(교차검증).
+scorer 가중은 top-level `comention_product_weight: 0.02`(features 맵 밖 → 프론트
+계약 불변), review_graph_score 편입.
+
+**변경**: 신규 `src/mart/product_comention.py`·`tests/test_comention.py`(27),
+`src/rec/{recommendation_evidence_index,candidate_generator,scorer,explainer}.py`,
+`configs/scoring_weights.yaml`. **게이트**: ruff/mypy(116) ✅, pytest **1201
+passed, 50 skipped, 0 failed**(+27). 골든 스냅샷·기대셋 무변경.
+근거·전수 실측: `DECISIONS/2026-07-14_phase7_d2_comention.md`.

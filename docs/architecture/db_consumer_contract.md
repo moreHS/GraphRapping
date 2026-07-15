@@ -473,6 +473,89 @@ GraphRapping 의 누적 방어 메커니즘은 계층별로 강도가 다르다.
 
 ---
 
+## 13. Recommendation evidence-family 확장 계약 (2026-07-13, Phase 7 E0)
+
+추천 후보의 **자격(eligibility)** 은 evidence family 로 판정된다. 이 절은
+family 의 현행 분류·의미론과, **신규 family 를 추가할 때 반드시 지켜야 하는
+계약**을 성문화한다 (기존에는 코드+테스트에만 존재 — fable_doc/06 진단 §6-4).
+
+### 13.1 용어 구분 — SignalFamily ≠ evidence family (혼동 금지)
+
+| 용어 | 정의 위치 | 성격 | 예 |
+|---|---|---|---|
+| **SignalFamily** | `src/common/enums.py` (enum) | **상품 신호**의 projection 분류 — Layer 2.5 wrapped_signal 이 어떤 종류의 리뷰 유래 신호인지 | `BEE_ATTR`, `CONCERN_POS`, `COMPARISON`, `TOOL` |
+| **evidence family** | `src/rec/recommendation_evidence_index.py` (frozenset 타입 분류 + `CandidateEligibility`) | **추천 자격** 분류 — 유저-상품 overlap concept 이 어떤 근거 계열로 후보를 자격화하는지 | `PRODUCT_MASTER_TRUTH`, `REVIEW_GRAPH_RELATION`, `PURCHASE_BEHAVIOR` |
+
+같은 단어(family)를 쓰지만 **서로 다른 레이어의 서로 다른 분류다**. 신규
+신호를 붙일 때 SignalFamily(enum)에 값을 추가하는 것과 evidence family
+(frozenset/eligibility 버킷)를 확장하는 것은 별개의 결정이며, 이 절의 계약은
+**후자**에 적용된다.
+
+### 13.2 현행 분류와 자격 의미론 (OR 자격)
+
+`build_candidate_eligibility` 는 유저-상품 overlap concept 을 아래 계열로
+분류하고, **하나라도 비어 있지 않으면 eligible** (OR 의미론):
+
+| Evidence family | overlap concept 타입 (frozenset) | 의미 |
+|---|---|---|
+| `PRODUCT_MASTER_TRUTH` | `brand, category, catalog_keyword, ingredient, goal_master` | 카탈로그 진실과 유저 명시 선호의 일치 |
+| `REVIEW_GRAPH_RELATION` | `keyword, bee_attr, semantic_keyword, semantic_bee_attr, context, concern, concern_bridge, tool, coused, comparison` | 리뷰 그래프 유래(promoted) 신호와의 일치 |
+| `REVIEW_GRAPH_WEAK_RELATION` | `weak_semantic_keyword, weak_semantic_bee_attr` | 위의 약한(간접 semantic) 변형 |
+| `PURCHASE_BEHAVIOR` | `owned_family, repurchased_family, repurchase_brand, repurchase_category, recent_purchase_brand` | 구매 확정 행동과의 일치 |
+
+자격이 **될 수 없는** 것 (기존 규율, 신규 family 에도 그대로):
+- `source_review_*` (source trust/popularity) — trust/tie-break 신호이지 자격
+  근거가 아니다. source-stats 단독 eligible 은 전역 불변식 위반
+  (`tests/test_expected_evidence_family_baseline.py` invariant (b)).
+- `ACTIVE_IN_CATEGORY` — 활동 컨텍스트이지 명시 선호가 아님 (frozenset 에서
+  의도적으로 제외됨).
+- `review_summary` — 표시용 sidecar (§3.4), graph evidence 아님.
+
+### 13.3 신규 evidence family 추가 조건 (계약)
+
+신규 family(예: 액션 유래, 협업 신호)를 추가하는 변경은 아래 5개 조건을
+**모두** 충족해야 한다:
+
+1. **단독 자격 가능 여부를 반드시 명시** — 기본값은 **boost-only**:
+   후보의 점수를 보정할 수는 있으나 그 family 단독으로는 `eligible=true`
+   판정에 기여하지 못한다 (OR 자격 버킷에서 제외). 단독 자격을 부여하려면
+   근거(왜 이 신호가 자격 수준의 확실성인지)를 DECISIONS 로 기록하고
+   승인받아야 한다. boost-only 버킷의 코드 실체(`build_candidate_eligibility`
+   의 eligible 판정에서 제외되는 5번째 분류)는 Phase 7 D1 에서 신설 예정이며
+   A1 의 COMPARISON 과 공유한다.
+2. **가중/shrinkage 원칙** — 신규 family 의 스코어 기여는 보수적 초기 가중
+   으로 시작하고(기존 `scoring_weights.yaml` 패턴), support 가 낮은 신호는
+   기존 shrinkage 메커니즘(support 기반 축소)을 그대로 통과해야 한다.
+   "항상 켜지는" 비개인화 신호가 개인화 신호를 잠식하는 패턴(fable_doc/06
+   진단 §2)을 재생산하지 않도록, 발화율(hit rate)이 높은 신호일수록 가중은
+   낮게 잡는다.
+3. **기대셋 + 계약 테스트 갱신 필수** —
+   `tests/fixtures/golden_expected_evidence.yaml` 의 `known_families` 와
+   해당 조합의 required/forbidden 을 갱신하고, **"단독 자격 fail" 계약
+   테스트**(신규 family 만 있는 후보가 eligible=false 인 케이스)를 추가한다.
+   boost-only family 는 top-N 에 등장해도 evidence family 로 세어지면 안
+   된다는 불변식도 함께 고정한다. 랭킹 이동은 스냅샷 회귀
+   (`tests/fixtures/ranking_snapshots/dense_golden.json` /
+   `wide_golden.json`) diff 재승인으로 검증한다.
+4. **명명 규칙** — 대문자 SNAKE_CASE 명사구, 근거의 **성격**을 이름에
+   담는다 (`PURCHASE_BEHAVIOR` 처럼 "무엇이 확인되었는가"). 접미사 규칙:
+   확정 행동은 `_BEHAVIOR`, 관심/친화 수준은 `_INTEREST`/`_AFFINITY`.
+   기존 SignalFamily enum 값과 이름이 겹치지 않게 한다 (COMPARISON 처럼
+   양쪽에 존재하게 될 이름은 문서/코드 주석에서 레이어를 항상 명기).
+5. **provenance 유지** — 신규 family 의 overlap 이 가리키는 근거도
+   §5 provenance contract(신호→fact→원문 추적)를 만족해야 한다. 추적
+   불가능한 근거는 family 후보가 아니다.
+
+### 13.4 예정 family (참고용 예고 — 본 계약의 첫 적용 대상)
+
+| 예정 family | 트랙 | 자격 등급 (예정) | 상태 |
+|---|---|---|---|
+| `COMPARISON` | P7-1a (A1) | boost-only 권장 ("비교됨"은 약신호) | 도입 중 |
+| `COLLABORATIVE_AFFINITY` | P7-4 (D1) | 단독 자격 불가·결합 부스트만 | 계획 |
+| `BEHAVIORAL_INTEREST` | Track E (E2) | 단독 자격 불가 (스쳐본 것은 자격이 아님) | 보류 (이벤트 스펙 확정 시) |
+
+---
+
 ## 11. 변경 이력
 
 | 날짜 | Wave | 변경 |
@@ -482,3 +565,4 @@ GraphRapping 의 누적 방어 메커니즘은 계층별로 강도가 다르다.
 | 2026-06-09 | Wave 5.6 | §12 "Retention 한계" 섹션 추가 (documentation-only) |
 | 2026-06-10 | Mockdata real product_id fix | product universe를 rs_own source product id 기반 517개로 고정하고 promoted product 수치 갱신 |
 | 2026-06-15 | Source-grounded contract | `serving_product_profile` 에 source identity/review stats 를 추가하고 `review_count_*` 를 graph support count 로 명확화 |
+| 2026-07-13 | Phase 7 E0 | §13 "Recommendation evidence-family 확장 계약" 추가 — 현행 자격 의미론(OR)과 신규 family 추가 조건(단독 자격/가중·shrinkage/기대셋·계약 테스트/명명/provenance) 성문화 |

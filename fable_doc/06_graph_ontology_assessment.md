@@ -107,3 +107,84 @@
 6. 인사이트 서피스(캘린더 버킷/세그먼트 교차/루틴)는 위가 자리 잡은 뒤
 
 상세 실행 계획: **`plans/2026-07-13_phase7_graph_intelligence.md`** (Phase 7)
+
+## A4 추기 (2026-07-13) — wide 재검증 실측 + 구조적 천장 + C2 목표 근거
+
+Phase 7 A4 수행분. 방법: `scripts/audit_recommendation_evidence.py --fixture {dense_golden|wide}`
+(서버와 동일 primitive, DB/네트워크 미사용) + 동일 in-memory full-load의
+agg/serving 산출물 직접 계측. dense는 6 골든 프로필 × 7탭 = 42 시나리오,
+wide는 전체 50 유저 × 7탭 = 350 시나리오.
+
+### A4-1. 진단 U1 표의 dense/wide 재산출 비교
+
+| 실측 | dense (32상품, 42시나리오, top행 107) | wide (517상품, 350시나리오, top행 1,740) |
+|---|---|---|
+| 연결성 고유 신호(concern_bridge/coused/tool/comparison) 순위 기여 | **0 / 107 (전수)** | **0 / 1,740 (전수)** |
+| top-10 REVIEW_GRAPH_RELATION 등장률 | **72.9%** (진단 §2 재현 일치) | **2.3%** |
+| top-3 PRODUCT_MASTER_TRUTH vs REVIEW_GRAPH_RELATION | **62.3% vs 60.4%** (재현 일치) | **90.6% vs 3.9%** |
+| score layer 순기여 상위 | source_trust 33.9% > graph 28.5% > purchase 16.7% > master 15.9% (재현 일치) | **master 45.0% > source_trust 34.4%** > purchase 14.4% > profile_fit 5.3% > **graph 0.9%** |
+| 후보 풀 evidence family 합계 | MASTER 56 / PURCHASE 50 / **GRAPH 100** | MASTER 5,068 / PURCHASE 1,629 / **GRAPH 42** |
+| no-candidate 시나리오 | 23/42 | 128/350 |
+
+- dense의 진단 §2 수치(72.9 / 62.3–60.4 / 33.9–28.5–16.7–15.9)가 소수점까지
+  재현됨 — 진단의 실측 기반 확인.
+- **wide에서는 REVIEW_GRAPH_RELATION이 후보 자격 공급자 지위 자체를 상실**
+  (후보 풀 42건, top-N 등장 2.3%). 추천 근거가 카탈로그 진실(master 45%)로
+  수렴한다는 §5의 예측이 랭킹 레벨에서 그대로 실측됨. 연결성 고유 신호
+  0건은 dense/wide 공통(원인 분류는 §2와 동일 — 카탈로그 크기와 무관).
+- 참고: 진단 §2의 "source_popularity hit 100%" 행은 본 재실행의 top-N
+  feature 실기여 기준으로는 0이라(product_activity 레이어 총기여 0.0%)
+  비교표에서 제외했다. 랭킹 재현성 자체는 스냅샷 회귀로 별도 고정(A4-2).
+
+### A4-2. wide 랭킹 스냅샷 베이스라인 (신규 자산)
+
+- `tests/fixtures/ranking_snapshots/wide_golden.json` 생성 (350 조합, top-10,
+  kg_mode=on). 생성/갱신 커맨드: `python scripts/generate_ranking_snapshot.py
+  --fixture wide --snapshot-path tests/fixtures/ranking_snapshots/wide_golden.json --update`
+  (스크립트는 이미 fixture 선택을 지원 — 수정 불필요했음)
+- `tests/test_ranking_snapshot_regression.py`에 wide 케이스 추가(dense 무손상).
+  **C2의 게이트 완화는 이 스냅샷 diff의 "의도 변경 재승인" 워크플로우를
+  통과해야 한다** (단순 green 아님 — 계획 §C2).
+
+### A4-3. 서빙 도달률의 구조적 천장 실측
+
+| 실측 (동일 906리뷰) | dense (32) | wide (517) |
+|---|---|---|
+| 리뷰 ≥1 매칭 상품 (게이트 완화의 이론 천장) | 32/32 = **100%** | 517/517 = **100%** |
+| review-graph projectable 신호 ≥1 상품 (실질 도달가능 천장) | 32/32 = 100% | 515/517 = **99.6%** |
+| 승격(all-window) 상품 | 29 (90.6%) | 26 (**5.0%**) |
+| 현행 서빙 top_bee_attr 보유 상품 | 29/32 = **90.6%** (진단 §5 91% 재현) | 26/517 = **5.0%** (진단 §5 재현) |
+| 현행 서빙 top_keyword 보유 상품 | 18 (56.2%) | 5 (**1.0%**) |
+
+**핵심 발견**: wide의 천장은 100%다 — 리뷰 0 상품이 병목이 아니다(517상품
+전부 리뷰 ≥1 매칭). 5% 붕괴는 전적으로 승격 게이트가 만든다.
+
+게이트 완화 곡선 실측 (all-window review-graph agg 신호, 품질 게이트
+avg_confidence≥0.6·synthetic_ratio≤0.5는 유지한 채 distinct_review 임계만 변화):
+
+| distinct_review 임계 | dense 도달 상품 | wide 도달 상품 |
+|---|---|---|
+| ≥1 | 32 (100%) | 515 (**99.6%**) |
+| ≥2 | 32 (100%) | 90 (**17.4%**) |
+| ≥3 (현행 all) | 29 (90.6%) | 26 (**5.0%**) |
+
+- **품질 게이트는 비구속**: 위 3행 모두 품질 게이트를 제거해도 수치 동일 —
+  병목은 오직 distinct_review 절대 임계.
+- wide 상품별 최대 distinct_review 분포: **1리뷰 425상품(82%)**, 2리뷰 64,
+  3리뷰 18, 4+ 8 — 906리뷰/517상품(평균 1.75)의 산술적 귀결. 실데이터
+  (수만 상품)에서는 이 꼬리가 더 두꺼워진다.
+
+### A4-4. C2 목표치 제안 (천장 대비)
+
+- 천장 기준선: 이론 천장 100%(리뷰≥1), 실질 천장 99.6%(projectable 신호 보유).
+- **1차 목표 제안: wide 서빙 도달률 5% → ≥17% (천장 대비 ≥17%, 현행 3.5배)**
+  — ALL/90d 임계 3→2 완화만으로 도달 가능함이 곡선으로 실측됨(90상품).
+  distinct_review=2는 여전히 교차 검증(서로 다른 리뷰 2건)이므로 승격
+  의미론을 유지한다.
+- 상대 임계(계획 §C2 레버 (a): 리뷰 2개뿐인 상품의 2/2 인정)는 ≥2 완화에
+  포함되어 별도 증분이 없다. 추가 증분은 1/1(단독 리뷰) 인정에서만 나오는데
+  (+425상품, 99.6%까지), **단독 리뷰 신호의 자격 인정은 권장하지 않음** —
+  인정하더라도 boost-only/저신뢰 티어로 한정(E0 계약의 단독 자격 불가
+  원칙과 정합). 최종 결정은 계획대로 P7-3 착수 시 DECISIONS 초안으로.
+- 검증 조건: wide_golden 스냅샷 diff 재승인 + 기대셋(0.1) 갱신 +
+  synthetic_ratio 게이트 불변(계획 §C2 완료 기준).
