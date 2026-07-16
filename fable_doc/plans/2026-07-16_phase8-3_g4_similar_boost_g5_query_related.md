@@ -240,3 +240,40 @@ Track E 구매/액션 스트림 유입 시 코드 변경 없이 자동 활성. w
 
 **후속 후보(비차단)**: 기존 boost-only 3종 overlap_score 집계 비대칭 통일 여부 ·
 '기타' 카테고리 그룹 min_score 재평가(P8-2 리뷰 #3).
+
+### P8-3b (G5) 완료 — 2026-07-16 (Opus 구현, Fable 리뷰 + 수정 1건)
+
+**변경**: server.py(`_related_products`/`_related_anchor_names`/
+`_avoided_ingredient_product_ids` 헬퍼 + `/api/search`·`/api/ask` 양 분기
+`related_products` additive — 1차 정렬·`_run_scored_pipeline` 무변경) ·
+app.js(`renderRelatedProducts` — 1차 카드 렌더 뒤 이어붙임, 빈 값 미삽입,
+anchor 귀속 문구+`chip bee` 칩, 클릭→상세) · tests/test_related_products.py
+(신규 16 = 헬퍼 11 + e2e 5).
+
+**제외 규칙(구현 확정)**: search/ask-search = 1차 결과 + **쿼리 부정 성분
+상품**(Fable 리뷰 수정 — 아래) · ask-recommend = 1차 + owned + 기피 성분
+상품(`collect_preference_ids` 동일 로직 재사용, scope-aware, 쿼리 주입
+AVOIDS_INGREDIENT 전파). 중복=최대 score+그 anchor 귀속, 동점 product_id
+tie-break, malformed/non-finite skip, [C1] shared_axes 복사.
+
+**Fable 리뷰 — 수정 1건 반영**: 구현자가 정직하게 보고한 관찰("ask-search
+분기는 스펙상 1차만 제외 → 부정 쿼리의 기피 성분이 related로 재등장 가능")을
+실코드로 확인 — `interp.avoided_ingredient_concept_ids`가 1차에는 적용되고
+related에는 미적용인 비대칭 = Phase 6 부정 처리를 2차 섹션이 훼손하는 계약
+위반으로 판정. **1차 필터와 동일 의미론(ingredient_concept_ids ∩ avoided)으로
+ask-search related exclude에 추가** + 고정 테스트(`..._respects_query_negation`:
+부정 성분 이웃이 최고 score여도 related 미등장) 작성. 계획 §2.1의 "search
+분기=1차만" 문구는 **plain /api/search에만 유효**(부정 개념 자체가 없음)로 정정.
+
+**검증**: 재량 2건 승인(anchor_names optional 인자 — 시그니처 비파괴 최소 확장 /
+get_ungated_similar duck-typing — P8-3a 선례·기존 fake-store 테스트 보호) ·
+기존 테스트 수정 0(1차 정렬 불변 증명) · 스크래치 8127 실측: `/api/search?쿠션`
+related 5건(1차와 교집합 ∅, shared_axes+anchor 귀속 동반) · **브라우저 시각
+확인**: "쿠션 커버력" ask → 1차 카드 아래 "관련 상품 더보기 (5)" 패널, 각 항목
+anchor 귀속 문구+근거 칩 렌더, 라이브 8123 무접촉 · **게이트: ruff/mypy ✅,
+pytest 1277 passed, 50 skipped, 0 failed**(1261+16).
+
+**Phase 8 종결**: G1(계산)~G2/G3(유사상품 서피스)~G4(추천 boost, 배선+대기)~
+G5(쿼리 관련상품) 전 트랙 구현 완료. 잔여 후속 후보(비차단)는 P8-3a 완료
+보고의 2건 + ask-search 문구 정정 반영.
+
