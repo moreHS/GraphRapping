@@ -252,3 +252,52 @@ grep 검증).
 **현 데이터 한계(설계 아님)**: keyword polarity 전부 NEU(710/710 — 극성 변별은
 POS/NEG 데이터 유입 시 자동 활성, 합성 테스트로 고정) · keyword 축 보유 상품
 wide 63.8%(데이터 성숙으로 회복 예정, 전체 커버리지는 타 축이 견인).
+
+### P8-2 (활성화 훅 + G2 + G3) 완료 — 2026-07-16 (Opus 구현, Fable 리뷰)
+
+**변경**: `src/rec/provenance_provider.py`(+`fetch_keyword_signal_triples` — polarity
+포함 SELECT, `keyword_id IS NOT NULL`, null→"" 정규화; 기존 `fetch_product_signals`
+무수정) · `src/web/serving_store.py`(공용 훅 `build_and_attach_similarity`
+[gate ON+symmetrize+attach] + keyword 라벨 인덱스, `DBServingStore._refresh`가
+`_fetch_products` 직후 호출) · `src/web/state.py`(demo 훅 — `product_signals`
+인덱스 구성 **직후**, 지연 임포트로 순환 회피) · `src/web/server.py`(G3
+`GET /api/products/{id}/similar` + G2 `_build_corpus_graph` SHARES_ATTRIBUTE 엣지,
+뷰 캡 `_SIMILAR_GRAPH_CAP=3`) · `src/static/graph_view.js`(JS 실작업 3건: 엣지
+data(shared_axes·score) 전달 / hover·tap 툴팁 신설 / 무방향 점선 보라 스타일) ·
+`src/static/app.js`("비슷한 상품" 섹션 — 빈 배열이면 미노출) · 테스트 4파일.
+
+**view 계약 확정**: 신규 view 모드가 아닌 **기존 corpus 그래프 확장**(계획 §G2
+택1 조항 해소). 그래프 가독성 캡 3(위젯은 full top-N 유지).
+
+**라벨 인덱스**: `configs/keyword_surface_map.yaml` 역매핑으로 keyword_id→label_ko
+34건(예 kw_moisturizing→보습좋음), 미등재 keyword·타 축은 suffix fallback(한국어
+concept id라 이미 가독). 신규 config 없음.
+
+**실측 (스크래치 서버 8125, 517상품/906리뷰 적재; 라이브 8123 무접촉)**:
+- G3: `100317/similar` → 200, 8건(top-1 샴푸 score 6.58, 근거 세정 IDF 5.55 +
+  이니스프리 1.02) · 무이웃 상품 → 빈 배열 200 · 미존재 id → 404
+- G2: corpus 그래프에 SHARES_ATTRIBUTE 3개(캡 동작), data에 score·shared_axes 동반
+- **브라우저 시각 확인(Playwright)**: 점선 보라 무방향 엣지(`line-style:dashed`,
+  화살표 none — 일반 엣지는 triangle 유지=무회귀), hover 툴팁 "공유 속성: 세정
+  (IDF 5.6) · 이니스프리 (IDF 1.0) · score 6.58", 상품 상세 "비슷한 상품 (8)"
+  섹션+근거 칩 렌더. 콘솔 에러 0(favicon 404 기존 제외).
+
+**게이트**: ruff ✅ / mypy 117 ✅ / pytest **1234 passed, 50 skipped, 0 failed**
+(기존 1221 + 신규 13). 기존 랭킹 스냅샷·기대셋 무변경(additive 필드로 인한
+exact-assert 파손 0). 기존 테스트 수정 1건만: `test_serving_store_db.py`의
+fake conn에 wrapped_signal 쿼리 라우팅 추가(어서션 변경 아님).
+
+### Fable 리뷰 (P8-2) — 2026-07-16, 판정 **APPROVE**
+
+전 diff 정독 + 게이트 독립 재실측 + 브라우저 시각 검증(위). 반영/기록:
+1. **[반영] 위젯 레이스 가드** — 상품 연속 클릭 시 이전 상품의 similar fetch가
+   늦게 도착해 새 패널에 꽂히는 레이스 → `currentDetailId` 가드 3줄(리뷰 수정).
+2. **[P8-1 체크리스트 이행 확인]** polarity 교차소스(null↔"", NEU 분리 유지)
+   테스트 고정 ✅ · 라벨 인덱스 조달 ✅ (Fable P8-1 리뷰 #2·#3 해소).
+3. **[관찰] '기타' 카테고리 그룹** — 6군 키워드 매핑에 안 걸리는 카테고리(예
+   '세정', 트리트먼트류)는 `other` 그룹으로 묶여 상호 게이트 통과 → 브랜드만
+   공유한 약한 이웃(score 1.02)이 노출될 수 있음. 점수로 정직하게 하위이며 근거
+   투명. 필요 시 G3에 min_score 하한(브랜드 단독 초과) 또는 그룹 사전 보강 —
+   **P8-3/데이터 성숙 시 재평가**(지금 튜닝 안 함, 계획 기본값 유지).
+4. DB 훅 실패 semantics는 스토어 기존 가용성 정책(첫 로드 raise/이후 stale)을
+   따름 — products/users fetch와 동일 규율, 스펙 부합.
