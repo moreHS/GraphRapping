@@ -671,6 +671,34 @@ function renderDevMetaBlock(data) {
   return `<div class="dev-only dev-meta-block">${parts.join('')}</div>`;
 }
 
+// Phase 8 G5: "관련 상품 더보기" — 2차 관련 상품 섹션. 서버가 1차 결과(검색/추천)
+// 상위 앵커의 ungated 속성-공유 이웃을 related_products로 실어 보내면, 1차 결과
+// 카드 뒤에 덧붙인다. 이웃명 + score + anchor 귀속 문구 + 공유 축 라벨 칩(P8-2
+// 칩 스타일 재사용), 클릭 → 상품 상세. related_products가 비면 섹션 자체를
+// 미삽입하며, 1차 결과 렌더 코드는 건드리지 않는다(반환 HTML을 뒤에 이어붙일 뿐).
+function renderRelatedProducts(data) {
+  const related = (data && data.related_products) || [];
+  if (!related.length) return '';
+  const rows = related.map(it => {
+    const axes = (it.shared_axes || []).map(a =>
+      `<span class="chip bee" title="IDF ${fmtRating(a.idf)}">${displayText(a.label)}</span>`
+    ).join('');
+    const anchorName = it.anchor_name || it.anchor_product_id || '';
+    return `
+      <div class="related-item" onclick="showProductDetail(${jsStringArg(it.product_id)})"
+           style="padding:8px 0;border-bottom:1px solid var(--border);cursor:pointer">
+        <div><strong>${displayText(it.neighbor_name || it.product_id)}</strong>
+          <span style="color:var(--text2);font-size:12px;margin-left:6px">score ${fmtScore(it.score)}</span></div>
+        <div style="color:var(--text2);font-size:12px;margin-top:2px">'${displayText(anchorName)}'과 속성 공유</div>
+        <div style="margin-top:4px">${axes || '<span style="color:var(--text2);font-size:11px">공유 근거 없음</span>'}</div>
+      </div>`;
+  }).join('');
+  return `<div class="panel related-products" style="margin-top:12px">
+    <h2>관련 상품 더보기 <span style="font-weight:normal;font-size:12px;color:var(--text2)">공유 속성 기반 (${related.length})</span></h2>
+    ${rows}
+  </div>`;
+}
+
 function renderRecommendResults(data) {
   destroyInlineRecGraphs();
 
@@ -770,7 +798,7 @@ function renderRecommendResults(data) {
         </div>
       </div>
     `;
-  }).join('');
+  }).join('') + renderRelatedProducts(data);
 }
 
 // =============================================================================
@@ -1045,7 +1073,7 @@ function renderSearchResults(data) {
         </div>
       </div>
     `;
-  }).join('');
+  }).join('') + renderRelatedProducts(data);
 }
 
 // =============================================================================

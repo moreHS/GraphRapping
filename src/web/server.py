@@ -7,6 +7,7 @@ from __future__ import annotations
 import asyncio
 import copy
 import functools
+import math
 import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -30,6 +31,7 @@ from src.rec.candidate_generator import (
     extract_owned_product_ids,
     generate_candidates_prefiltered,
 )
+from src.rec.scoped_preferences import collect_preference_ids
 from src.rec.scorer import Scorer
 from src.rec.reranker import rerank
 from src.rec.explainer import explain, ExplanationService
@@ -897,6 +899,133 @@ async def _resolve_snippets_batch(
 
 
 # =============================================================================
+# Phase 8 G5: query-based "related products more" (plan §2)
+# =============================================================================
+#
+# A purely additive 2차 surface: for the top few 1차 results (search or query-
+# scoped recommend), gather each anchor's ungated attribute-similar neighbours
+# from the store sidecar (``get_ungated_similar`` — NOT the profile-attached
+# ``similar_product_ids`` field, so the 1차 pipeline's own results are never
+# touched) and present the best few as "related products". No similarity-stage
+# gate is added here: category constraints are already applied upstream by the
+# query pipeline (confirmed decision). The caller assembles ``exclude_ids`` (all
+# 1차 results, plus — recommend branch only — the user's owned products and any
+# avoided-ingredient carriers) so upstream hard exclusions are preserved even
+# for neighbours that fell outside the narrowed universe (plan §2.1, codex #11).
+
+
+def _related_anchor_names(results: list[dict[str, Any]]) -> dict[str, str]:
+    """Map each 1차-result product_id to its display name, for anchor attribution.
+
+    Sourced from the result's embedded serving profile
+    (``representative_product_name``), falling back to the product_id when a name
+    is absent. Works for both the search result shape and the recommend result
+    shape (both embed ``product``)."""
+    names: dict[str, str] = {}
+    for result in results:
+        pid = result.get("product_id")
+        if not pid:
+            continue
+        profile = result.get("product") or {}
+        name = profile.get("representative_product_name")
+        names[str(pid)] = str(name) if name else str(pid)
+    return names
+
+
+def _avoided_ingredient_product_ids(
+    user_profile: dict[str, Any],
+    product_map: dict[str, dict[str, Any]],
+) -> set[str]:
+    """Product ids whose profile carries an ingredient this user avoids.
+
+    Mirrors ``candidate_generator``'s avoided-ingredient hard filter EXACTLY —
+    the same scope-aware ``collect_preference_ids(..., "avoided_ingredient_ids",
+    "AVOIDS_INGREDIENT", <product group>)`` and the same
+    ``ingredient_concept_ids`` ∪ ``ingredient_ids`` intersection — so a related-
+    products neighbour that would have been hard-filtered upstream is excluded
+    here too. Upstream cannot be relied on for ungated neighbours: they can fall
+    outside the narrowed candidate universe, where the filter never ran (plan
+    §2.1 / codex #11). Query-injected AVOIDS_INGREDIENT entries live on the
+    scoped profile passed in, so negated-ingredient queries propagate here as
+    well."""
+    excluded: set[str] = set()
+    for pid, product in product_map.items():
+        product_group = classify_product_category_group(product)
+        avoided = collect_preference_ids(
+            user_profile, "avoided_ingredient_ids", "AVOIDS_INGREDIENT", product_group,
+        )
+        if not avoided:
+            continue
+        product_ingredients = set(product.get("ingredient_concept_ids") or [])
+        product_ingredients.update(product.get("ingredient_ids") or [])
+        if avoided & product_ingredients:
+            excluded.add(str(pid))
+    return excluded
+
+
+async def _related_products(
+    anchor_ids: list[str],
+    *,
+    store: ServingStore,
+    exclude_ids: set[str],
+    limit: int = 5,
+    anchor_names: dict[str, str] | None = None,
+) -> list[dict[str, Any]]:
+    """Assemble the G5 "related products" list from the anchors' ungated sidecar.
+
+    ``anchor_ids`` are the top 1차-result product ids (the caller slices to 5).
+    Each anchor's ungated similarity neighbours come from
+    ``store.get_ungated_similar`` (never the profile-attached similar field). A
+    neighbour is dropped when it is in ``exclude_ids`` or is the anchor itself,
+    or when its entry is malformed / its score is non-finite or non-positive. A
+    neighbour reachable from several anchors is deduped to its MAX-score entry
+    (keeping that anchor's attribution); an exact score tie resolves to the
+    smaller anchor id (anchors are visited in sorted order and an entry is
+    replaced only on a strictly greater score). The final list is score-desc,
+    then neighbour-id-asc, capped to ``limit``. Each entry deep-copies its
+    ``shared_axes`` evidence ([C1]: the response must never alias store state)
+    and names the anchor it was attributed to. Empty result → ``[]``.
+
+    ``get_ungated_similar`` is duck-typed (an optional store capability, exactly
+    as ``_run_scored_pipeline`` treats it): a store without the accessor yields
+    no related products rather than erroring."""
+    ungated_getter = getattr(store, "get_ungated_similar", None)
+    if ungated_getter is None:
+        return []
+    names = anchor_names or {}
+    best: dict[str, dict[str, Any]] = {}
+    for anchor in sorted(set(anchor_ids)):
+        anchor_name = names.get(anchor) or anchor
+        for sig in await ungated_getter(anchor):
+            neighbor_raw = _similar_signal_field(sig, "product_id")
+            neighbor = str(neighbor_raw) if neighbor_raw else ""
+            if not neighbor or neighbor == anchor or neighbor in exclude_ids:
+                continue
+            try:
+                score = float(_similar_signal_field(sig, "score"))
+            except (TypeError, ValueError):
+                continue
+            if not math.isfinite(score) or score <= 0.0:
+                continue
+            existing = best.get(neighbor)
+            if existing is not None and existing["score"] >= score:
+                continue
+            axes = _similar_signal_field(sig, "shared_axes") or []
+            best[neighbor] = {
+                "product_id": neighbor,
+                "neighbor_name": str(_similar_signal_field(sig, "neighbor_name") or neighbor),
+                "score": score,
+                "shared_axes": [dict(ax) for ax in axes],
+                "anchor_product_id": anchor,
+                "anchor_name": anchor_name,
+            }
+    ranked = sorted(best.values(), key=lambda entry: (-entry["score"], entry["product_id"]))[:limit]
+    for entry in ranked:
+        entry["score"] = round(entry["score"], 4)
+    return ranked
+
+
+# =============================================================================
 # Search (Phase 4.2: concept-based search, not full-text)
 # =============================================================================
 #
@@ -929,10 +1058,22 @@ def _clamp_search_top_k(top_k: int) -> int:
 
 async def _run_search(query: str, top_k: int) -> dict[str, Any]:
     _check_serving_ready()
-    products = await get_serving_store().get_products()
+    store = get_serving_store()
+    products = await store.get_products()
     outcome = search_products(query, products, max_results=_clamp_search_top_k(top_k))
     payload = outcome.to_dict()
     payload["message"] = None if outcome.resolved else _SEARCH_NO_CONCEPT_MESSAGE
+    # Phase 8 G5 (additive): "related products" from the top results' ungated
+    # similarity neighbours. Anonymous surface — exclude only the 1차 results
+    # themselves (no user context to derive owned/avoided from).
+    results = payload.get("results") or []
+    result_pids = [str(r["product_id"]) for r in results if r.get("product_id")]
+    payload["related_products"] = await _related_products(
+        result_pids[:5],
+        store=store,
+        exclude_ids=set(result_pids),
+        anchor_names=_related_anchor_names(results),
+    )
     return payload
 
 
@@ -1154,6 +1295,35 @@ async def ask(req: AskRequest):
             max_results=_clamp_search_top_k(req.top_k),
             avoided_ingredient_concept_ids=interp.avoided_ingredient_concept_ids,
         )
+        search_results = outcome.to_dict()["results"]
+        # Phase 8 G5 (additive): anonymous rule — exclude the 1차 results, PLUS
+        # products carrying a query-negated ingredient. The 1차 results already
+        # hard-filter those (search_products avoided_ingredient_concept_ids,
+        # Phase 6 negation); the related section must not reintroduce what the
+        # query explicitly excluded. Same match semantics as the primary filter
+        # (ingredient_concept_ids ∩ avoided).
+        search_result_pids = [
+            str(r["product_id"]) for r in search_results if r.get("product_id")
+        ]
+        exclude_ids = set(search_result_pids)
+        query_avoided = {
+            str(cid)
+            for cid in (interp.avoided_ingredient_concept_ids or [])
+            if cid
+        }
+        if query_avoided:
+            exclude_ids.update(
+                str(p.get("product_id"))
+                for p in products
+                if {str(v) for v in (p.get("ingredient_concept_ids") or [])}
+                & query_avoided
+            )
+        related = await _related_products(
+            search_result_pids[:5],
+            store=store,
+            exclude_ids=exclude_ids,
+            anchor_names=_related_anchor_names(search_results),
+        )
         return {
             "query": query,
             "interpretation": interp.to_dict(),
@@ -1161,7 +1331,8 @@ async def ask(req: AskRequest):
             "relaxed": False,
             "category_group": category_group,
             "preset_used": None,
-            "results": outcome.to_dict()["results"],
+            "results": search_results,
+            "related_products": related,
         }
 
     # --- (b) Query-scoped recommend mode ---
@@ -1216,6 +1387,23 @@ async def ask(req: AskRequest):
                 if normalize_signal_id(path.get("id")) in injected_keys:
                     path["user_edge"] = _ASK_QUERY_USER_EDGE
 
+    # Phase 8 G5 (additive): "related products" from the top results' ungated
+    # similarity neighbours. Personalized surface — preserve every upstream hard
+    # exclusion (plan §2.1 / codex #11): the 1차 results, the user's owned
+    # products, and any avoided-ingredient carrier (checked with the same
+    # field/logic candidate_generator uses, since ungated neighbours can sit
+    # outside the narrowed universe where that filter never ran).
+    result_pids = [str(r["product_id"]) for r in results if r.get("product_id")]
+    exclude_ids = set(result_pids)
+    exclude_ids |= extract_owned_product_ids(user_scoped)
+    exclude_ids |= _avoided_ingredient_product_ids(user_scoped, product_map)
+    related = await _related_products(
+        result_pids[:5],
+        store=store,
+        exclude_ids=exclude_ids,
+        anchor_names=_related_anchor_names(results),
+    )
+
     return {
         "query": query,
         "interpretation": interp.to_dict(),
@@ -1231,6 +1419,7 @@ async def ask(req: AskRequest):
         "weights_used": scorer.weights,
         "preset_used": preset_used,
         "results": results,
+        "related_products": related,
     }
 
 
