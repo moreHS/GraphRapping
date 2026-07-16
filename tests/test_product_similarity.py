@@ -109,6 +109,33 @@ def test_keyword_node_key_helper_handles_bare_and_iri():
     )
 
 
+def test_polarity_null_and_empty_fold_but_neu_stays_distinct():
+    # Cross-source polarity contract (Fable P8-1 review #2): the DB hook
+    # normalizes a null polarity to "" and the demo adapter carries "", so both
+    # must land on the SAME node key; the sentinel "NEU" must NOT collapse into
+    # them (a real polarity value stays its own node).
+    key_none = keyword_node_key("be", "kw", None, alias_map={})
+    key_empty = keyword_node_key("be", "kw", "", alias_map={})
+    key_neu = keyword_node_key("be", "kw", "NEU", alias_map={})
+    assert key_none == key_empty == "keyword::be:kw:"
+    assert key_neu == "keyword::be:kw:NEU"
+    assert key_neu != key_empty
+
+    # And through build_product_nodes: a DB-null product and a demo-"" product
+    # share the keyword node; a "NEU" product does not.
+    nodes = build_product_nodes(
+        [{"product_id": "DB"}, {"product_id": "DEMO"}, {"product_id": "NEU"}],
+        {
+            "DB": [("be", "kw", None)],
+            "DEMO": [("be", "kw", "")],
+            "NEU": [("be", "kw", "NEU")],
+        },
+        alias_map={},
+    )
+    assert nodes["DB"] == nodes["DEMO"]
+    assert nodes["DB"].isdisjoint(nodes["NEU"])
+
+
 def test_bee_attr_is_never_a_standalone_scored_node():
     nodes = build_product_nodes(
         [{"product_id": "A"}],

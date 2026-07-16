@@ -45,6 +45,13 @@ from src.mart.serving_profile_schema import (
     SERVING_PRODUCT_PROFILE_COLUMNS,
     SERVING_USER_PROFILE_COLUMNS,
 )
+from src.rec.product_similarity import (
+    attach_similarity_signals,
+    build_idf,
+    build_product_nodes,
+    build_similarity_signals,
+    symmetrize,
+)
 from src.rec.scoped_preferences import GLOBAL_SCOPES, has_scoped_preferences
 from src.web.state import DemoState
 
@@ -93,6 +100,102 @@ def _globally_avoided_ingredient_ids(user_profile: dict[str, Any]) -> list[str]:
             if value:
                 out.append(str(value))
     return out
+
+
+# =============================================================================
+# Phase 8 (G2/G3): product-product similarity activation hook
+# =============================================================================
+#
+# Both serving loads (DB refresh + demo pipeline load) call
+# ``build_and_attach_similarity`` once, corpus-level, right after the product
+# profiles are materialized. It projects shared canonical-fact nodes into an
+# ephemeral ``similar_product_ids`` field on each profile (design:
+# fable_doc/plans/2026-07-15_phase8_shared_node_projection.md §활성화 훅). The
+# item-to-item / similar-products context uses ``category_gate=True``. Nothing
+# downstream of candidate generation reads ``similar_product_ids`` (grep-verified
+# safety contract), so activating the hook cannot move a recommendation ranking.
+
+
+def _keyword_id_labels() -> dict[str, str]:
+    """Best-effort ``keyword_id -> label_ko`` from ``keyword_surface_map.yaml``.
+
+    The similarity label sidecar (§활성화 훅, "라벨 인덱스"): serving only carries
+    concept ids, so the keyword axis is labelled from the existing keyword surface
+    dict reverse-mapped by id. No new config is introduced; a keyword id absent
+    from the dict (e.g. a texture keyword) falls back to the concept-id suffix in
+    ``product_similarity._shared_axis``. Concept-id axes (ingredient/category/brand/
+    goal) are already human-readable Korean ids, so only the keyword axis is filled.
+    """
+    from src.common.config_loader import load_yaml
+
+    try:
+        raw = load_yaml("keyword_surface_map.yaml")
+    except Exception:  # pragma: no cover - config missing/malformed → fallback only
+        return {}
+    labels: dict[str, str] = {}
+    for entries in (raw or {}).values():
+        for entry in entries or []:
+            if not isinstance(entry, dict):
+                continue
+            kid = entry.get("keyword_id")
+            label = entry.get("label_ko")
+            if kid and label:
+                labels.setdefault(str(kid), str(label))
+    return labels
+
+
+def _keyword_label_index(product_nodes: dict[str, set[str]]) -> dict[str, str]:
+    """Map each keyword node key ``keyword::{bee}:{kw}:{pol}`` to its Korean label.
+
+    Keyed on the full node key (what ``build_similarity_signals`` looks up) using
+    the canonical keyword id segment. Empty when no label source resolves, in which
+    case similarity falls back to the concept-id suffix.
+    """
+    kw_labels = _keyword_id_labels()
+    if not kw_labels:
+        return {}
+    index: dict[str, str] = {}
+    for node_set in product_nodes.values():
+        for node in node_set:
+            if node in index or not node.startswith("keyword::"):
+                continue
+            rest = node.split("::", 1)[1]
+            parts = rest.split(":")
+            if len(parts) >= 2 and parts[1]:
+                label = kw_labels.get(parts[1])
+                if label:
+                    index[node] = label
+    return index
+
+
+def build_and_attach_similarity(
+    products: list[dict[str, Any]],
+    raw_keyword_signals: dict[str, list[tuple[str, str, str]]],
+    *,
+    category_gate: bool = True,
+) -> None:
+    """Activation hook: compute + attach ephemeral ``similar_product_ids`` in place.
+
+    Shared by the DB serving refresh and the demo pipeline load. ``products`` are
+    serving profiles (they supply the ingredient/category/brand/goal axes);
+    ``raw_keyword_signals`` are the keyword ``(bee_attr_id, keyword_id, polarity)``
+    triples the keyword axis needs, sourced from ``wrapped_signal`` (DB:
+    :func:`provenance_provider.fetch_keyword_signal_triples`) or demo
+    ``product_signals`` (:func:`product_similarity.keyword_signals_from_product_signals`).
+
+    Neighbour lists are union-symmetrized so a similar-products surface shows the
+    edge on both sides. Idempotent overwrite: safe on every load/refresh.
+    """
+    nodes = build_product_nodes(products, raw_keyword_signals)
+    idf = build_idf(nodes)
+    signals = build_similarity_signals(
+        nodes,
+        products,
+        idf=idf,
+        category_gate=category_gate,
+        label_index=_keyword_label_index(nodes),
+    )
+    attach_similarity_signals(products, symmetrize(signals))
 
 
 @runtime_checkable
@@ -310,6 +413,10 @@ class DBServingStore:
 
     async def _refresh(self) -> None:
         products = await self._fetch_products()
+        # Phase 8 activation hook (right after _fetch_products, per plan §활성화 훅):
+        # attach ephemeral product-product similarity from the wrapped_signal
+        # keyword sidecar + the profiles just fetched, once per refresh.
+        await self._attach_similarity(products)
         users = await self._fetch_users()
         self._products = products
         self._products_by_id = {
@@ -334,6 +441,19 @@ class DBServingStore:
                 f"SELECT {columns} FROM serving_user_profile WHERE is_active = true"
             )
         return [_decode_row(row, _USER_JSONB_COLUMNS) for row in rows]
+
+    async def _attach_similarity(self, products: list[dict[str, Any]]) -> None:
+        """Phase 8: attach ephemeral ``similar_product_ids`` to freshly-fetched
+        products, sourcing the keyword axis from the ``wrapped_signal`` sidecar."""
+        product_ids = [p["product_id"] for p in products if p.get("product_id")]
+        if not product_ids:
+            return
+        # Lazy import mirrors the module's other db.* deferrals and keeps the
+        # provenance/asyncpg layer out of demo-mode import surface.
+        from src.rec.provenance_provider import fetch_keyword_signal_triples
+
+        raw_keyword_signals = await fetch_keyword_signal_triples(self._pool, product_ids)
+        build_and_attach_similarity(products, raw_keyword_signals)
 
     async def get_products(self) -> list[dict[str, Any]]:
         await self._ensure_loaded()

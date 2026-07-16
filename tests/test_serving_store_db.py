@@ -64,8 +64,13 @@ class _FakeConn:
     def __init__(self) -> None:
         self.products: list[dict[str, Any]] = []
         self.users: list[dict[str, Any]] = []
+        # Phase 8 activation hook: _refresh now also reads wrapped_signal for the
+        # similarity keyword sidecar. Route it here (default: no keyword signals)
+        # so refresh does not hit the else-branch AssertionError.
+        self.signals: list[dict[str, Any]] = []
         self.product_fetches = 0
         self.user_fetches = 0
+        self.signal_fetches = 0
         # When set, fetch raises after counting the attempt — simulates a DB
         # outage for the serve-stale-on-refresh-error tests. Counting before
         # raising lets a test prove the fast path skips re-query on later reads.
@@ -79,6 +84,9 @@ class _FakeConn:
         elif "serving_user_profile" in query:
             self.user_fetches += 1
             rows = self.users
+        elif "wrapped_signal" in query:
+            self.signal_fetches += 1
+            rows = self.signals
         else:
             raise AssertionError(f"unexpected fetch query: {query!r}")
         if self.fail:
@@ -436,6 +444,73 @@ async def test_refresh_recovers_on_next_cycle_after_failure() -> None:
     conn.products = [_product_row("p1"), _product_row("p2")]
     clock.advance(301)
     assert {p["product_id"] for p in await store.get_products()} == {"p1", "p2"}
+
+
+# ---------------------------------------------------------------------------
+# Phase 8 activation hook: refresh attaches ephemeral similar_product_ids
+# ---------------------------------------------------------------------------
+
+
+def _sim_product_row(pid: str, category_name: str, ingredient: str) -> dict[str, Any]:
+    """Minimal serving_product_profile row for the similarity hook test.
+
+    Only the fields build_product_nodes / the category gate read are set; the
+    fake conn returns these verbatim (the SELECT column list is irrelevant to it).
+    """
+    return {
+        "product_id": pid,
+        "representative_product_name": f"name-{pid}",
+        "category_name": category_name,
+        "brand_concept_ids": [],
+        "category_concept_ids": [],
+        "ingredient_concept_ids": [f"concept:Ingredient:{ingredient}"],
+        "main_benefit_concept_ids": [],
+    }
+
+
+@pytest.mark.asyncio
+async def test_refresh_attaches_similar_product_ids_from_hook() -> None:
+    """DBServingStore._refresh queries the wrapped_signal keyword sidecar once and
+    attaches ephemeral similar_product_ids (category-gated, symmetric) with
+    labelled keyword shared_axes. p3 shares nothing discriminative -> empty list."""
+    conn = _FakeConn()
+    # p1/p2/p3 all skincare (same gate group); p1,p2 share a rare ingredient
+    # (df=2 of N=3 -> IDF>0) and a keyword, so they are neighbours. p3's
+    # ingredient is unique (IDF 0 shared with nobody) -> no neighbour.
+    conn.products = [
+        _sim_product_row("p1", "토너", "rare_ing"),
+        _sim_product_row("p2", "에센스", "rare_ing"),
+        _sim_product_row("p3", "세럼", "other_ing"),
+    ]
+    conn.users = [_user_row("u1")]
+    # wrapped_signal keyword sidecar: p1 & p2 share kw_moisturizing (canonical id
+    # present in keyword_surface_map.yaml -> label "보습좋음"). polarity null->"".
+    conn.signals = [
+        {"target_product_id": "p1", "bee_attr_id": "concept:BEEAttr:be",
+         "keyword_id": "concept:Keyword:kw_moisturizing", "polarity": None},
+        {"target_product_id": "p2", "bee_attr_id": "concept:BEEAttr:be",
+         "keyword_id": "concept:Keyword:kw_moisturizing", "polarity": None},
+    ]
+    store = _store(conn, _Clock(), refresh_sec=300)
+
+    products = await store.get_products()
+    by_id = {p["product_id"]: p for p in products}
+
+    # The sidecar query ran exactly once during the single refresh.
+    assert conn.signal_fetches == 1
+
+    # p1 <-> p2 are symmetric neighbours with evidence.
+    p1_sims = by_id["p1"]["similar_product_ids"]
+    assert [s["product_id"] for s in p1_sims] == ["p2"]
+    assert by_id["p2"]["similar_product_ids"][0]["product_id"] == "p1"
+    axes = {a["axis"] for a in p1_sims[0]["shared_axes"]}
+    assert {"ingredient", "keyword"} <= axes
+    # Keyword axis is labelled from the surface-map sidecar (not the raw id).
+    kw_axis = next(a for a in p1_sims[0]["shared_axes"] if a["axis"] == "keyword")
+    assert kw_axis["label"] == "보습좋음"
+
+    # p3 has no discriminative shared node -> explicit empty list, not missing.
+    assert by_id["p3"]["similar_product_ids"] == []
 
 
 # ---------------------------------------------------------------------------

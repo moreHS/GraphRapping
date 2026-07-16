@@ -21,6 +21,7 @@ import pytest
 from src.rec.explainer import ExplanationPath, ExplanationService, SnippetEvidence
 from src.rec.provenance_provider import (
     DBProvenanceProvider,
+    fetch_keyword_signal_triples,
     fetch_product_signals,
     signal_ids_by_concept_path,
 )
@@ -299,6 +300,50 @@ async def test_fetch_product_signals_groups_by_product_in_one_query() -> None:
 async def test_fetch_product_signals_empty_ids_no_query() -> None:
     conn = _RecordingConn(signal_evidence={}, fact_provenance={}, review_text={})
     assert await fetch_product_signals(_RecordingPool(conn), []) == {}
+    assert conn.calls == []
+
+
+# ---------------------------------------------------------------------------
+# fetch_keyword_signal_triples (Phase 8 activation-hook keyword sidecar)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_fetch_keyword_signal_triples_selects_polarity_and_normalizes() -> None:
+    class _TriplesConn(_RecordingConn):
+        async def fetch(self, query: str, *args: Any) -> list[dict]:
+            # keyword-scoped SELECT: polarity column + keyword_id NOT NULL filter.
+            assert "FROM wrapped_signal" in query
+            assert "polarity" in query
+            assert "keyword_id IS NOT NULL" in query
+            self.calls.append(("wrapped_signal", args))
+            return [
+                {"target_product_id": "p1", "bee_attr_id": "concept:BEEAttr:be",
+                 "keyword_id": "concept:Keyword:kw_a", "polarity": "POS"},
+                # polarity null -> "" (folds with a demo "" but never with "NEU").
+                {"target_product_id": "p1", "bee_attr_id": None,
+                 "keyword_id": "concept:Keyword:kw_b", "polarity": None},
+                {"target_product_id": "p2", "bee_attr_id": "concept:BEEAttr:be",
+                 "keyword_id": "concept:Keyword:kw_c", "polarity": "NEU"},
+            ]
+
+    conn = _TriplesConn(signal_evidence={}, fact_provenance={}, review_text={})
+    result = await fetch_keyword_signal_triples(_RecordingPool(conn), ["p1", "p2"])
+
+    assert result == {
+        "p1": [
+            ("concept:BEEAttr:be", "concept:Keyword:kw_a", "POS"),
+            ("", "concept:Keyword:kw_b", ""),  # both nulls normalized to ""
+        ],
+        "p2": [("concept:BEEAttr:be", "concept:Keyword:kw_c", "NEU")],
+    }
+    assert conn.counts() == {"wrapped_signal": 1}  # one batched round-trip
+
+
+@pytest.mark.asyncio
+async def test_fetch_keyword_signal_triples_empty_ids_no_query() -> None:
+    conn = _RecordingConn(signal_evidence={}, fact_provenance={}, review_text={})
+    assert await fetch_keyword_signal_triples(_RecordingPool(conn), []) == {}
     assert conn.calls == []
 
 

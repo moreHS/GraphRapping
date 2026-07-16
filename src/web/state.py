@@ -216,6 +216,20 @@ def load_demo_data(
             if pid:
                 demo_state.product_signals.setdefault(pid, []).append(sig)
 
+    # Phase 8 (G2/G3) activation hook: attach ephemeral product-product
+    # similarity to serving profiles so the graph view + similar-products widget
+    # can render. Placed AFTER the product_signals index (the keyword axis is
+    # sourced from it) — demo builds serving_products first, then product_signals,
+    # so the attach must follow the index (fable_doc plan §활성화 훅, demo timing).
+    # Item-to-item context => category_gate=True. Same build chain as the DB load.
+    from src.rec.product_similarity import keyword_signals_from_product_signals
+    from src.web.serving_store import build_and_attach_similarity
+
+    build_and_attach_similarity(
+        demo_state.serving_products,
+        keyword_signals_from_product_signals(demo_state.product_signals),
+    )
+
     # Signal family distribution
     for result in batch_result.get("review_results", []):
         for sig in result.get("signals", []):

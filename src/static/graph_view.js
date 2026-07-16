@@ -55,9 +55,55 @@
         label: e.label,
         width: edgeWidth(e),
         lineColor: e.color || DEFAULT_EDGE_COLOR,
+        // Phase 8 G2: similarity edges carry their shared-attribute evidence so
+        // the hover/tap tooltip can answer "why are these two connected".
+        sharedAxes: Array.isArray(e.shared_axes) ? e.shared_axes : null,
+        score: (typeof e.score === 'number') ? e.score : null,
       }});
     });
     return elements;
+  }
+
+  // Phase 8 G2: format a SHARES_ATTRIBUTE edge's shared_axes into a readable line
+  // e.g. "공유 속성: 보습좋음(IDF 2.1) · 저자극(IDF 1.4)".
+  function formatSharedAxes(axes) {
+    if (!Array.isArray(axes) || !axes.length) return '';
+    const parts = axes.map(a => {
+      const label = (a && (a.label || (a.node_key || '').split(':').pop())) || '';
+      const idf = (a && typeof a.idf === 'number') ? ` (IDF ${a.idf.toFixed(1)})` : '';
+      return `${label}${idf}`;
+    }).filter(Boolean);
+    return parts.length ? ('공유 속성: ' + parts.join(' · ')) : '';
+  }
+
+  // Single shared tooltip element (created lazily; reused across instances).
+  let tooltipEl = null;
+  function ensureTooltip() {
+    if (tooltipEl) return tooltipEl;
+    tooltipEl = document.createElement('div');
+    tooltipEl.className = 'graph-edge-tooltip';
+    Object.assign(tooltipEl.style, {
+      position: 'fixed', zIndex: '9999', pointerEvents: 'none', display: 'none',
+      maxWidth: '300px', padding: '6px 10px', borderRadius: '6px',
+      fontSize: '11px', lineHeight: '1.5', background: '#1f2430', color: '#e4e6eb',
+      border: '1px solid #c084fc', boxShadow: '0 2px 10px rgba(0,0,0,0.45)',
+    });
+    document.body.appendChild(tooltipEl);
+    return tooltipEl;
+  }
+  function hideTooltip() { if (tooltipEl) tooltipEl.style.display = 'none'; }
+  function showTooltipFor(evt) {
+    const text = formatSharedAxes(evt.target.data('sharedAxes'));
+    if (!text) { hideTooltip(); return; }
+    const tip = ensureTooltip();
+    const score = evt.target.data('score');
+    tip.textContent = (typeof score === 'number') ? `${text}  ·  score ${score.toFixed(2)}` : text;
+    tip.style.display = 'block';
+    const oe = evt.originalEvent;
+    if (oe && typeof oe.clientX === 'number') {
+      tip.style.left = (oe.clientX + 12) + 'px';
+      tip.style.top = (oe.clientY + 12) + 'px';
+    }
   }
 
   const STYLE = [
@@ -86,6 +132,15 @@
       'text-outline-color': '#0f1117',
       'text-outline-width': 1,
     }},
+    // Phase 8 G2: product-product similarity edge — undirected (no arrow),
+    // dashed, and a distinct purple so it reads apart from the directed
+    // product->attribute edges.
+    { selector: 'edge[label = "SHARES_ATTRIBUTE"]', style: {
+      'line-color': '#c084fc',
+      'target-arrow-shape': 'none',
+      'source-arrow-shape': 'none',
+      'line-style': 'dashed',
+    }},
   ];
 
   const DEFAULT_LAYOUT = { name: 'cose', padding: 40, nodeRepulsion: 8000, idealEdgeLength: 120 };
@@ -100,6 +155,15 @@
       style: STYLE,
       layout: Object.assign({}, DEFAULT_LAYOUT, opts.layout || {}),
     });
+    // Phase 8 G2: reveal the shared-attribute evidence on hover/tap of a
+    // similarity edge (no tooltip infra existed before). Scoped to
+    // SHARES_ATTRIBUTE edges, so directed edges are unaffected.
+    const SIM_SELECTOR = 'edge[label = "SHARES_ATTRIBUTE"]';
+    cy.on('mouseover', SIM_SELECTOR, showTooltipFor);
+    cy.on('mousemove', SIM_SELECTOR, showTooltipFor);
+    cy.on('mouseout', SIM_SELECTOR, hideTooltip);
+    cy.on('tap', SIM_SELECTOR, showTooltipFor);
+    cy.on('tap', evt => { if (evt.target === cy) hideTooltip(); });
     instances.set(container, cy);
     return cy;
   }
@@ -108,6 +172,7 @@
     if (!container) return;
     const cy = instances.get(container);
     if (cy) {
+      hideTooltip();
       cy.destroy();
       instances.delete(container);
     }

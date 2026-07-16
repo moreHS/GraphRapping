@@ -216,7 +216,12 @@ async function loadProducts() {
     </tr>`).join('')}</tbody></table>`;
 }
 
+// Phase 8 G3: latest opened detail id — guards the async similar-products
+// fetch against racing a newer detail render (stale section insertion).
+let currentDetailId = null;
+
 async function showProductDetail(id) {
+  currentDetailId = id;
   const res = await fetch(API + '/api/products/' + encodeURIComponent(id));
   const d = await res.json();
   const dp = document.getElementById('explorerDetail');
@@ -239,6 +244,38 @@ async function showProductDetail(id) {
     </div>` : ''}
     <pre>${jsonHtml(d)}</pre>
   `;
+  // Phase 8 G3: attribute-similar products ("비슷한 상품") widget. Rendered after
+  // the detail (fetched separately); an empty result hides the section entirely.
+  renderSimilarProducts(id);
+}
+
+async function renderSimilarProducts(id) {
+  let items = [];
+  try {
+    const res = await fetch(API + '/api/products/' + encodeURIComponent(id) + '/similar');
+    if (!res.ok) return;  // 404 / error → no section
+    items = ((await res.json()) || {}).items || [];
+  } catch (e) { return; }
+  if (!items.length) return;  // empty array → section not shown (per G3 UX contract)
+  if (currentDetailId !== id) return;  // a newer detail replaced this one meanwhile
+  const dp = document.getElementById('explorerDetail');
+  if (!dp) return;
+  const section = document.createElement('div');
+  section.className = 'panel';
+  section.style.marginTop = '12px';
+  section.innerHTML = `<h2>비슷한 상품 <span style="font-weight:normal;font-size:12px;color:var(--text2)">공유 속성 기반 (${items.length})</span></h2>`
+    + items.map(it => {
+      const axes = (it.shared_axes || []).map(a =>
+        `<span class="chip bee" title="IDF ${fmtRating(a.idf)}">${displayText(a.label)}</span>`
+      ).join('');
+      return `<div style="padding:8px 0;border-bottom:1px solid var(--border)">
+        <div><strong>${displayText(it.neighbor_name || it.product_id)}</strong>
+        <span style="color:var(--text2);font-size:12px;margin-left:6px">score ${fmtScore(it.score)}</span></div>
+        <div style="margin-top:4px">${axes || '<span style="color:var(--text2);font-size:11px">공유 근거 없음</span>'}</div>
+      </div>`;
+    }).join('');
+  const pre = dp.querySelector('pre');
+  if (pre) dp.insertBefore(section, pre); else dp.appendChild(section);
 }
 
 async function loadUsers() {

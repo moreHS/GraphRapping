@@ -405,6 +405,25 @@ async def get_product(product_id: str):
     }
 
 
+@app.get("/api/products/{product_id}/similar")
+async def product_similar(product_id: str):
+    """Phase 8 G3: attribute-similar products for a product (item-to-item).
+
+    Returns the ephemeral ``similar_product_ids`` attached at serving load (top-N
+    with ``shared_axes`` evidence, category-gated). This is a pure item-to-item
+    lookup: it does NOT run the Scorer or eligibility pipeline (mirrors the
+    anonymous design of ``search.py``). Unknown product -> 404; a known product
+    with no attribute-similar neighbour -> empty list (200), so the frontend can
+    hide the section rather than show an empty one.
+    """
+    _check_serving_ready()
+    product = await get_serving_store().get_product(product_id)
+    if not product:
+        raise HTTPException(404, "Product not found")
+    items = product.get("similar_product_ids") or []
+    return {"product_id": product_id, "items": items, "total": len(items)}
+
+
 @app.get("/api/users")
 async def list_users():
     _check_serving_ready()
@@ -1162,6 +1181,12 @@ async def ask(req: AskRequest):
 # Graph
 # =============================================================================
 
+# Phase 8 G2: cap similar-product neighbours drawn per anchor in the corpus graph
+# for readability (the G3 widget keeps the full top-N; the cap is graph-only).
+# similar_product_ids is score-sorted (desc) by symmetrize, so [:cap] is the top-N.
+_SIMILAR_GRAPH_CAP = 3
+
+
 @app.get("/api/graphs/product/{product_id}")
 async def product_graph(product_id: str, view: str = "corpus"):
     """Build hierarchical product graph.
@@ -1270,6 +1295,33 @@ def _build_corpus_graph(profile: dict, product_id: str, nodes_map: dict, edges: 
         if ben not in nodes_map:
             nodes_map[ben] = {"id": ben, "label": label, "type": "goal"}
         edges.append({"source": product_id, "target": ben, "label": "HAS_BENEFIT", "weight": 1})
+
+    # Phase 8 G2: product-product similarity edges (SHARES_ATTRIBUTE). The
+    # activation hook embeds each neighbour's name + shared_axes evidence on the
+    # profile, so the subgraph renders "why connected" without any corpus access.
+    # Undirected edge (JS drops the arrow); capped to the top-N by score for graph
+    # readability. Only the anchor is expanded here, so each anchor-neighbour pair
+    # is emitted once (edge dedup at the endpoint guards accidental repeats).
+    for sim in (profile.get("similar_product_ids") or [])[:_SIMILAR_GRAPH_CAP]:
+        if not isinstance(sim, dict):
+            continue
+        nb_id = sim.get("product_id")
+        if not nb_id or nb_id == product_id:
+            continue
+        if nb_id not in nodes_map:
+            nodes_map[nb_id] = {
+                "id": nb_id,
+                "label": sim.get("neighbor_name") or nb_id,
+                "type": "product",
+            }
+        edges.append({
+            "source": product_id,
+            "target": nb_id,
+            "label": "SHARES_ATTRIBUTE",
+            "weight": 1,
+            "score": sim.get("score"),
+            "shared_axes": sim.get("shared_axes") or [],
+        })
 
 
 def _build_evidence_graph(product_id: str, nodes_map: dict, edges: list) -> None:

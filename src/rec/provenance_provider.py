@@ -398,3 +398,52 @@ async def fetch_product_signals(
         if pid:
             result.setdefault(pid, []).append(row)
     return result
+
+
+async def fetch_keyword_signal_triples(
+    pool: Any,
+    product_ids: Iterable[str],
+) -> dict[str, list[tuple[str, str, str]]]:
+    """Batch-fetch keyword ``(bee_attr_id, keyword_id, polarity)`` triples per product.
+
+    The Phase 8 activation hook (``src/web/serving_store.build_and_attach_similarity``)
+    needs the keyword composite key ``(bee_attr_id, keyword_id, polarity)`` for the
+    product-product similarity keyword axis. Serving aggregation drops bee_attr and
+    polarity, so the keyword axis is sourced from the raw ``wrapped_signal`` sidecar
+    instead (design: fable_doc/plans/2026-07-15_phase8_shared_node_projection.md §G1
+    data source). This mirrors :func:`fetch_product_signals` but selects ``polarity``
+    and restricts to keyword-bearing rows (``keyword_id IS NOT NULL``), using the
+    ``idx_ws_product`` index on ``target_product_id``.
+
+    Returns ``{product_id: [(bee_attr_id, keyword_id, polarity), ...]}`` shaped
+    exactly like the demo adapter
+    ``product_similarity.keyword_signals_from_product_signals``. ``polarity`` is
+    normalized null -> ``""`` (and ``bee_attr_id`` null -> ``""``) so a DB null and a
+    demo ``""`` fold to the same node key while ``"NEU"`` stays distinct — the
+    cross-source polarity contract Fable's P8-1 review flagged.
+    """
+    ids = [pid for pid in dict.fromkeys(product_ids) if pid]
+    if not ids:
+        return {}
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            "SELECT target_product_id, bee_attr_id, keyword_id, polarity "
+            "FROM wrapped_signal WHERE target_product_id = ANY($1) "
+            "AND keyword_id IS NOT NULL",
+            ids,
+        )
+    result: dict[str, list[tuple[str, str, str]]] = {}
+    for record in rows:
+        row = dict(record)
+        pid = row.get("target_product_id")
+        keyword_id = row.get("keyword_id")
+        if not pid or not keyword_id:
+            continue
+        result.setdefault(pid, []).append(
+            (
+                str(row.get("bee_attr_id") or ""),
+                str(keyword_id),
+                str(row.get("polarity") or ""),
+            )
+        )
+    return result
