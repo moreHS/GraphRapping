@@ -489,3 +489,48 @@ scorer 가중은 top-level `comention_product_weight: 0.02`(features 맵 밖 →
 `configs/scoring_weights.yaml`. **게이트**: ruff/mypy(116) ✅, pytest **1201
 passed, 50 skipped, 0 failed**(+27). 골든 스냅샷·기대셋 무변경.
 근거·전수 실측: `DECISIONS/2026-07-14_phase7_d2_comention.md`.
+
+### Phase 7 종합리뷰 (Fable) — 2026-07-16, 판정 **APPROVE**
+
+보류했던 Fable 종합리뷰 수행(모델 복귀). c71ab7d(feat)+64258a6(docs) 전 diff를
+메인 세션이 직접 정독 + 불변식 grep 실측. 트랙별 판정:
+
+**Track A (comparison 부활 + COMPARE 모드)** ✅
+- `comparison`이 REVIEW_GRAPH_TYPES에서 제거되고 boost-only 버킷 신설 —
+  `BOOST_ONLY_TYPES={comparison,collab,comention}`,
+  `BOOST_ONLY_ADMISSIBLE_TYPES={comparison}`만. eligibility는
+  `boost_only_qualifies=True`(=COMPARE 모드에서만) **그리고** admissible일 때만
+  구매 가능 → collab/comention은 어떤 모드에서도 단독 자격 불가. 코드로 확인.
+- 모드 스레딩 end-to-end(server→candidate_generator→scorer.score→rerank) 확인.
+  비-COMPARE에서 comparison 가중 0 + contributions 미기록 → 기본 경로
+  byte-identical 장치 성립. COMPARE는 diversity_weight=0(동류 대안 병렬 노출).
+- comparison/collab/comention 가중 전부 `features` 맵 밖(top-level/modes.*) —
+  `SCORING_FEATURE_KEYS`에 신규 키 0(grep) → 프론트 슬라이더 계약 불가침.
+- dense+wide 랭킹 스냅샷 회귀 테스트 존재(wide 골든 baseline 신설 32k줄), 현재
+  게이트 green → 스냅샷 무변경 계약 이행.
+
+**Track B (링킹 플로어)** ✅
+- korean_morph: 화이트리스트 어미 스트립 + **사전 멤버십 게이트에서만 사용** +
+  부정 가드(`촉촉하지 않` 폴딩 차단). ㅂ-불규칙은 의도된 재현율 미스(잘못 접기
+  0 설계). alias 맵은 순환 감지 로드.
+- 경로 통합(quarantine 생성 경로가 surface dict 미참조하던 결함) 해소 실측치
+  (unknown_keyword -25%, BEE_KEYWORD 238→802)는 DECISIONS 문서와 정합.
+
+**Track C (타입 재해석 + 승격 게이트 2)** ✅
+- C1 어댑터: **사전 멤버십 exact-match만**으로 재타입(휴리스틱 0), 타깃
+  allowlist(Concern/Goal) 고정, "기각될 fact를 살리는 방향으로만" 순가산 —
+  수용되던 fact를 기각시킬 수 없는 구조. provenance 보존.
+- C2: `_PROMOTION_MIN_REVIEWS_BY_WINDOW` D30/D90/ALL=2/2/2,
+  contract_validator에 미러(주석 + 테스트 고정). **[경미]** 미러가 import 공유가
+  아닌 상수 복제 — DB 레이어 분리 의도로 수용 가능하나 drift 리스크는 테스트가
+  유일한 방어임을 기록.
+
+**Track D (D1/D2 배선-후-휴면)** ✅
+- D1: Jaccard + 축 네임스페이스 + min_common_prefs=3 + 결정적 정렬. D2: ghost
+  필터 + NEG 비교 제외 + min_support=2. 둘 다 ephemeral attach, **프로덕션
+  콜사이트 0**(grep, 주석 언급뿐) → dormant 계약 정직. strength 채널
+  (`|strength=`) 파싱 [0,1] 클램프 확인.
+
+**종합**: 계약(evidence-first·boost-only·프론트 가중치 계약·스냅샷 불변) 전부
+코드 수준에서 성립. 발견 = 경미 1건(C2 미러 이중정의, 테스트 락으로 수용).
+수정 요구 0. Phase 7 종료 승인.

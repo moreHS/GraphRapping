@@ -199,4 +199,56 @@ APPROVE-WITH-CHANGES, 프레이밍 준수(기각 대안 재론 없음).
 
 ## 완료 보고
 
-_(실행 후)_
+### P8-1 (G1 계산 모듈) 완료 — 2026-07-16 (Opus 구현, Fable 리뷰)
+
+**변경**: 신규 `src/rec/product_similarity.py`(442줄) + `tests/test_product_similarity.py`
+(20 테스트). 그 외 파일 무접촉(활성화 훅·G2~G5 미착수 — 의도된 dormant 모듈).
+
+**구현 확정 사항**:
+- 복합키 `keyword::{bee}:{canonical_kw}:{polarity}` — 신호의 IRI에서 suffix 추출 →
+  **bare id에 B2 alias 적용**(alias 맵이 bare 키) → bee_attr·polarity 스코핑.
+- keyword 축 = raw sidecar 주입(`raw_keyword_signals`); 모듈은 DB를 읽지 않음
+  (DB polarity 질의 배선 = P8-2 훅 몫, docstring 명시). demo 어댑터
+  `keyword_signals_from_product_signals` 제공.
+- 역인덱스는 **IDF>0 노드만** 포함(df==N 허브는 기여 0 + 쌍폭발 방지) →
+  "보편노드만 공유" 쌍 미방출(evidence-first, 테스트 고정).
+- `build_similarity_signals`에 `label_index` optional 후행 인자(P8-2 라벨 sidecar
+  대비, 기본 concept id suffix fallback). 계획 시그니처 파괴 없음.
+
+**실측 (완료 기준 전 항목 충족)**:
+| 기준 | dense_golden(32) | wide(517) |
+|---|---|---|
+| (a) gate ON top-N 동일 카테고리 지배 | 141/141=100% | 2543/2543=100% |
+| (b) gate OFF top == 공유 IDF 합 최대(brute 대조) | 3/3 | 3/3 |
+| (c) 커버리지(이웃≥1, gate ON) | 100% (목표≥90%) | **99.0%** (목표≥60%) |
+| (d) 복합키: keyword가 >1 bee_attr로 분리 / bee_attr 단독 노드 | 12개 / 0 | 12개 / 0 |
+
+IDF 허브 감쇠 실증: wide 최저 IDF = `brand::이니스프리 1.02`(186상품 쏠림 자동
+최하 가중) vs 최고 3.47~6.25(니치). 워크드 예제(100389 한란핸드크림): top-1이
+동일 브랜드 아닌 일리윤 로션(공유 keyword 7종, ΣIDF 4.98) > 동일 브랜드+카테고리
+쌍(2.97) — "카탈로그가 아닌 공유 속성이 유사도를 결정"이 실데이터에서 성립.
+
+**게이트**: ruff ✅ / mypy 117 ✅ / pytest **1221 passed, 50 skipped, 0 failed**
+(기존 1201 + 신규 20). 기존 스냅샷·기대셋 무변경(`similar_product_ids` 소비처 0 —
+grep 검증).
+
+### Fable 리뷰 (P8-1) — 2026-07-16, 판정 **APPROVE**
+
+전 소스 정독 + 안전계약 grep 실측. 계획 §G1 대비 이탈 0. 반영/인계:
+1. **[반영] symmetrize aliasing** — 역방향 신호가 shared_axes 리스트를 원본과
+   공유 → 방어 복사 1줄(리뷰 수정). 게이트 재통과.
+2. **[P8-2 필수 체크] polarity 정규화** — demo 신호는 `"NEU"` 문자열, DB
+   `wrapped_signal.polarity`는 null 허용. DB 조달 훅에서 null↔""↔"NEU"가
+   demo와 동일하게 접히도록 정규화하지 않으면 소스 간 노드 분열. P8-2 훅 구현
+   시 단위테스트로 고정할 것.
+3. **[P8-2 체크] 라벨 인덱스** — G1은 suffix fallback만. 활성화 훅에서 DB concept
+   label / demo label sidecar 조달(계획 §활성화 훅 그대로).
+4. **[인지] gate 조립질 = category_group(6군)** — 핸드크림(bodycare)의 top-1이
+   바디로션(bodycare) 가능. 사용자 의도("메이크업↔헤어 방지")·계획과 부합, 세부
+   카테고리는 IDF 점수 노드(2.08)로 이미 우대. G3 UX에서 필요 시 세분화 여지만 기록.
+5. **[데이터 관찰]** `keyword::bee_attr_loyalty:GelLike:NEU` 등 BEE 스팬 노이즈
+   흔적 — 방침(모델 신뢰, 상류 데이터 이슈)대로 시스템은 그대로 처리. 기록만.
+
+**현 데이터 한계(설계 아님)**: keyword polarity 전부 NEU(710/710 — 극성 변별은
+POS/NEG 데이터 유입 시 자동 활성, 합성 테스트로 고정) · keyword 축 보유 상품
+wide 63.8%(데이터 성숙으로 회복 예정, 전체 커버리지는 타 축이 견인).
