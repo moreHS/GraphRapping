@@ -25,7 +25,11 @@ from src.web.serving_store import (
     ServingStore,
     DEFAULT_SERVING_REFRESH_SEC,
 )
-from src.rec.candidate_generator import generate_candidates_prefiltered
+from src.rec.candidate_generator import (
+    build_similar_boost_index,
+    extract_owned_product_ids,
+    generate_candidates_prefiltered,
+)
 from src.rec.scorer import Scorer
 from src.rec.reranker import rerank
 from src.rec.explainer import explain, ExplanationService
@@ -541,6 +545,16 @@ def _category_universe_ids(
     ]
 
 
+def _similar_signal_field(sig: Any, key: str) -> Any:
+    """Field access for an ungated-similarity sidecar entry.
+
+    Entries are ``SimilarProductSignal`` objects from both stores; the dict
+    branch keeps test doubles / serialized entries working (Phase 8 G4)."""
+    if isinstance(sig, dict):
+        return sig.get(key)
+    return getattr(sig, key, None)
+
+
 async def _run_scored_pipeline(
     *,
     store: ServingStore,
@@ -572,12 +586,42 @@ async def _run_scored_pipeline(
                 candidate_universe=candidate_universe_ids,
             )
 
+    # Phase 8 G4: assemble the similar-boost index from the store's ungated
+    # similarity sidecar × the user's owned products. Optional store capability
+    # (duck-typed like prefilter_candidate_ids above): a store without the
+    # accessor — or a user without an in-corpus owned anchor — leaves
+    # similar_boost None (dormant; the default path is byte-identical). The
+    # sidecar is corpus-wide, so an owned anchor OUTSIDE the current category
+    # tab still boosts in-tab candidates. The per-anchor signals fetched here
+    # are also indexed by (anchor, neighbour) for the shared_axes provenance
+    # attached to `similar` explanation paths below — no second store/DB access.
+    similar_boost: dict[str, list[tuple[str, float]]] | None = None
+    similar_axes_by_pair: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    ungated_getter = getattr(store, "get_ungated_similar", None)
+    if ungated_getter is not None:
+        owned_ids = extract_owned_product_ids(user_profile)
+        signals_by_anchor: dict[str, list[Any]] = {}
+        for anchor in sorted(owned_ids):
+            anchor_signals = await ungated_getter(anchor)
+            if anchor_signals:
+                signals_by_anchor[anchor] = anchor_signals
+        if signals_by_anchor:
+            similar_boost = build_similar_boost_index(owned_ids, signals_by_anchor) or None
+        if similar_boost:
+            for anchor, anchor_signals in signals_by_anchor.items():
+                for sig in anchor_signals:
+                    neighbor = _similar_signal_field(sig, "product_id")
+                    axes = _similar_signal_field(sig, "shared_axes")
+                    if neighbor and axes:
+                        similar_axes_by_pair[(anchor, str(neighbor))] = axes
+
     candidates = generate_candidates_prefiltered(
         user_profile=user_profile,
         prefiltered_product_ids=prefiltered_product_ids,
         product_profiles_by_id=product_map,
         mode=mode,
         max_candidates=50,
+        similar_boost=similar_boost,
     )
 
     scored = []
@@ -615,6 +659,23 @@ async def _run_scored_pipeline(
     for r, candidate, scored_product, product_profile, exp in prepared:
         hooks = generate_hooks(exp, product_profile=product_profile)
         snippets_by_path_idx = snippets_by_product.get(r.product_id, {})
+        explanation_paths: list[dict[str, Any]] = []
+        for idx, p in enumerate(exp.paths):
+            path_row: dict[str, Any] = {
+                "type": p.concept_type, "id": p.concept_id,
+                "user_edge": p.user_edge, "product_edge": p.product_edge,
+                "contribution": p.contribution,
+                "snippets": snippets_by_path_idx.get(idx, []),
+            }
+            if p.concept_type == "similar":
+                # Phase 8 G4 provenance (plan §1.4): attach the shared-node
+                # evidence for this (anchor, candidate) pair from the load-time
+                # sidecar — additive key, entries copied ([C1] discipline: the
+                # response must never alias store state).
+                axes = similar_axes_by_pair.get((p.concept_id, r.product_id))
+                if axes:
+                    path_row["shared_axes"] = [dict(ax) for ax in axes]
+            explanation_paths.append(path_row)
         results.append({
             "rank": r.final_rank + 1,
             "product_id": r.product_id,
@@ -632,11 +693,7 @@ async def _run_scored_pipeline(
             "review_summary": summary_by_product.get(r.product_id),
             "source_trust": _source_trust(product_profile),
             "explanation": exp.summary_ko,
-            "explanation_paths": [{"type": p.concept_type, "id": p.concept_id,
-                                   "user_edge": p.user_edge, "product_edge": p.product_edge,
-                                   "contribution": p.contribution,
-                                   "snippets": snippets_by_path_idx.get(idx, [])}
-                                  for idx, p in enumerate(exp.paths)],
+            "explanation_paths": explanation_paths,
             "hooks": {"discovery": hooks.discovery, "consideration": hooks.consideration, "conversion": hooks.conversion},
         })
 

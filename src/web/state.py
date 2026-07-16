@@ -57,6 +57,13 @@ class DemoState:
     # Per-product signal index (for graph API hierarchy)
     product_signals: dict[str, list[dict]] = field(default_factory=dict)
 
+    # Phase 8 G4: ungated (category_gate=False) product-similarity sidecar —
+    # {anchor pid: [SimilarProductSignal, ...]} computed at load alongside the
+    # gated attach. Store-side only (never attached to a serving profile, never
+    # in an API payload); read via DemoServingStore.get_ungated_similar. Values
+    # typed Any to keep the rec layer out of module import time.
+    similar_ungated: dict[str, list[Any]] = field(default_factory=dict)
+
     # Phase 0.4: in-memory provenance provider built from pipeline bundles.
     # Type is InMemoryProvenanceProvider | None; kept as Any to avoid importing
     # the rec layer at module import time.
@@ -222,13 +229,16 @@ def load_demo_data(
     # sourced from it) — demo builds serving_products first, then product_signals,
     # so the attach must follow the index (fable_doc plan §활성화 훅, demo timing).
     # Item-to-item context => category_gate=True. Same build chain as the DB load.
+    # Phase 8 G4: the same call also computes the ungated similarity sidecar
+    # (nodes/idf reused) kept on the state — store-side only, no profile field.
     from src.rec.product_similarity import keyword_signals_from_product_signals
     from src.web.serving_store import build_and_attach_similarity
 
-    build_and_attach_similarity(
+    demo_state.similar_ungated = build_and_attach_similarity(
         demo_state.serving_products,
         keyword_signals_from_product_signals(demo_state.product_signals),
-    )
+        include_ungated=True,
+    ) or {}
 
     # Signal family distribution
     for result in batch_result.get("review_results", []):

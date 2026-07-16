@@ -59,6 +59,11 @@ _EDGE_MAP = {
     "comparison": ("OWNS_PRODUCT", "COMPARED_WITH_SIGNAL"),
     "collab": ("SIMILAR_USER_AFFINITY", "PREFERRED_BY_SIMILAR_USERS"),
     "comention": ("OWNS_PRODUCT", "CO_MENTIONED_WITH_SIGNAL"),
+    # Phase 8 G4: product_edge reuses the G2 graph-view edge name
+    # (SHARES_ATTRIBUTE) — a projection edge, not a wrapped signal, so the
+    # `_SIGNAL` suffix convention does not apply. concept_id is the owned
+    # anchor product id.
+    "similar": ("OWNS_PRODUCT", "SHARES_ATTRIBUTE"),
     "owned_family": ("OWNS_FAMILY", "HAS_VARIANT_FAMILY"),
     "repurchased_family": ("REPURCHASES_FAMILY", "HAS_VARIANT_FAMILY"),
     "repurchase_brand": ("REPURCHASES_BRAND", "HAS_BRAND"),
@@ -78,6 +83,18 @@ def explain(
     """
     paths: list[ExplanationPath] = []
 
+    # Phase 8 G4: a multi-anchor similar boost is ONE scored feature
+    # (similar_product_affinity = weight * min(Σ strength, 1)), but each anchor
+    # gets its own path. Showing the full feature contribution on every path
+    # would display the boost multiple times, so each similar path carries its
+    # anchor's PROPORTIONAL share of the contribution (shares sum exactly to
+    # the feature total — no double counting).
+    similar_total_strength = sum(
+        _overlap_strength(concept_str)
+        for concept_str in overlap_concepts
+        if concept_str.startswith("similar:")
+    )
+
     # Map back to specific concepts
     for concept_str in overlap_concepts:
         if ":" not in concept_str:
@@ -93,6 +110,8 @@ def explain(
         # Find contribution for this concept type
         feature_key = _concept_to_feature(ctype)
         contribution = scored.feature_contributions.get(feature_key, 0.0)
+        if ctype == "similar" and contribution != 0 and similar_total_strength > 0:
+            contribution *= _overlap_strength(concept_str) / similar_total_strength
         if contribution != 0:
             paths.append(ExplanationPath(
                 concept_type=ctype,
@@ -138,6 +157,7 @@ def _concept_to_feature(concept_type: str) -> str:
         "comparison": "comparison_alternative",
         "collab": "collaborative_affinity",
         "comention": "comention_product_bonus",
+        "similar": "similar_product_affinity",
         "owned_family": "owned_family_penalty",
         "repurchased_family": "repurchase_family_affinity",
         "repurchase_brand": "purchase_loyalty_score",
@@ -158,6 +178,24 @@ def _split_concept_metadata(value: str) -> tuple[str, dict[str, str]]:
         if key:
             meta[key] = raw_value
     return concept_id, meta
+
+
+def _overlap_strength(concept_str: str) -> float:
+    """Clamped [0, 1] `|strength=` metadata of an overlap concept string.
+
+    Mirrors the scorer's `_parse_overlap_concept` semantics (absent or
+    malformed strength -> 1.0, else clamped) so per-anchor shares computed here
+    stay faithful to what the scorer actually summed.
+    """
+    _, meta = _split_concept_metadata(concept_str.split(":", 1)[1] if ":" in concept_str else concept_str)
+    raw = meta.get("strength")
+    if raw is None:
+        return 1.0
+    try:
+        value = float(raw)
+    except ValueError:
+        return 1.0
+    return max(0.0, min(value, 1.0))
 
 
 def _get_texture_keywords() -> set[str]:
@@ -226,6 +264,8 @@ def _generate_summary_ko(paths: list[ExplanationPath]) -> str:
             parts.append("취향이 비슷한 고객들이 선호한 상품")
         elif p.concept_type == "comention":
             parts.append(f"보유하신 '{p.concept_id}' 제품과 리뷰에서 함께 언급되는 상품")
+        elif p.concept_type == "similar":
+            parts.append(f"보유하신 '{p.concept_id}' 제품과 속성을 공유하는 상품")
         elif p.concept_type == "owned_family":
             parts.append("현재 사용 중인 제품과 같은 라인")
         elif p.concept_type == "repurchased_family":

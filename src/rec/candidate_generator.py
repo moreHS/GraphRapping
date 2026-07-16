@@ -8,6 +8,8 @@ Supports recommendation modes: STRICT, EXPLORE, COMPARE.
 
 from __future__ import annotations
 
+import math
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -26,6 +28,68 @@ from src.rec.recommendation_evidence_index import (
 )
 from src.rec.semantic_compatibility import find_semantic_matches, normalize_signal_id
 from src.rec.scoped_preferences import collect_preference_ids
+
+
+# Phase 8 G4: strength saturation for the `similar` boost channel. An ungated
+# shared-node similarity score at/above this shared-IDF mass saturates to
+# strength 1.0 (the pathological variant-pair peaks, max ≈ 207, clamp instead of
+# dominating). 30.0 = the wide-fixture ungated neighbour-score p90 (≈ 31.6,
+# audit-wired measurement) rounded to a clean constant — measurement source /
+# command / denominator recorded in
+# DECISIONS/2026-07-16_phase8_g4_similar_boost.md.
+_SIMILAR_STRENGTH_SATURATION = 30.0
+
+
+def extract_owned_product_ids(user_profile: dict[str, Any]) -> set[str]:
+    """Owned product ids normalized to raw pids (``product:`` IRI prefix stripped).
+
+    ``owned_product_ids`` entries may be dicts (``{"id": "product:58763", ...}``)
+    or plain strings; both fold through ``_extract_ids``. Shared by
+    ``generate_candidates`` and the similar-boost assembly (server/audit) so the
+    anchor key space always matches the similarity sidecar's raw product_id keys.
+    """
+    owned: set[str] = set()
+    for oid in _extract_ids(user_profile.get("owned_product_ids", [])):
+        owned.add(oid[len("product:"):] if oid.startswith("product:") else oid)
+    return owned
+
+
+def build_similar_boost_index(
+    owned_product_ids: set[str],
+    ungated_similar_by_anchor: Mapping[str, Sequence[Any]],
+) -> dict[str, list[tuple[str, float]]]:
+    """Assemble the Phase 8 G4 boost index ``{candidate_pid: [(anchor_pid, strength)]}``.
+
+    ``ungated_similar_by_anchor`` maps an anchor product id to its ungated
+    (category_gate=False) similarity signals — ``SimilarProductSignal`` objects
+    or dicts keyed on ``product_id``/``score``. Callers (server/audit) pass the
+    ungated sidecar; anchors are the user's owned products. Excluded up front:
+    the anchor itself and neighbours the user already owns (an owned candidate
+    must never be boosted toward itself). ``strength = min(score / 30, 1)``
+    (see ``_SIMILAR_STRENGTH_SATURATION``); non-finite/non-positive scores are
+    skipped. Deterministic: anchors are visited in sorted order.
+    """
+    index: dict[str, list[tuple[str, float]]] = {}
+    for anchor in sorted(owned_product_ids):
+        for sig in ungated_similar_by_anchor.get(anchor, ()) or ():
+            if isinstance(sig, dict):
+                neighbor_raw = sig.get("product_id")
+                score_raw = sig.get("score")
+            else:
+                neighbor_raw = getattr(sig, "product_id", None)
+                score_raw = getattr(sig, "score", None)
+            neighbor = str(neighbor_raw) if neighbor_raw else ""
+            if not neighbor or neighbor == anchor or neighbor in owned_product_ids:
+                continue
+            try:
+                score = float(score_raw)  # type: ignore[arg-type]
+            except (TypeError, ValueError):
+                continue
+            if not math.isfinite(score) or score <= 0.0:
+                continue
+            strength = min(score / _SIMILAR_STRENGTH_SATURATION, 1.0)
+            index.setdefault(neighbor, []).append((anchor, strength))
+    return index
 
 
 @dataclass
@@ -53,6 +117,7 @@ def generate_candidates(
     max_candidates: int = 50,
     *,
     require_evidence: bool = True,
+    similar_boost: dict[str, list[tuple[str, float]]] | None = None,
 ) -> list[CandidateProduct]:
     """Generate recommendation candidates.
 
@@ -63,23 +128,21 @@ def generate_candidates(
         max_candidates: Max candidates to return
         require_evidence: When True, source-only/profile-unrelated products are
             hard-filtered after first-class evidence classification.
+        similar_boost: Phase 8 G4 boost index ``{candidate_pid: [(anchor_pid,
+            strength)]}`` assembled by the caller (see
+            ``build_similar_boost_index``). None (default) keeps the channel
+            dormant — the default path is byte-identical.
     """
     # Extract user signals for filtering
     avoided_ingredients = _extract_ids(user_profile.get("avoided_ingredient_ids", []))
     repurchase_brand_ids = _extract_ids(user_profile.get("repurchase_brand_ids", []))
     repurchase_category_ids = _extract_ids(user_profile.get("repurchase_category_ids", []))
     recent_purchase_brand_ids = _extract_ids(user_profile.get("recent_purchase_brand_ids", []))
-    owned_product_ids_raw = _extract_ids(user_profile.get("owned_product_ids", []))
     owned_family_ids_raw = _extract_ids(user_profile.get("owned_family_ids", []))
     repurchased_family_ids_raw = _extract_ids(user_profile.get("repurchased_family_ids", []))
     # Normalize: owned_product_ids / family_ids may contain product IRIs ("product:P001")
     # or raw IDs ("P001"). Strip prefix to match against raw product_id / variant_family_id.
-    owned_product_ids = set()
-    for oid in owned_product_ids_raw:
-        if oid.startswith("product:"):
-            owned_product_ids.add(oid[len("product:"):])
-        else:
-            owned_product_ids.add(oid)
+    owned_product_ids = extract_owned_product_ids(user_profile)
     owned_family_ids = {fid[len("product:"):] if fid.startswith("product:") else fid for fid in owned_family_ids_raw}
     repurchased_families = {fid[len("product:"):] if fid.startswith("product:") else fid for fid in repurchased_family_ids_raw}
 
@@ -357,6 +420,25 @@ def generate_candidates(
                 if strength > 0.0:
                     overlap.append(f"comention:{co_id}|strength={strength}")
 
+        # Similar-product overlap (Phase 8 G4). The candidate shares attribute
+        # nodes with a product the user owns (ungated shared-node similarity,
+        # src/rec/product_similarity.py) → boost-only "attribute-similar to
+        # something you own" signal. `similar_boost` is assembled by the CALLER
+        # (server/audit) from the ungated similarity sidecar × owned ids via
+        # build_similar_boost_index — None (default) keeps this dormant and the
+        # default path byte-identical. Boost-only: NEVER qualifies a candidate
+        # on its own in ANY mode (see BOOST_ONLY_ADMISSIBLE_TYPES), and it is
+        # EXCLUDED from the retrieval overlap_score aggregate below, so it
+        # cannot buy retrieval-cut ordering either — it only re-scores
+        # candidates already retrieved on first-class evidence.
+        similar_overlap_count = 0
+        if similar_boost and not candidate.already_owned:
+            for anchor_pid, strength in similar_boost.get(pid, ()):
+                if anchor_pid == pid or strength <= 0.0:
+                    continue
+                overlap.append(f"similar:{anchor_pid}|strength={strength}")
+                similar_overlap_count += 1
+
         # Purchase-behavior brand overlaps. These qualify candidates because
         # the match is user behavior aligned, not just product catalog presence.
         for b in _matching_ids(repurchase_brand_ids, product_brands):
@@ -371,7 +453,13 @@ def generate_candidates(
             overlap.append(f"repurchased_family:{product_family}")
 
         candidate.overlap_concepts = overlap
-        candidate.overlap_score = len(overlap)
+        # Retrieval aggregate: `similar` (boost-only, Phase 8 G4) is EXCLUDED so
+        # it cannot reorder the max_candidates retrieval cut. The other three
+        # boost-only types (comparison/collab/comention) remain counted — the
+        # pre-existing aggregate is kept byte-identical to protect the ranking
+        # snapshots; the asymmetry is recorded (with a follow-up candidate) in
+        # DECISIONS/2026-07-16_phase8_g4_similar_boost.md.
+        candidate.overlap_score = len(overlap) - similar_overlap_count
         # COMPARE mode admits comparison neighbors: boost-only comparison paths
         # can qualify a candidate here (only here). STRICT/EXPLORE keep the
         # evidence-first gate (comparison alone never qualifies).
@@ -400,11 +488,17 @@ def generate_candidates_prefiltered(
     max_candidates: int = 50,
     *,
     require_evidence: bool = True,
+    similar_boost: dict[str, list[tuple[str, float]]] | None = None,
 ) -> list[CandidateProduct]:
     """Generate candidates from a pre-filtered set of product IDs.
 
     Use with sql_prefilter_candidates() for SQL-first candidate generation.
     Falls back to in-memory overlap scoring on the reduced product set.
+
+    ``similar_boost`` (Phase 8 G4) is forwarded unchanged: the boost index is
+    keyed on candidate pids, so anchors OUTSIDE the prefiltered set (e.g. an
+    owned product from another category tab) still boost in-tab candidates —
+    the sidecar the caller assembles from is corpus-wide.
     """
     product_profiles = [
         product_profiles_by_id[pid]
@@ -417,6 +511,7 @@ def generate_candidates_prefiltered(
         mode,
         max_candidates,
         require_evidence=require_evidence,
+        similar_boost=similar_boost,
     )
 
 

@@ -57,6 +57,15 @@ REVIEW_GRAPH_WEAK_TYPES = frozenset({
 #     `collab`, it NEVER qualifies a candidate on its own in ANY mode: being
 #     talked about alongside something you own is relatedness, not a
 #     stand-alone reason to recommend.
+#   `similar` (Phase 8 G4 — "this candidate shares attribute nodes with a
+#     product you own") — an ungated product-product shared-node similarity
+#     projection (src/rec/product_similarity.py; evidence-family name
+#     PRODUCT_SIMILARITY_AFFINITY, db_consumer_contract.md §13). Like
+#     `collab`/`comention`, it NEVER qualifies a candidate on its own in ANY
+#     mode: sharing attributes with something you own is relatedness, not a
+#     stand-alone reason to recommend. It is also excluded from the retrieval
+#     overlap_score aggregate (candidate_generator), a stricter cap than the
+#     other boost-only types.
 #
 # NOTE (terminology): this is a recommendation *evidence family* concept
 # (frozenset of overlap-concept prefixes), distinct from SignalFamily — the
@@ -65,14 +74,15 @@ BOOST_ONLY_TYPES = frozenset({
     "comparison",
     "collab",
     "comention",
+    "similar",
 })
 
 # Of the boost-only types, only these may be *admitted* as eligibility-buying
 # when a mode opts in (build_candidate_eligibility(boost_only_qualifies=True)).
-# `comparison` is admitted by COMPARE mode. `collab` and `comention` are
-# intentionally absent: both are pure boosts that must always be accompanied by
-# first-class evidence in every mode (D1/D2 contract: "cannot qualify alone"),
-# so they never appear here and thus never buy eligibility.
+# `comparison` is admitted by COMPARE mode. `collab`, `comention` and `similar`
+# are intentionally absent: all three are pure boosts that must always be
+# accompanied by first-class evidence in every mode (D1/D2/G4 contract: "cannot
+# qualify alone"), so they never appear here and thus never buy eligibility.
 BOOST_ONLY_ADMISSIBLE_TYPES = frozenset({
     "comparison",
 })
@@ -165,8 +175,9 @@ def build_candidate_eligibility(
     boost-only paths (``BOOST_ONLY_ADMISSIBLE_TYPES``, currently ``comparison``)
     can contribute to eligibility, and only when ``boost_only_qualifies`` is True
     (COMPARE mode admits comparison neighbors). Non-admissible boost-only paths
-    (``collab``) are recorded for scoring/explainability but NEVER buy
-    eligibility in any mode, keeping the evidence-first contract intact.
+    (``collab``/``comention``/``similar``) are recorded for scoring/explainability
+    but NEVER buy eligibility in any mode, keeping the evidence-first contract
+    intact.
     """
     eligibility = CandidateEligibility()
     for concept in overlap_concepts:

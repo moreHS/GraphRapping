@@ -25,7 +25,12 @@ if str(ROOT) not in sys.path:
 from src.common.enums import RecommendationMode  # noqa: E402
 from src.jobs.run_full_load import FullLoadConfig, run_full_load  # noqa: E402
 from src.loaders.source_review_stats_loader import load_source_review_stats_snapshot  # noqa: E402
-from src.rec.candidate_generator import CandidateProduct, generate_candidates_prefiltered  # noqa: E402
+from src.rec.candidate_generator import (  # noqa: E402
+    CandidateProduct,
+    build_similar_boost_index,
+    extract_owned_product_ids,
+    generate_candidates_prefiltered,
+)
 from src.rec.category_groups import (  # noqa: E402
     RECOMMEND_CATEGORY_DEFS,
     RECOMMEND_CATEGORY_LABELS,
@@ -33,6 +38,13 @@ from src.rec.category_groups import (  # noqa: E402
     recommend_category_counts,
 )
 from src.rec.product_profile_enrichment import enrich_product_profiles_by_master  # noqa: E402
+from src.rec.product_similarity import (  # noqa: E402
+    SimilarProductSignal,
+    build_idf,
+    build_product_nodes,
+    build_similarity_signals,
+    keyword_signals_from_product_signals,
+)
 from src.rec.reranker import rerank  # noqa: E402
 from src.rec.scorer import ScoredProduct, Scorer  # noqa: E402
 
@@ -110,6 +122,11 @@ def build_audit_report(
     scorer = Scorer()
     scorer.load_config()
 
+    # Phase 8 G4: build the ungated similarity index once (corpus-level), the
+    # same activation state the serving stores compute at load — so the audit
+    # and the snapshots it feeds see the exact web-pipeline boost behaviour.
+    similar_ungated = _build_ungated_similarity(result.batch_result, serving_products)
+
     scenarios = [
         _build_scenario(
             user=user,
@@ -117,6 +134,7 @@ def build_audit_report(
             product_map=product_map,
             scorer=scorer,
             top_k=top_k,
+            similar_ungated=similar_ungated,
         )
         for user in users
         for group in requested_groups
@@ -142,6 +160,30 @@ def build_audit_report(
     }
 
 
+def _build_ungated_similarity(
+    batch_result: dict[str, Any],
+    serving_products: list[dict[str, Any]],
+) -> dict[str, list[SimilarProductSignal]]:
+    """Phase 8 G4: the ungated (category_gate=False) similarity index for the
+    similar-boost channel — the same 3-function combo the serving stores run at
+    load (``src/web/serving_store.build_and_attach_similarity``), so the audit /
+    snapshot path sees the same activation state as the web pipeline. The
+    keyword axis is sourced from the per-product signal index (the demo-side
+    ``wrapped_signal`` equivalent, mirroring ``src/web/state.load_demo_data``).
+    Labels are irrelevant to boost strengths, so no label index is passed."""
+    product_signals: dict[str, list[dict[str, Any]]] = {}
+    for review in batch_result.get("review_results", []):
+        for sig in review.get("signals", []):
+            pid = sig.get("target_product_id")
+            if pid:
+                product_signals.setdefault(str(pid), []).append(sig)
+    keyword_triples = keyword_signals_from_product_signals(product_signals)
+    nodes = build_product_nodes(serving_products, keyword_triples)
+    return build_similarity_signals(
+        nodes, serving_products, idf=build_idf(nodes), category_gate=False,
+    )
+
+
 def _build_scenario(
     *,
     user: dict[str, Any],
@@ -149,14 +191,22 @@ def _build_scenario(
     product_map: dict[str, dict[str, Any]],
     scorer: Scorer,
     top_k: int,
+    similar_ungated: dict[str, list[SimilarProductSignal]],
 ) -> dict[str, Any]:
     prefiltered_product_ids = _prefilter_product_ids(product_map, category_group)
+    # Phase 8 G4: same assembly as the server pipeline — owned anchors × the
+    # corpus-wide ungated index; empty index (no in-corpus owned anchor with
+    # neighbours) stays None = dormant channel.
+    similar_boost = build_similar_boost_index(
+        extract_owned_product_ids(user), similar_ungated,
+    ) or None
     candidates = generate_candidates_prefiltered(
         user_profile=user,
         prefiltered_product_ids=prefiltered_product_ids,
         product_profiles_by_id=product_map,
         mode=RecommendationMode.EXPLORE,
         max_candidates=SERVER_CANDIDATE_LIMIT,
+        similar_boost=similar_boost,
     )
 
     scored_pairs: list[tuple[CandidateProduct, ScoredProduct]] = []

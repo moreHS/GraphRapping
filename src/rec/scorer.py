@@ -79,6 +79,13 @@ class Scorer:
         # backend boost), applied in ALL modes, and dormant until
         # src/mart/product_comention populates comention overlaps.
         self._comention_product_weight: float = 0.0
+        # Similar-product boost (Phase 8 G4). Same discipline again: kept OUT of
+        # the `features` map (non-tunable backend boost), applied in ALL modes,
+        # and dormant until a caller assembles `similar_boost` from the ungated
+        # similarity sidecar (candidate_generator.build_similar_boost_index).
+        # load_config sets it; load_from_dict (manual weight sliders) leaves it
+        # at 0.0 — the D1/D2 semantics, pinned by tests.
+        self._similar_product_weight: float = 0.0
 
     def load_config(self, filename: str = "scoring_weights.yaml") -> None:
         config = load_yaml(filename)
@@ -98,6 +105,12 @@ class Scorer:
             )
         except (TypeError, ValueError):
             self._comention_product_weight = 0.0
+        try:
+            self._similar_product_weight = max(
+                0.0, float(config.get("similar_product_weight", 0.0) or 0.0)
+            )
+        except (TypeError, ValueError):
+            self._similar_product_weight = 0.0
 
     def load_from_dict(self, weights: dict, shrinkage_k: float = 10.0) -> None:
         self._weights = weights
@@ -243,6 +256,20 @@ class Scorer:
             raw_score += comention_contribution
             contributions["comention_product_bonus"] = comention_contribution
 
+        # similar_product_affinity: boost-only feature (Phase 8 G4). Magnitude
+        # rides on the `similar:*|strength=` overlap channel (per-anchor strength
+        # = min(shared-IDF score / 30, 1), summed across anchors then clamped),
+        # so the value is 0 whenever no similar overlap is present — keeping the
+        # default path (no similar_boost wiring upstream) byte-identical
+        # regardless of the weight. Applied in every mode; weight from the
+        # top-level similar_product_weight config key, kept OUT of the
+        # `features` map (like collaborative_affinity/comention_product_bonus).
+        similar_value = min(overlap_strength_by_type.get("similar", 0.0), 1.0)
+        similar_contribution = self._similar_product_weight * similar_value
+        if similar_contribution != 0:
+            raw_score += similar_contribution
+            contributions["similar_product_affinity"] = similar_contribution
+
         score_layers = _score_layers(contributions)
 
         # Evidence shrinkage
@@ -297,6 +324,7 @@ def _score_layers(contributions: dict[str, float]) -> dict[str, float]:
             "comparison_alternative",
             "collaborative_affinity",
             "comention_product_bonus",
+            "similar_product_affinity",
         },
         "review_graph_weak_evidence_score": {
             "review_graph_weak_relation_match",

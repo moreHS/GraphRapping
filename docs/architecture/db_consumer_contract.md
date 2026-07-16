@@ -502,7 +502,7 @@ family 의 현행 분류·의미론과, **신규 family 를 추가할 때 반드
 | `REVIEW_GRAPH_RELATION` | `keyword, bee_attr, semantic_keyword, semantic_bee_attr, context, concern, concern_bridge, tool, coused` | 리뷰 그래프 유래(promoted) 신호와의 일치 |
 | `REVIEW_GRAPH_WEAK_RELATION` | `weak_semantic_keyword, weak_semantic_bee_attr` | 위의 약한(간접 semantic) 변형 |
 | `PURCHASE_BEHAVIOR` | `owned_family, repurchased_family, repurchase_brand, repurchase_category, recent_purchase_brand` | 구매 확정 행동과의 일치 |
-| (boost-only, **자격 불가**) | `comparison, collab, comention` (+Phase 8 `similar` 예정) | `BOOST_ONLY_TYPES` — 결합 시 보정만, 단독으로 eligibility 못 삼. `comparison`만 COMPARE 모드에서 admit(`BOOST_ONLY_ADMISSIBLE_TYPES`). 2026-07 정정: 종전 표가 `comparison`을 review-graph로 오기 |
+| (boost-only, **자격 불가**) | `comparison, collab, comention, similar` | `BOOST_ONLY_TYPES` — 결합 시 보정만, 단독으로 eligibility 못 삼. `comparison`만 COMPARE 모드에서 admit(`BOOST_ONLY_ADMISSIBLE_TYPES`). `similar`(Phase 8 G4, family 명 `PRODUCT_SIMILARITY_AFFINITY`, 2026-07-16 확정)는 추가로 retrieval `overlap_score` 집계에서도 제외(50컷 정렬 무영향). 2026-07 정정: 종전 표가 `comparison`을 review-graph로 오기 |
 
 자격이 **될 수 없는** 것 (기존 규율, 신규 family 에도 그대로):
 - `source_review_*` (source trust/popularity) — trust/tie-break 신호이지 자격
@@ -538,6 +538,12 @@ family 의 현행 분류·의미론과, **신규 family 를 추가할 때 반드
    된다는 불변식도 함께 고정한다. 랭킹 이동은 스냅샷 회귀
    (`tests/fixtures/ranking_snapshots/dense_golden.json` /
    `wide_golden.json`) diff 재승인으로 검증한다.
+   **예외(boost-only, 2026-07-16 명문화)**: boost-only 타입은 자격(OR 버킷)에
+   기여하지 않으므로 `known_families` 에 **추가하지 않는다** — `known_families`
+   는 자격 가능 family 의 전수 집합이고, boost-only 는 "top-N 에 등장해도
+   evidence family 로 세어지지 않는다" 불변식의 대상이다. `comparison`/
+   `collab`/`comention`(D1·D2 선례)과 `similar`(P8-3a) 모두 이 예외를 따른다.
+   "단독 자격 fail" 계약 테스트와 불변식 고정 의무는 예외 없이 그대로 적용된다.
 4. **명명 규칙** — 대문자 SNAKE_CASE 명사구, 근거의 **성격**을 이름에
    담는다 (`PURCHASE_BEHAVIOR` 처럼 "무엇이 확인되었는가"). 접미사 규칙:
    확정 행동은 `_BEHAVIOR`, 관심/친화 수준은 `_INTEREST`/`_AFFINITY`.
@@ -547,12 +553,14 @@ family 의 현행 분류·의미론과, **신규 family 를 추가할 때 반드
    §5 provenance contract(신호→fact→원문 추적)를 만족해야 한다. 추적
    불가능한 근거는 family 후보가 아니다.
 
-### 13.4 예정 family (참고용 예고 — 본 계약의 첫 적용 대상)
+### 13.4 예정/도입 family 현황 (본 계약의 적용 이력)
 
-| 예정 family | 트랙 | 자격 등급 (예정) | 상태 |
+| family | 트랙 | 자격 등급 | 상태 |
 |---|---|---|---|
-| `COMPARISON` | P7-1a (A1) | boost-only 권장 ("비교됨"은 약신호) | 도입 중 |
-| `COLLABORATIVE_AFFINITY` | P7-4 (D1) | 단독 자격 불가·결합 부스트만 | 계획 |
+| `COMPARISON` | P7-1a (A1) | boost-only (`comparison` — COMPARE 모드만 admit) | **도입 완료** |
+| `COLLABORATIVE_AFFINITY` | P7-4 (D1) | boost-only (`collab` — 단독 자격 불가·전 모드 admit 없음) | **도입 완료** (배선+대기) |
+| `COMENTION` (co-mention) | P7 (D2) | boost-only (`comention` — 단독 자격 불가·전 모드 admit 없음) | **도입 완료** (배선+대기) |
+| `PRODUCT_SIMILARITY_AFFINITY` | P8-3a (G4) | boost-only (`similar` — 단독 자격 불가·전 모드 admit 없음·retrieval 집계 제외) | **도입 완료** (배선+대기: 서빙 owned 엣지 1/50, DECISIONS/2026-07-16_phase8_g4_similar_boost.md) |
 | `BEHAVIORAL_INTEREST` | Track E (E2) | 단독 자격 불가 (스쳐본 것은 자격이 아님) | 보류 (이벤트 스펙 확정 시) |
 
 ---
@@ -567,3 +575,4 @@ family 의 현행 분류·의미론과, **신규 family 를 추가할 때 반드
 | 2026-06-10 | Mockdata real product_id fix | product universe를 rs_own source product id 기반 517개로 고정하고 promoted product 수치 갱신 |
 | 2026-06-15 | Source-grounded contract | `serving_product_profile` 에 source identity/review stats 를 추가하고 `review_count_*` 를 graph support count 로 명확화 |
 | 2026-07-13 | Phase 7 E0 | §13 "Recommendation evidence-family 확장 계약" 추가 — 현행 자격 의미론(OR)과 신규 family 추가 조건(단독 자격/가중·shrinkage/기대셋·계약 테스트/명명/provenance) 성문화 |
+| 2026-07-16 | Phase 8 P8-3a | §13.2 boost-only 행에 `similar` 확정 편입(`PRODUCT_SIMILARITY_AFFINITY`, retrieval 집계 제외 명기) · §13.3(3) boost-only 는 `known_families` 제외 예외 명문화 · §13.4 도입 현황 표로 갱신(COMPARISON/COLLABORATIVE_AFFINITY/COMENTION/PRODUCT_SIMILARITY_AFFINITY 도입 완료) |

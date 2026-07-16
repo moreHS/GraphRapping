@@ -53,6 +53,21 @@ collaborative_affinity_weight: 0.02
 # review data (DECISIONS/2026-07-14_phase7_d2_comention.md).
 comention_product_weight: 0.02
 
+# Similar-product boost (Phase 8 G4). Same discipline as the two boosts above:
+# kept OUT of the `features:` map (frontend slider contract), a non-tunable
+# backend boost read directly by Scorer.load_config and applied in every mode.
+# 0.02 = lowest tier by the §13.3(2) hit-rate-inverse rule: ungated shared-node
+# similarity covers ~99% of products (near-always-on), so its weight is anchored
+# to the coused/collab/comention "products connected to you" tier — never above
+# it. Per-anchor strength saturates at shared-IDF 30 (wide ungated p90 ≈ 31.6)
+# in candidate_generator, the channel is boost-only (cannot qualify a candidate
+# alone), and it is excluded from the retrieval overlap aggregate — a 4-fold
+# cap against the ungated max (~207, variant pairs). Dormant until a caller
+# assembles similar_boost from the ungated sidecar; with serving owned-product
+# edges at 1/50 users today this is wired-but-waiting on purchase data
+# (DECISIONS/2026-07-16_phase8_g4_similar_boost.md).
+similar_product_weight: 0.02
+
 # Evidence shrinkage: shrinked = raw * (support / (support + k))
 shrinkage_k: 10
 

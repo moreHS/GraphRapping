@@ -46,6 +46,7 @@ from src.mart.serving_profile_schema import (
     SERVING_USER_PROFILE_COLUMNS,
 )
 from src.rec.product_similarity import (
+    SimilarProductSignal,
     attach_similarity_signals,
     build_idf,
     build_product_nodes,
@@ -173,7 +174,8 @@ def build_and_attach_similarity(
     raw_keyword_signals: dict[str, list[tuple[str, str, str]]],
     *,
     category_gate: bool = True,
-) -> None:
+    include_ungated: bool = False,
+) -> dict[str, list[SimilarProductSignal]] | None:
     """Activation hook: compute + attach ephemeral ``similar_product_ids`` in place.
 
     Shared by the DB serving refresh and the demo pipeline load. ``products`` are
@@ -185,17 +187,35 @@ def build_and_attach_similarity(
 
     Neighbour lists are union-symmetrized so a similar-products surface shows the
     edge on both sides. Idempotent overwrite: safe on every load/refresh.
+
+    ``include_ungated`` (Phase 8 G4): when True, ALSO computes the ungated
+    (``category_gate=False``), non-symmetrized similarity index on the same
+    nodes/idf/labels (only the pair enumeration runs twice) and RETURNS it as
+    the store-side sidecar for the recommendation similar-boost channel. The
+    sidecar is deliberately NOT attached to any profile — the P8-2 contract
+    ("the only key the hook adds is ``similar_product_ids``") holds, and no API
+    payload changes. Returns None when ``include_ungated`` is False.
     """
     nodes = build_product_nodes(products, raw_keyword_signals)
     idf = build_idf(nodes)
+    label_index = _keyword_label_index(nodes)
     signals = build_similarity_signals(
         nodes,
         products,
         idf=idf,
         category_gate=category_gate,
-        label_index=_keyword_label_index(nodes),
+        label_index=label_index,
     )
     attach_similarity_signals(products, symmetrize(signals))
+    if not include_ungated:
+        return None
+    return build_similarity_signals(
+        nodes,
+        products,
+        idf=idf,
+        category_gate=False,
+        label_index=label_index,
+    )
 
 
 @runtime_checkable
@@ -213,6 +233,13 @@ class ServingStore(Protocol):
     async def get_users(self) -> list[dict[str, Any]]: ...
 
     async def get_user(self, user_id: str) -> dict[str, Any] | None: ...
+
+    # Phase 8 G4: ungated (category_gate=False) similarity sidecar accessor —
+    # the anchor's attribute-similar neighbours across ALL categories, computed
+    # once at load. Feeds the recommendation similar-boost assembly and the
+    # shared_axes provenance on `similar` explanation paths. Never attached to
+    # a profile; an unknown/neighbourless product yields [].
+    async def get_ungated_similar(self, product_id: str) -> list[Any]: ...
 
 
 class DemoServingStore:
@@ -243,6 +270,12 @@ class DemoServingStore:
             if user.get("user_id") == user_id:
                 return user
         return None
+
+    async def get_ungated_similar(self, product_id: str) -> list[Any]:
+        """Phase 8 G4 sidecar accessor (demo): ungated similarity signals for a
+        product, computed by ``load_demo_data``. Copied so a caller cannot
+        mutate the shared state list."""
+        return list(self._state_provider().similar_ungated.get(product_id, []))
 
     async def prefilter_candidate_ids(
         self,
@@ -368,6 +401,9 @@ class DBServingStore:
         self._products_by_id: dict[str, dict[str, Any]] = {}
         self._users: list[dict[str, Any]] = []
         self._users_by_id: dict[str, dict[str, Any]] = {}
+        # Phase 8 G4: ungated similarity sidecar (anchor pid -> ungated
+        # neighbours). Refreshed with the products; never attached to profiles.
+        self._ungated_similar: dict[str, list[SimilarProductSignal]] = {}
 
     def _is_fresh(self) -> bool:
         return (
@@ -415,8 +451,11 @@ class DBServingStore:
         products = await self._fetch_products()
         # Phase 8 activation hook (right after _fetch_products, per plan §활성화 훅):
         # attach ephemeral product-product similarity from the wrapped_signal
-        # keyword sidecar + the profiles just fetched, once per refresh.
-        await self._attach_similarity(products)
+        # keyword sidecar + the profiles just fetched, once per refresh. The
+        # same call also computes the ungated G4 sidecar (nodes/idf reused);
+        # it is assigned only after every fetch succeeded, preserving the
+        # "no state mutation until the whole refresh succeeds" discipline.
+        ungated = await self._attach_similarity(products)
         users = await self._fetch_users()
         self._products = products
         self._products_by_id = {
@@ -424,6 +463,7 @@ class DBServingStore:
         }
         self._users = users
         self._users_by_id = {u["user_id"]: u for u in users if u.get("user_id")}
+        self._ungated_similar = ungated
         self._loaded_at = self._clock()
 
     async def _fetch_products(self) -> list[dict[str, Any]]:
@@ -442,18 +482,27 @@ class DBServingStore:
             )
         return [_decode_row(row, _USER_JSONB_COLUMNS) for row in rows]
 
-    async def _attach_similarity(self, products: list[dict[str, Any]]) -> None:
+    async def _attach_similarity(
+        self, products: list[dict[str, Any]]
+    ) -> dict[str, list[SimilarProductSignal]]:
         """Phase 8: attach ephemeral ``similar_product_ids`` to freshly-fetched
-        products, sourcing the keyword axis from the ``wrapped_signal`` sidecar."""
+        products, sourcing the keyword axis from the ``wrapped_signal`` sidecar.
+        Returns the ungated G4 sidecar computed on the same nodes/idf (empty
+        when there is nothing to compute)."""
         product_ids = [p["product_id"] for p in products if p.get("product_id")]
         if not product_ids:
-            return
+            return {}
         # Lazy import mirrors the module's other db.* deferrals and keeps the
         # provenance/asyncpg layer out of demo-mode import surface.
         from src.rec.provenance_provider import fetch_keyword_signal_triples
 
         raw_keyword_signals = await fetch_keyword_signal_triples(self._pool, product_ids)
-        build_and_attach_similarity(products, raw_keyword_signals)
+        return (
+            build_and_attach_similarity(
+                products, raw_keyword_signals, include_ungated=True
+            )
+            or {}
+        )
 
     async def get_products(self) -> list[dict[str, Any]]:
         await self._ensure_loaded()
@@ -472,6 +521,13 @@ class DBServingStore:
     async def get_user(self, user_id: str) -> dict[str, Any] | None:
         await self._ensure_loaded()
         return self._users_by_id.get(user_id)
+
+    async def get_ungated_similar(self, product_id: str) -> list[Any]:
+        """Phase 8 G4 sidecar accessor (DB): ungated similarity signals for a
+        product, refreshed with the serving cache. Copied so a caller cannot
+        mutate the sidecar list."""
+        await self._ensure_loaded()
+        return list(self._ungated_similar.get(product_id, []))
 
     async def prefilter_candidate_ids(
         self,
