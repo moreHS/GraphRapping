@@ -7,6 +7,7 @@ from __future__ import annotations
 import asyncio
 import copy
 import functools
+import logging
 import math
 import os
 from collections.abc import AsyncIterator
@@ -59,6 +60,8 @@ from src.rec.category_groups import (
 from src.common.config_loader import load_yaml
 from src.common.enums import RecommendationMode
 from src.web.review_summary_sidecar import fetch_sidecar_summaries
+
+logger = logging.getLogger(__name__)
 
 
 # =============================================================================
@@ -221,6 +224,21 @@ def _resolve_existing_json_path(path_value: str | None, default_path: Path, labe
     return path
 
 
+def _resolve_user_default_path(fixture_dir: Path) -> Path:
+    """Default user-profile file for the demo pipeline.
+
+    Purchase-history backfill opt-in (fable_doc §C1): when
+    ``GRAPHRAPPING_USER_PROFILES_JSON`` is set it replaces the fixture default
+    (real pseudonymized profiles with embedded ``purchase_events``). Unset →
+    the fixture file, so the standard demo path is byte-identical. An explicit
+    request ``user_json_path`` still takes precedence over this default.
+    """
+    env_user_json = os.environ.get("GRAPHRAPPING_USER_PROFILES_JSON")
+    if env_user_json:
+        return Path(env_user_json)
+    return fixture_dir / "user_profiles_normalized.json"
+
+
 def _check_pipeline_run_allowed(provided_token: str | None) -> None:
     """P4-2 (Wave 3.2): guard `/api/pipeline/run` from anonymous external calls.
 
@@ -277,12 +295,32 @@ async def pipeline_run(
     mock_products = _json.loads(product_path.read_text(encoding="utf-8"))
 
     # --- 2. Load users from selected fixture profiles ---
+    # Opt-in override (purchase-history backfill, fable_doc §C1): when
+    # GRAPHRAPPING_USER_PROFILES_JSON is set, it becomes the default user file
+    # (real pseudonymized profiles with embedded purchase_events). An explicit
+    # request `user_json_path` still wins; when the env var is unset the default
+    # stays the fixture file, so the standard demo path is byte-identical.
     user_path = _resolve_existing_json_path(
         req.user_json_path,
-        fixture_dir / "user_profiles_normalized.json",
+        _resolve_user_default_path(fixture_dir),
         "user_json_path",
     )
+    # Cross-review P0-4 (auth explicitly rejected as over-engineering for a
+    # loopback pseudonymized local demo — see DECISIONS/2026-07-18_purchase_
+    # history_backfill.md): surface the operational constraint instead.
+    if not req.user_json_path and os.environ.get("GRAPHRAPPING_USER_PROFILES_JSON"):
+        logger.warning(
+            "real pseudonymized profiles loaded — keep server loopback-bound; "
+            "do not expose publicly"
+        )
     mock_users = _json.loads(user_path.read_text(encoding="utf-8"))
+
+    # Purchase-history backfill: surface any per-profile `purchase_events` into
+    # the existing derive_purchase_features path (OWNS_PRODUCT/OWNS_FAMILY facts
+    # → G4 similar_product_affinity boost). Returns None for the standard
+    # fixtures (no `purchase_events` key), keeping this call byte-identical.
+    from src.loaders.user_loader import extract_purchase_events_from_profiles
+    purchase_events_by_user = extract_purchase_events_from_profiles(mock_users)
 
     # --- 3. Prepare review path ---
     selected_review_path = _resolve_existing_json_path(
@@ -304,6 +342,7 @@ async def pipeline_run(
         source=req.source,
         review_format=req.review_format,
         source_review_stats_json_path=req.source_review_stats_json_path,
+        purchase_events_by_user=purchase_events_by_user,
     )
 
     return {

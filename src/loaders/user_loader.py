@@ -18,6 +18,7 @@ plumbing then, not before.
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -44,6 +45,102 @@ class UserLoadResult:
     stability_verified: bool = False
 
 
+def extract_purchase_events_from_profiles(
+    user_profiles: Mapping[str, Mapping[str, Any]],
+) -> dict[str, list[PurchaseEvent]] | None:
+    """Build ``purchase_events_by_user`` from an optional per-profile ``purchase_events`` list.
+
+    Purchase-history backfill (fable_doc §C1) embeds resolved purchases directly
+    in each normalized profile under a top-level ``purchase_events`` key. Each
+    item mirrors the :class:`PurchaseEvent` input contract
+    (``purchase_ingest.py``); ``user_id`` is injected from the profile key here
+    rather than duplicated in the file. The result feeds the *existing*
+    ``load_users_from_profiles(purchase_events_by_user=...)`` →
+    ``derive_purchase_features`` path — no new adapter surface is introduced.
+
+    Boundary contract (cross-review P1-10 — no silent correction):
+    - entry not a mapping, or ``product_id`` missing/blank → event SKIPPED.
+    - ``quantity`` absent → 1 (documented default). Present but not a positive
+      integer (bool excluded; 0/negative/non-int rejected) → event SKIPPED —
+      quantity feeds repurchase counting, so fabricating a value is worse than
+      dropping the event.
+    - ``purchased_at``/``channel`` present but not ``str``, or ``price`` present
+      but not numeric → that FIELD nulled (event kept — ownership truth is the
+      product reference; these fields are auxiliary recency/metadata).
+    All skips/nullifications are counted and surfaced via ``logger.warning``.
+
+    Returns ``None`` when no profile carries events, so callers passing the
+    result to ``load_demo_data`` / ``run_full_load`` stay byte-identical to the
+    prior no-purchase default (the standard fixtures have no ``purchase_events``
+    key).
+    """
+    events_by_user: dict[str, list[PurchaseEvent]] = {}
+    skipped_events = 0
+    nullified_fields = 0
+    for user_id, profile in user_profiles.items():
+        if not isinstance(profile, Mapping):
+            continue
+        raw_events = profile.get("purchase_events")
+        if not isinstance(raw_events, list):
+            continue
+        events: list[PurchaseEvent] = []
+        for idx, ev in enumerate(raw_events):
+            if not isinstance(ev, Mapping):
+                skipped_events += 1
+                continue
+            product_id_raw = ev.get("product_id")
+            if product_id_raw is None or str(product_id_raw).strip() == "":
+                skipped_events += 1
+                continue
+            product_id = str(product_id_raw).strip()
+
+            quantity_raw = ev.get("quantity")
+            if quantity_raw is None:
+                quantity = 1
+            elif isinstance(quantity_raw, bool) or not isinstance(quantity_raw, int) or quantity_raw <= 0:
+                skipped_events += 1
+                continue
+            else:
+                quantity = quantity_raw
+
+            purchased_at = ev.get("purchased_at")
+            if purchased_at is not None and not isinstance(purchased_at, str):
+                purchased_at = None
+                nullified_fields += 1
+            price = ev.get("price")
+            if price is not None and (isinstance(price, bool) or not isinstance(price, (int, float))):
+                price = None
+                nullified_fields += 1
+            channel = ev.get("channel")
+            if channel is not None and not isinstance(channel, str):
+                channel = None
+                nullified_fields += 1
+
+            events.append(
+                PurchaseEvent(
+                    purchase_event_id=str(
+                        ev.get("purchase_event_id") or f"{user_id}::{product_id}::{idx}"
+                    ),
+                    user_id=user_id,
+                    product_id=product_id,
+                    purchased_at=purchased_at,
+                    price=float(price) if price is not None else None,
+                    quantity=quantity,
+                    channel=channel,
+                )
+            )
+        if events:
+            events_by_user[user_id] = events
+    if skipped_events or nullified_fields:
+        logger.warning(
+            "purchase_events hygiene: skipped %d malformed event(s), nullified %d "
+            "ill-typed field(s) across embedded profiles",
+            skipped_events,
+            nullified_fields,
+        )
+    return events_by_user or None
+
+
 def load_users_from_profiles(
     user_profiles: dict[str, dict[str, Any]],
     *,
@@ -64,7 +161,13 @@ def load_users_from_profiles(
             }
         purchase_events_by_user: optional per-user PurchaseEvent list, used to derive
             OWNS_PRODUCT/OWNS_FAMILY/REPURCHASES_FAMILY/REPURCHASES_BRAND/RECENTLY_PURCHASED
-            user facts via derive_purchase_features().
+            user facts via derive_purchase_features(). When omitted (None), a
+            centralized fallback auto-extracts any profile-embedded
+            ``purchase_events`` (purchase-history backfill) — standard fixtures
+            have no such key, so the fallback returns None and the default path
+            stays byte-identical. NOTE: this fallback covers the user-fact build
+            only; run_batch's brand-confidence weighting is a separate contract
+            and still requires callers to pass events explicitly.
         brand_lookup: product_id → brand_id (raw normalized).
         category_lookup: product_id → category_id (raw normalized).
         family_lookup: product_id → variant_family_id.
@@ -75,6 +178,14 @@ def load_users_from_profiles(
         UserLoadResult with user_masters and user_adapted_facts ready for run_batch()
     """
     result = UserLoadResult()
+
+    # Centralized backfill fallback (cross-review P1-9): profiles may embed
+    # purchase_events; when the caller didn't supply purchase_events_by_user,
+    # extract them here so every entry point (run_full_load / load_demo_data /
+    # direct callers) consumes them through the same derive_purchase_features
+    # path without per-entry-point wiring.
+    if purchase_events_by_user is None:
+        purchase_events_by_user = extract_purchase_events_from_profiles(user_profiles)
 
     # Surface purchase events for users absent from user_profiles — current loader
     # contract iterates profiles only, so those purchases are silently ignored.

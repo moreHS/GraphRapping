@@ -38,3 +38,9 @@ ENV/
 .DS_Store
 .idea/
 .vscode/
+
+# Real customer data — NEVER commit (purchase-history backfill output,
+# built by scripts/fetch_user_profiles_pg.py from Azure PG). The WHOLE
+# directory is ignored so filename variations cannot leak; the script
+# refuses to write anywhere else. Consumed via opt-in env override only.
+mockdata/real/
