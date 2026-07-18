@@ -45,10 +45,53 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for details.
 
 ## Key Concepts
 
-- **Corpus Promotion**: distinct_review_count >= 2 (30d) / >= 3 (90d, all), avg_confidence >= 0.6, synthetic_ratio <= 0.5
+- **Corpus Promotion**: distinct_review_count >= 2 (30d/90d/all — Phase 7 C2), avg_confidence >= 0.6, synthetic_ratio <= 0.5
 - **Common Concept Plane**: Brand, Category, Ingredient, BEEAttr, Keyword, Concern, Goal, Tool, Context
-- **19 Scoring Features**: keyword_match, residual_bee_attr_match, concern_fit, concern_bridge_fit, goal_fit_master, family ownership features, tool/co-use features, etc.
+- **Evidence families (OR-eligibility)**: PRODUCT_MASTER_TRUTH / REVIEW_GRAPH_RELATION / REVIEW_GRAPH_WEAK / PURCHASE_BEHAVIOR qualify a candidate; **boost-only** types (`comparison`, `collab`, `comention`, `similar`) never qualify alone and never buy retrieval ordering — contract in [db_consumer_contract §13](docs/architecture/db_consumer_contract.md)
+- **19 Scoring Features**: keyword_match, residual_bee_attr_match, concern_fit, concern_bridge_fit, goal_fit_master, family ownership features, tool/co-use features, etc. (frontend slider contract; backend-only boost weights live outside this map)
 - **Provenance**: signal_evidence table is source of truth for explanation chains
+
+## Product-Product Similarity (Phase 8)
+
+Products connect through **shared attribute nodes** (2-hop projection over the
+bipartite canonical-fact graph): `similarity(A,B) = Σ IDF(shared node)` — no
+hard-AND, no node merging. The keyword axis uses a **composite key**
+`keyword::{bee_attr}:{keyword}:{polarity}` sourced from the raw wrapped-signal
+sidecar ("가볍다" under 제형 vs 발림성 are different nodes). IDF auto-damps hubs
+(mega-brands, universal attributes) instead of hard exclusion lists.
+
+`category_gate` is a **consumption-context parameter**, not a property of the
+computation:
+
+| Surface | Gate | What you see |
+|---|---|---|
+| Graph viewer (`SHARES_ATTRIBUTE` dashed edges + evidence tooltip) | ON | why two products connect |
+| `GET /api/products/{id}/similar` + "비슷한 상품" widget | ON | attribute-similar products with shared-axis chips |
+| `similar_product_affinity` recommendation boost (owned-product anchors) | OFF | bounded re-score (≤ +0.02) of already-eligible candidates |
+| `related_products` on `/api/search` & `/api/ask` ("관련 상품 더보기") | upstream (query) | discovery section, hard exclusions preserved |
+
+Surface policy: a neighbor whose only shared evidence is the brand axis is not
+shown on similar-product surfaces (DECISIONS/2026-07-18_phase8_brand_only_neighbor_policy.md).
+
+## Real User Profiles (opt-in, purchase-history backfill)
+
+`scripts/fetch_user_profiles_pg.py` pulls K pseudonymized real profiles from the
+personalization agent's Azure PG view (read-only; credentials referenced from
+that project's `.env`, never copied) and resolves purchase representative codes
+(9-digit `rprs_prd_cd`) against the catalog's `REPRESENTATIVE_PROD_CODE` to embed
+`purchase_events` — one purchase occurrence = one event. Output goes ONLY to the
+git-ignored `mockdata/real/` directory.
+
+```bash
+python scripts/fetch_user_profiles_pg.py --limit 50    # writes mockdata/real/ (never committed)
+export GRAPHRAPPING_USER_PROFILES_JSON=mockdata/real/user_profiles_real_normalized.json
+uvicorn src.web.server:app  # + POST /api/pipeline/run — G4 boost fires on real owned edges
+```
+
+Unset env = the synthetic fixture path, byte-identical (tests/snapshots never
+depend on real data). **Operational constraint: real-profile mode is for the
+loopback-bound local demo only — do not expose publicly.** Details:
+[DECISIONS/2026-07-18_purchase_history_backfill.md](DECISIONS/2026-07-18_purchase_history_backfill.md).
 
 ## Local Development
 
@@ -109,6 +152,8 @@ uvicorn src.web.server:app --reload
 | `AZURE_OPENAI_DEPLOYMENT` | Azure OpenAI chat deployment name (required when `GRAPHRAPPING_QUERY_LLM=azure`) | unset |
 | `AZURE_OPENAI_API_VERSION` | Azure OpenAI REST API version, e.g. `2024-10-21` (required when `GRAPHRAPPING_QUERY_LLM=azure`) | unset |
 | `ANTHROPIC_API_KEY` | Anthropic API key (required when `GRAPHRAPPING_QUERY_LLM=anthropic`; model defaults to `claude-haiku-4-5`). Read from env only; never logged | unset |
+| `GRAPHRAPPING_ENABLE_PIPELINE_RUN` | Set `1` to allow `POST /api/pipeline/run` (demo data load) | unset (disabled) |
+| `GRAPHRAPPING_USER_PROFILES_JSON` | Opt-in path to a user-profile file that replaces the fixture default for the demo pipeline — used for the pseudonymized real-profile mode (`mockdata/real/...`). Unset = fixture file, byte-identical. Loopback-only; see Real User Profiles section | unset |
 
 Each subcommand exposes its own `--help`. The underlying functions
 (`src.db.migrate.migrate`, `src.jobs.run_full_load_db.run_full_load_to_db`,
@@ -130,6 +175,23 @@ scripts and tests — see `src/cli.py` for the full mapping.
   is set, falling back to a dictionary matcher by default.
 - **Inline "why this" graph**: each recommendation card can expand a small
   subgraph of the explanation paths behind that recommendation.
+- **Graph viewer similarity edges** (Phase 8 G2): the corpus product graph draws
+  undirected dashed `SHARES_ATTRIBUTE` edges between attribute-similar products
+  (top-3 per anchor); hovering shows the shared-axis evidence and score.
+- **"비슷한 상품" widget** (G3): the product detail panel lists attribute-similar
+  products with shared-axis chips (`GET /api/products/{id}/similar`; hidden when
+  empty).
+- **"관련 상품 더보기"** (G5): search/ask results append a related-products
+  section anchored on the top primary results, each entry attributed to its
+  anchor ("'X'과 속성 공유") with evidence chips.
+
+## Development History
+
+The full development narrative — discussions, decisions, and per-phase
+execution reports — is consolidated in
+[fable_doc/09_development_history.md](fable_doc/09_development_history.md).
+Individual decision records live in [DECISIONS/](DECISIONS/), detailed plans and
+reviews in [fable_doc/](fable_doc/).
 
 ## CI
 
