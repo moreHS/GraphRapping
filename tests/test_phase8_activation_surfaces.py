@@ -88,6 +88,72 @@ def test_hook_demo_adapter_chain_labels_keyword_axis():
 
 
 # ---------------------------------------------------------------------------
+# A2 — brand-only shared neighbours dropped from the gated (G2/G3) surface
+# (DECISIONS/2026-07-18_phase8_brand_only_neighbor_policy.md). The ungated G4/G5
+# sidecar keeps them (boost is score-only and unfiltered).
+# ---------------------------------------------------------------------------
+
+
+def _brand_policy_products() -> list[dict]:
+    # All same category group (토너 -> skincare) so the item-to-item gate passes;
+    # category_concept_ids empty so category is NOT a shared node. The only shared
+    # nodes are brand + ingredient.
+    #   P1,P2: share brand 헤라 + ingredient shared_ing  (brand+ingredient -> KEEP)
+    #   P1,P3 / P2,P3: share brand 헤라 ALONE             (brand-only      -> DROP)
+    #   P3,P4: share ingredient other_ing ALONE          (ingredient-only -> KEEP)
+    #   P4: brand 설화수 breaks df==N so brand 헤라 stays discriminative (IDF > 0).
+    def _p(pid: str, brand: str, ing: str) -> dict:
+        return {
+            "product_id": pid, "category_name": "토너", "category_concept_ids": [],
+            "brand_concept_ids": [f"concept:Brand:{brand}"],
+            "ingredient_concept_ids": [f"concept:Ingredient:{ing}"],
+        }
+    return [
+        _p("P1", "헤라", "shared_ing"),
+        _p("P2", "헤라", "shared_ing"),
+        _p("P3", "헤라", "other_ing"),
+        _p("P4", "설화수", "other_ing"),
+    ]
+
+
+def test_brand_only_neighbour_dropped_from_gated_surface_but_kept_ungated():
+    products = _brand_policy_products()
+    ungated = build_and_attach_similarity(products, {}, include_ungated=True)
+    by_id = {p["product_id"]: p for p in products}
+
+    def neigh(pid: str) -> set:
+        return {s["product_id"] for s in by_id[pid]["similar_product_ids"]}
+
+    # Gated surface: the brand-only pair (P1/P2 <-> P3) is gone, two-directionally;
+    # the brand+ingredient pair (P1<->P2) and the ingredient-only pair (P3<->P4) stay.
+    assert neigh("P1") == {"P2"}
+    assert neigh("P2") == {"P1"}
+    assert neigh("P3") == {"P4"}  # P1/P2 dropped (brand-only), P4 kept (ingredient)
+    assert neigh("P4") == {"P3"}
+
+    # The dropped edge really was brand-only: it survives UNFILTERED in the
+    # ungated sidecar, sharing exactly the brand axis — that is why the gated
+    # surface drops it while the boost channel keeps it.
+    assert ungated is not None
+    ungated_p1 = {s.product_id: s for s in ungated["P1"]}
+    assert "P3" in ungated_p1
+    assert {ax["axis"] for ax in ungated_p1["P3"].shared_axes} == {"brand"}
+    # The kept gated edge P1<->P2 shares more than brand (brand + ingredient).
+    assert {ax["axis"] for ax in ungated_p1["P2"].shared_axes} == {"brand", "ingredient"}
+
+
+def test_brand_only_policy_leaves_ungated_g3_g4_neighbour_counts_intact():
+    # The ungated sidecar (feeds G4 boost / G5 related) is NOT filtered: every
+    # neighbour — including brand-only — is retained.
+    products = _brand_policy_products()
+    ungated = build_and_attach_similarity(products, {}, include_ungated=True)
+    assert ungated is not None
+    # P3 keeps all three ungated neighbours (P1, P2 brand-only + P4 ingredient),
+    # whereas its gated surface kept only P4.
+    assert {s.product_id for s in ungated["P3"]} == {"P1", "P2", "P4"}
+
+
+# ---------------------------------------------------------------------------
 # G2 — _build_corpus_graph similarity edges
 # ---------------------------------------------------------------------------
 

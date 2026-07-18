@@ -261,6 +261,90 @@ def test_similar_never_reorders_the_retrieval_50_cut():
 
 
 # ---------------------------------------------------------------------------
+# Boost-only 4-type-common: EXCLUDED from the retrieval overlap_score aggregate
+# (unified 2026-07-18 — DECISIONS/2026-07-16_phase8_g4_similar_boost.md §4
+# addendum). Each of comparison/collab/comention/similar can appear on a
+# candidate yet must neither inflate overlap_score nor reorder the 50-cut.
+# Parametrized over all four boost-only types.
+# ---------------------------------------------------------------------------
+
+
+def _apply_similar(user: dict[str, Any], products: list[dict[str, Any]], idxs: Any) -> dict[str, Any]:
+    user.setdefault("owned_product_ids", []).extend(
+        [{"id": "product:ANCHOR"}, {"id": "product:ANCHOR2"}]
+    )
+    boost = {products[i]["product_id"]: [("ANCHOR", 0.9), ("ANCHOR2", 0.8)] for i in idxs}
+    return {"similar_boost": boost}
+
+
+def _apply_comparison(user: dict[str, Any], products: list[dict[str, Any]], idxs: Any) -> dict[str, Any]:
+    user.setdefault("owned_product_ids", []).extend(
+        [{"id": "product:CMP1"}, {"id": "product:CMP2"}]
+    )
+    for i in idxs:
+        products[i]["top_comparison_product_ids"] = [{"id": "product:CMP1"}, {"id": "product:CMP2"}]
+    return {}
+
+
+def _apply_collab(user: dict[str, Any], products: list[dict[str, Any]], idxs: Any) -> dict[str, Any]:
+    user["collaborative_product_ids"] = [
+        {"id": products[i]["product_id"], "supporter_count": 3, "strength": 0.5} for i in idxs
+    ]
+    return {}
+
+
+def _apply_comention(user: dict[str, Any], products: list[dict[str, Any]], idxs: Any) -> dict[str, Any]:
+    user.setdefault("owned_product_ids", []).append({"id": "product:CO1"})
+    for i in idxs:
+        products[i]["comention_product_ids"] = [{"id": "CO1", "strength": 0.5}]
+    return {}
+
+
+_BOOST_APPLIERS = [
+    ("similar", _apply_similar),
+    ("comparison", _apply_comparison),
+    ("collab", _apply_collab),
+    ("comention", _apply_comention),
+]
+
+
+def _overlap_type(concept: str) -> str:
+    return concept.split(":", 1)[0] if ":" in concept else concept
+
+
+@pytest.mark.parametrize("boost_type,apply", _BOOST_APPLIERS)
+def test_boost_only_type_excluded_from_overlap_score(boost_type, apply):
+    # A candidate with one first-class overlap (brand) plus a boost-only overlap
+    # of `boost_type`: overlap_score counts only the non-boost-only paths, so the
+    # boost-only signal never inflates the retrieval aggregate.
+    user = _brand_user()
+    products = [_candidate_product("CAND")]
+    gen_kwargs = apply(user, products, [0])
+    candidates = generate_candidates(user, products, mode=RecommendationMode.EXPLORE, **gen_kwargs)
+    cand = next(c for c in candidates if c.product_id == "CAND")
+
+    boost_paths = [c for c in cand.overlap_concepts if _overlap_type(c) == boost_type]
+    assert boost_paths, f"expected a {boost_type} overlap to be present"
+    non_boost = [c for c in cand.overlap_concepts if _overlap_type(c) not in BOOST_ONLY_TYPES]
+    assert cand.overlap_score == len(non_boost)
+    # The boost-only paths are strictly uncounted (aggregate < total overlaps).
+    assert cand.overlap_score < len(cand.overlap_concepts)
+
+
+@pytest.mark.parametrize("boost_type,apply", _BOOST_APPLIERS)
+def test_boost_only_type_never_reorders_the_retrieval_50_cut(boost_type, apply):
+    # 55 eligible candidates with identical first-class overlap (brand, score 1).
+    # The last 5 also carry boost-only overlaps of `boost_type`. If those counted
+    # toward overlap_score the last 5 would jump the stable-sorted 50-cut; the
+    # 4-type-common exclusion keeps the cut = the first 50 in input order.
+    user = _brand_user()
+    products = [_candidate_product(f"P{i:02d}") for i in range(55)]
+    gen_kwargs = apply(user, products, range(50, 55))
+    candidates = generate_candidates(user, products, mode=RecommendationMode.EXPLORE, **gen_kwargs)
+    assert [c.product_id for c in candidates] == [f"P{i:02d}" for i in range(50)]
+
+
+# ---------------------------------------------------------------------------
 # Scorer — top-level weight, clamp, modes, manual sliders, layer
 # ---------------------------------------------------------------------------
 

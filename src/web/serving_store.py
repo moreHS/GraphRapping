@@ -46,6 +46,7 @@ from src.mart.serving_profile_schema import (
     SERVING_USER_PROFILE_COLUMNS,
 )
 from src.rec.product_similarity import (
+    BRAND_AXIS,
     SimilarProductSignal,
     attach_similarity_signals,
     build_idf,
@@ -169,6 +170,41 @@ def _keyword_label_index(product_nodes: dict[str, set[str]]) -> dict[str, str]:
     return index
 
 
+def _drop_brand_only_signals(
+    signals: dict[str, list[SimilarProductSignal]],
+) -> dict[str, list[SimilarProductSignal]]:
+    """Drop neighbours whose shared evidence is the brand axis ALONE.
+
+    Similar-products surface policy ((a)안, user-approved 2026-07-18 —
+    ``DECISIONS/2026-07-18_phase8_brand_only_neighbor_policy.md``): "same brand"
+    on its own is too weak to call two products similar, so a signal whose every
+    ``shared_axis`` is the brand axis is removed from the item-to-item surface.
+
+    A pair's ``shared_axes`` are identical in both directions *before*
+    :func:`symmetrize` (``neighbor_shared[a][b]`` and ``[b][a]`` are the same
+    node list), so dropping here is two-directionally consistent: symmetrize can
+    never resurrect a dropped pair because neither direction survives to seed a
+    reverse edge. Applied ONLY in the gated (item-to-item) chain that feeds the
+    G2 graph / G3 widget; the ungated G4 boost / G5 related sidecar is
+    deliberately left untouched (a boost is score-only and a lone brand node's
+    IDF already damps its contribution — and filtering it would perturb the
+    ranking-snapshot-neutral boost channel).
+    """
+    out: dict[str, list[SimilarProductSignal]] = {}
+    for pid, sigs in signals.items():
+        kept = [
+            sig
+            for sig in sigs
+            if not (
+                sig.shared_axes
+                and all(ax.get("axis") == BRAND_AXIS for ax in sig.shared_axes)
+            )
+        ]
+        if kept:
+            out[pid] = kept
+    return out
+
+
 def build_and_attach_similarity(
     products: list[dict[str, Any]],
     raw_keyword_signals: dict[str, list[tuple[str, str, str]]],
@@ -187,6 +223,9 @@ def build_and_attach_similarity(
 
     Neighbour lists are union-symmetrized so a similar-products surface shows the
     edge on both sides. Idempotent overwrite: safe on every load/refresh.
+    Brand-only neighbours (shared evidence = the brand axis alone) are dropped
+    from this attached/gated surface (:func:`_drop_brand_only_signals`, A2
+    policy); the ``include_ungated`` sidecar below is NOT filtered.
 
     ``include_ungated`` (Phase 8 G4): when True, ALSO computes the ungated
     (``category_gate=False``), non-symmetrized similarity index on the same
@@ -206,6 +245,11 @@ def build_and_attach_similarity(
         category_gate=category_gate,
         label_index=label_index,
     )
+    # Brand-only neighbour policy (A2, gated surface only): a neighbour whose
+    # shared evidence is the brand axis alone is dropped before symmetrize, so
+    # G2/G3 never surface "similar only because same brand". The ungated sidecar
+    # below (G4 boost / G5 related) is intentionally NOT filtered.
+    signals = _drop_brand_only_signals(signals)
     attach_similarity_signals(products, symmetrize(signals))
     if not include_ungated:
         return None

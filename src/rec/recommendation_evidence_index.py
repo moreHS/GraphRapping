@@ -63,9 +63,14 @@ REVIEW_GRAPH_WEAK_TYPES = frozenset({
 #     PRODUCT_SIMILARITY_AFFINITY, db_consumer_contract.md §13). Like
 #     `collab`/`comention`, it NEVER qualifies a candidate on its own in ANY
 #     mode: sharing attributes with something you own is relatedness, not a
-#     stand-alone reason to recommend. It is also excluded from the retrieval
-#     overlap_score aggregate (candidate_generator), a stricter cap than the
-#     other boost-only types.
+#     stand-alone reason to recommend.
+#
+# 4-type-common rule (unified 2026-07-18): EVERY boost-only type above is
+# excluded from the retrieval ``overlap_score`` aggregate (candidate_generator),
+# so no boost-only signal can buy a place in the max_candidates retrieval cut —
+# it can only re-score candidates already retrieved on first-class evidence.
+# (Formerly only ``similar`` was excluded; the asymmetry is gone. See
+# DECISIONS/2026-07-16_phase8_g4_similar_boost.md §4 + 2026-07-18 addendum.)
 #
 # NOTE (terminology): this is a recommendation *evidence family* concept
 # (frozenset of overlap-concept prefixes), distinct from SignalFamily — the

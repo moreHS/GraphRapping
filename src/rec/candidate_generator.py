@@ -23,6 +23,7 @@ from src.rec.category_groups import (
     product_category_text,
 )
 from src.rec.recommendation_evidence_index import (
+    BOOST_ONLY_TYPES,
     CandidateEligibility,
     build_candidate_eligibility,
 )
@@ -431,13 +432,11 @@ def generate_candidates(
         # EXCLUDED from the retrieval overlap_score aggregate below, so it
         # cannot buy retrieval-cut ordering either — it only re-scores
         # candidates already retrieved on first-class evidence.
-        similar_overlap_count = 0
         if similar_boost and not candidate.already_owned:
             for anchor_pid, strength in similar_boost.get(pid, ()):
                 if anchor_pid == pid or strength <= 0.0:
                     continue
                 overlap.append(f"similar:{anchor_pid}|strength={strength}")
-                similar_overlap_count += 1
 
         # Purchase-behavior brand overlaps. These qualify candidates because
         # the match is user behavior aligned, not just product catalog presence.
@@ -453,13 +452,20 @@ def generate_candidates(
             overlap.append(f"repurchased_family:{product_family}")
 
         candidate.overlap_concepts = overlap
-        # Retrieval aggregate: `similar` (boost-only, Phase 8 G4) is EXCLUDED so
-        # it cannot reorder the max_candidates retrieval cut. The other three
-        # boost-only types (comparison/collab/comention) remain counted — the
-        # pre-existing aggregate is kept byte-identical to protect the ranking
-        # snapshots; the asymmetry is recorded (with a follow-up candidate) in
-        # DECISIONS/2026-07-16_phase8_g4_similar_boost.md.
-        candidate.overlap_score = len(overlap) - similar_overlap_count
+        # Retrieval aggregate — 4종 공통: boost-only는 retrieval 절단 순위를 사지
+        # 못한다. ALL boost-only types (comparison/collab/comention/similar,
+        # BOOST_ONLY_TYPES) are EXCLUDED from the count that orders the
+        # max_candidates retrieval cut, so no boost-only signal can buy a place
+        # in it. Unified 2026-07-18 (previously only `similar` was excluded);
+        # verified snapshot-neutral because comparison/collab/comention fire 0×
+        # on the current corpus, so the excluded count is unchanged from the
+        # prior `len(overlap) - similar_overlap_count`. Rationale + measurement:
+        # DECISIONS/2026-07-16_phase8_g4_similar_boost.md §4 (2026-07-18 addendum).
+        candidate.overlap_score = sum(
+            1
+            for c in overlap
+            if (c.split(":", 1)[0] if ":" in c else c) not in BOOST_ONLY_TYPES
+        )
         # COMPARE mode admits comparison neighbors: boost-only comparison paths
         # can qualify a candidate here (only here). STRICT/EXPLORE keep the
         # evidence-first gate (comparison alone never qualifies).
