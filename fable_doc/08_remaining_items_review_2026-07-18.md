@@ -110,3 +110,39 @@
   **착수 트리거 = 실데이터 연속 적재 시작**(retention R=24와 동일) — 그 전에
   설계만 선행 후보. 현 517 규모 무증상.
 - 게이트: ruff/mypy ✅, pytest **1287 passed, 50 skipped, 0 failed**(+10).
+
+## 판정 정정 — A3 (사용자 결정, 2026-07-18)
+
+사용자 판단: 유사도 계산은 요청 경로가 아니라 **로드/refresh 시 사전 계산**이므로
+10k 규모의 빌드 시간(~39s)은 수용 — **df-cap 설계 보류**(종전 "설계 필요" 판정
+하향). 단서 1건만 유지: 현 `DBServingStore._ensure_loaded`는 스테일 시 **요청
+경로에서** refresh를 수행하므로, 실데이터 규모 전환 시 refresh를 백그라운드
+태스크화(또는 오프라인 산출물 로드)하면 요청 지연 무영향 — 그 시점의 소형
+서빙 개선 항목으로만 등재(트리거: 실데이터 연속 적재 시작).
+
+## 실행 결과 — C1 구매이력 백필 완료 (2026-07-18, Opus 구현 · Fable+Codex 리뷰)
+
+- **소스 확정**: Downloads 파일(TCC 차단) 대신 사용자 지시로 **개인화 에이전트의
+  PG 원본 경로** 사용 — Azure PG `agent.aibe_user_context_mstr_v`(행 858만),
+  자격증명은 개인화 에이전트 .env 경로 참조만.
+- **Join 키 발견(핵심)**: 구매 `rprs_prd_cd`(9자리 대표상품코드) ↔ 카탈로그
+  `REPRESENTATIVE_PROD_CODE`(=서빙 variant_family_id). 사전 실측 42%(300행) /
+  본 실행 55%(K=50) 매칭. 패밀리→멤버 SKU 전개(평균 1.35).
+- **구현**: `scripts/fetch_user_profiles_pg.py`(조회→해소→가명화→
+  `purchase_events` 동봉, 순수 헬퍼 분리) + `extract_purchase_events_from_
+  profiles`(user_loader — 기존 `derive_purchase_features` 정본 경로 공급, 신규
+  어댑터 표면 0) + 데모 opt-in env `GRAPHRAPPING_USER_PROFILES_JSON`(미설정 시
+  byte-identical). 실데이터 파일은 .gitignore(커밋 불가), 테스트는 목 데이터 17건.
+- **실발화 실측(수정 라운드 후 재생성, K=50)**: owned 보유 **39/50 유저**
+  (패밀리 70·구매 이벤트 73, 매칭률 52.9%), **G4 similar_product_affinity 발화
+  39/39 전원**(top-20 내 boosted 167건, 기여 0.0016~0.02) — Phase 8 boost가
+  실구매 데이터로 살아있음을 실증. D1 collab은 데이터 준비 완료(attach 콜사이트
+  0 유지 — 활성화는 별도 결정).
+- **코덱스 크로스리뷰 반영(P0 4·P1 6)**: 행수준 실데이터 제거(집계만)·출력 전용
+  ignored 디렉토리(mockdata/real/, 0600 원자 쓰기)·**재구매 오염 수정**(발생
+  1회=이벤트 1건, 멤버 전개가 만들던 가짜 REPURCHASES_* 차단 — 테스트 고정)·
+  DB 하드닝(verify-full 실측 성공·timeout·readonly·limit≤500)·가명 충돌 abort·
+  seasonal 술어·9자리 강제·적재 중앙화 fallback(run_906 무접촉). 인증 요구는
+  루프백+가명화 로컬 데모에 과설계로 기각(경고 로그+운영 제약 문서화, DECISIONS).
+- **스냅샷 재승인 불요 설계**: 기본 경로(합성 픽스처) 무변경 — 게이트
+  **1318 passed, 0 failed**, 골든 diff 0.
