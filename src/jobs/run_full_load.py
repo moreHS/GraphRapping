@@ -34,6 +34,10 @@ class FullLoadConfig:
     user_profiles: dict[str, dict] | None = None
     max_reviews: int | None = None
     sale_status_filter: str | None = None
+    # IC-1 (plan §2/codex #2): review source format. "relation" (default) keeps
+    # the byte-identical relation_loader path; "rs_jsonl" reuses rs_jsonl_loader
+    # (same selection the demo state.py already offers). No new conversion code.
+    review_format: str = "relation"
     # P0-1 (audit fix): per-user purchase events for OWNS_*/REPURCHASES_* fact building.
     purchase_events_by_user: dict[str, list[PurchaseEvent]] | None = None
     # P0-3 (audit fix): kg_mode override. None → env GRAPHRAPPING_KG_MODE → "off".
@@ -138,10 +142,20 @@ def run_full_load(config: FullLoadConfig) -> FullLoadResult:
     print(f"[2/4] Users loaded: {result.user_count}")
 
     # --- Step 3: Load Reviews + Run Pipeline ---
-    reviews = load_reviews_from_json(
-        config.review_json_path,
-        max_count=config.max_reviews,
-    )
+    # review_format selects the loader (default "relation" → byte-identical).
+    # "rs_jsonl" reuses the existing rs_jsonl_loader (raw S3 shape → same
+    # RawReviewRecord output type), mirroring load_demo_data's selection.
+    if config.review_format == "rs_jsonl":
+        from src.loaders.rs_jsonl_loader import load_reviews_from_rs_jsonl
+        reviews = load_reviews_from_rs_jsonl(
+            config.review_json_path,
+            max_count=config.max_reviews,
+        )
+    else:
+        reviews = load_reviews_from_json(
+            config.review_json_path,
+            max_count=config.max_reviews,
+        )
     print(f"[3/4] Reviews loaded: {len(reviews)}, processing...")
 
     # Initialize normalizers

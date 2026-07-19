@@ -60,7 +60,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import sys
-from collections.abc import Callable, Coroutine
+from collections.abc import Callable, Coroutine, Mapping
 from pathlib import Path
 from typing import Any
 
@@ -92,6 +92,7 @@ from src.db.retention_monitor import (
 from src.jobs.run_full_load import FullLoadConfig
 from src.jobs.run_full_load_db import run_full_load_to_db
 from src.jobs.run_incremental_pipeline_db import run_incremental_to_db
+from src.loaders.user_loader import extract_purchase_events_from_profiles
 from src.kg.ontology_validator import (
     OntologyViolation,
     collect_liveness_report,
@@ -157,10 +158,20 @@ async def _run_full_load(args: argparse.Namespace) -> int:
     async def _body(pool: asyncpg.Pool) -> int:
         products = _load_json(args.product_json)
         users = _load_json(args.user_profiles_json)
+        # Purchase-event parity (codex #8): surface any profile-embedded
+        # purchase_events so run_batch's brand-confidence path receives them too
+        # (load_users_from_profiles already auto-extracts for the user-fact
+        # build, but the brand-confidence contract needs them passed explicitly).
+        # Fixture profiles have no purchase_events key → None → byte-identical.
+        purchase_events_by_user = (
+            extract_purchase_events_from_profiles(users) if isinstance(users, Mapping) else None
+        )
         config = FullLoadConfig(
             review_json_path=args.review_json,
             product_es_records=products,
             user_profiles=users,
+            purchase_events_by_user=purchase_events_by_user,
+            review_format=args.review_format,
             kg_mode=args.kg_mode,
             source_review_stats_json_path=args.source_review_stats_json,
         )
@@ -486,6 +497,10 @@ def build_parser() -> argparse.ArgumentParser:
     full_load_p.add_argument("--user-profiles-json", default=DEFAULT_USER_PROFILES_JSON)
     full_load_p.add_argument(
         "--source-review-stats-json", default=DEFAULT_SOURCE_REVIEW_STATS_JSON,
+    )
+    full_load_p.add_argument(
+        "--review-format", default="relation", choices=("relation", "rs_jsonl"),
+        help="Review source format (default: relation; rs_jsonl reuses rs_jsonl_loader).",
     )
     full_load_p.add_argument("--kg-mode", default="off", choices=("off", "on"))
     full_load_p.add_argument(

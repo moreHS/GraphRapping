@@ -45,7 +45,10 @@
     집계로 리포트만)
   - `UserProfileContract`: `{basic, purchase_analysis, chat}` + `purchase_events`
     (백필 테스트 재사용)
-  - **골든 테스트**: 현 픽스처 3종이 해당 landing 계약을 통과(계약↔현실 정합 증명)
+  - **골든 테스트**: 현 픽스처가 해당 계약을 통과(계약↔현실 정합 증명) —
+    RsJsonlSource는 `review_rs_samples.json`(raw 20건, 저장소 실존 — 2026-07-20
+    Fable 재검토에서 확인), RelationLanding은 `review_triples_raw.json`,
+    Product는 `product_catalog_es.json`, User는 기존 유저 픽스처
 - **opt-in env 2종 추가**: `GRAPHRAPPING_REVIEW_TRIPLES_JSON`,
   `GRAPHRAPPING_PRODUCT_CATALOG_JSON` — **호출 시점 해석**(import 캡처 금지),
   데모 우선순위 명문화: **명시적 request > 신규 커넥터 env > 기존

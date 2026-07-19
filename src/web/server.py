@@ -186,15 +186,31 @@ _MOCKDATA_DIR = _PROJECT_ROOT / "mockdata"
 # (GRAPHRAPPING_DEMO_REVIEW_PATH) with mockdata as the default. Previously this
 # was a hardcoded absolute path tied to a single developer's machine.
 _DEFAULT_FIXTURE = os.environ.get("GRAPHRAPPING_DEMO_FIXTURE", "wide")
+# NOTE (IC-1): import-time capture of the legacy demo-review env is kept exactly
+# as-is (do not refactor to call-time — plan §6/codex #5). Its value is consumed
+# by _resolve_review_default_path below at a fixed priority rung; the request
+# field no longer defaults to it (see PipelineRunRequest.review_json_path=None),
+# so the new connector env can slot ABOVE it without changing the effective path
+# when no connector env is set (clean import env → this constant is None).
 _DEFAULT_REVIEW_PATH = os.environ.get("GRAPHRAPPING_DEMO_REVIEW_PATH")
 _DEFAULT_SOURCE_REVIEW_STATS_PATH = (
     _PROJECT_ROOT / "data/source_snapshots/product_review_stats_snowflake_latest.json"
 )
 
+# IC-1 opt-in connector envs (resolved at CALL time inside pipeline_run — never
+# captured at import). Priority per source is documented on the resolver helpers
+# below. Both default to unset, so the standard demo/test path is byte-identical.
+_REVIEW_TRIPLES_ENV = "GRAPHRAPPING_REVIEW_TRIPLES_JSON"
+_PRODUCT_CATALOG_ENV = "GRAPHRAPPING_PRODUCT_CATALOG_JSON"
+
 
 class PipelineRunRequest(BaseModel):
     fixture: str = _DEFAULT_FIXTURE
-    review_json_path: str | None = _DEFAULT_REVIEW_PATH
+    # Default None (not the import-captured legacy env): the legacy demo-review
+    # env is consulted by _resolve_review_default_path at a lower priority than
+    # the new connector env, so it can no longer be the request-field default.
+    # Byte-identical in a clean import env (legacy env unset → None either way).
+    review_json_path: str | None = None
     product_json_path: str | None = None
     user_json_path: str | None = None
     max_reviews: int = 5000
@@ -237,6 +253,38 @@ def _resolve_user_default_path(fixture_dir: Path) -> Path:
     if env_user_json:
         return Path(env_user_json)
     return fixture_dir / "user_profiles_normalized.json"
+
+
+def _resolve_review_default_path(fixture_dir: Path) -> Path:
+    """Default review-triples file for the demo pipeline (IC-1 §2).
+
+    Priority (all below an explicit ``request.review_json_path`` — handled by the
+    caller passing this as ``_resolve_existing_json_path``'s default):
+    new connector env ``GRAPHRAPPING_REVIEW_TRIPLES_JSON`` (call-time) >
+    legacy ``GRAPHRAPPING_DEMO_REVIEW_PATH`` (import-captured constant) >
+    fixture default. Unset connector env in a clean import env → byte-identical
+    to the prior behaviour (fixture default).
+    """
+    env_review = os.environ.get(_REVIEW_TRIPLES_ENV)
+    if env_review:
+        return Path(env_review)
+    if _DEFAULT_REVIEW_PATH:
+        return Path(_DEFAULT_REVIEW_PATH)
+    return fixture_dir / "review_triples_raw.json"
+
+
+def _resolve_product_default_path(fixture_dir: Path) -> Path:
+    """Default product-catalog file for the demo pipeline (IC-1 §2).
+
+    Priority (below an explicit ``request.product_json_path``): new connector env
+    ``GRAPHRAPPING_PRODUCT_CATALOG_JSON`` (call-time) > fixture default. There is
+    no legacy product env, so an unset connector env is byte-identical to the
+    prior behaviour (fixture default).
+    """
+    env_product = os.environ.get(_PRODUCT_CATALOG_ENV)
+    if env_product:
+        return Path(env_product)
+    return fixture_dir / "product_catalog_es.json"
 
 
 def _check_pipeline_run_allowed(provided_token: str | None) -> None:
@@ -287,9 +335,11 @@ async def pipeline_run(
     fixture_dir = _resolve_fixture_dir(req.fixture)
 
     # --- 1. Load products from selected fixture catalog ---
+    # Priority: explicit request > GRAPHRAPPING_PRODUCT_CATALOG_JSON (call-time)
+    # > fixture default. Missing file → the same 400 as before.
     product_path = _resolve_existing_json_path(
         req.product_json_path,
-        fixture_dir / "product_catalog_es.json",
+        _resolve_product_default_path(fixture_dir),
         "product_json_path",
     )
     mock_products = _json.loads(product_path.read_text(encoding="utf-8"))
@@ -323,9 +373,11 @@ async def pipeline_run(
     purchase_events_by_user = extract_purchase_events_from_profiles(mock_users)
 
     # --- 3. Prepare review path ---
+    # Priority: explicit request > GRAPHRAPPING_REVIEW_TRIPLES_JSON (call-time) >
+    # legacy GRAPHRAPPING_DEMO_REVIEW_PATH > fixture default. Missing file → 400.
     selected_review_path = _resolve_existing_json_path(
         req.review_json_path,
-        fixture_dir / "review_triples_raw.json",
+        _resolve_review_default_path(fixture_dir),
         "review_json_path",
     )
 

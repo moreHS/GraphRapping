@@ -44,14 +44,11 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import contextlib
 import importlib.util
 import json
 import logging
-import os
 import re
 import sys
-import tempfile
 import types
 from collections.abc import Mapping
 from pathlib import Path
@@ -60,6 +57,13 @@ from typing import Any, Callable
 # ── Paths ──
 GRAPHRAPPING_ROOT = Path(__file__).resolve().parent.parent
 REAL_DATA_DIR = GRAPHRAPPING_ROOT / "mockdata" / "real"
+
+# Direct-run safety: put the repo root on sys.path so the lazy `src.ingest.*`
+# imports (shared staging/contract helpers) resolve when this script is invoked
+# as `python scripts/fetch_user_profiles_pg.py` (sys.path[0] would otherwise be
+# the scripts/ dir). Harmless under pytest (repo root already on path).
+if str(GRAPHRAPPING_ROOT) not in sys.path:
+    sys.path.insert(0, str(GRAPHRAPPING_ROOT))
 DEFAULT_OUTPUT = REAL_DATA_DIR / "user_profiles_real_normalized.json"
 DEFAULT_CATALOG = GRAPHRAPPING_ROOT / "mockdata" / "product_catalog_es.json"
 DEFAULT_PA_SRC = Path("/Users/amore/workplace/agent-aibc/persnal-agent/src")
@@ -289,21 +293,58 @@ def validate_output_path(output: Path, real_dir: Path = REAL_DATA_DIR) -> Path:
 
 
 def write_output_atomic(path: Path, payload: str) -> None:
-    """Atomic write (tmp → rename) with file mode 0600 and dir mode 0700."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    os.chmod(path.parent, 0o700)
-    fd, tmp_name = tempfile.mkstemp(
-        dir=str(path.parent), prefix=".tmp_real_profiles_", suffix=".json"
+    """Atomic write (tmp → rename) with file mode 0600 and dir mode 0700.
+
+    Delegates to the shared ``src.ingest.staging.write_json_atomic`` (IC-1: one
+    implementation for every connector) while preserving this script's tmp-file
+    prefix and byte-for-byte behaviour.
+    """
+    from src.ingest.staging import write_json_atomic
+    write_json_atomic(path, payload, tmp_prefix=".tmp_real_profiles_")
+
+
+def stage_user_profiles(
+    profiles: dict[str, dict[str, Any]],
+    date_str: str,
+    *,
+    real_dir: Path = REAL_DATA_DIR,
+    backfill_stats: dict[str, Any] | None = None,
+) -> tuple[Path, dict[str, Any]]:
+    """Stage a dated user-profile snapshot + manifest under ``real/users/`` (IC-U).
+
+    Uses the shared staging helpers: ensures the 0700 subdirectory, builds the
+    injected-date filename ``user_profiles_real_{YYYYMMDD}.json``, guards the
+    path (real_dir + one subdirectory, symlink-safe), self-validates against the
+    UserProfile contract, then writes the snapshot (0600 atomic) and a
+    ``manifest.json`` recording aggregate counts + the validation summary. Pure
+    with respect to the DB — the caller passes already-normalized profiles and
+    the injected ``date_str`` (no ``date.now`` here), so it is fully testable
+    with mock data. Returns ``(snapshot_path, manifest_dict)``.
+    """
+    from src.ingest import input_contracts, staging
+
+    users_dir = staging.ensure_staging_dir("users", real_dir=real_dir)
+    filename = staging.snapshot_filename("user_profiles_real", date_str)
+    snapshot_path = staging.validate_staging_path(users_dir / filename, real_dir=real_dir)
+
+    report = input_contracts.validate_records(profiles, "user_profile")
+    ordered = {uid: profiles[uid] for uid in sorted(profiles)}
+    write_output_atomic(
+        snapshot_path,
+        json.dumps(ordered, ensure_ascii=False, indent=2) + "\n",
     )
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            f.write(payload)
-        os.chmod(tmp_name, 0o600)  # mkstemp default is 0600; explicit for clarity
-        os.replace(tmp_name, path)
-    except BaseException:
-        with contextlib.suppress(FileNotFoundError):
-            os.unlink(tmp_name)
-        raise
+
+    manifest = staging.StagingManifest(
+        path=str(snapshot_path),
+        format="user_profiles_normalized",
+        count=len(ordered),
+        generated_at=date_str,
+        added=len(ordered),
+        validation=report.to_manifest_dict(),
+        extra={"backfill_stats": backfill_stats} if backfill_stats else {},
+    )
+    staging.write_manifest(users_dir / "manifest.json", manifest)
+    return snapshot_path, manifest.to_dict()
 
 
 # =============================================================================
@@ -460,11 +501,37 @@ def main() -> None:
     parser.add_argument("--catalog", type=Path, default=DEFAULT_CATALOG)
     parser.add_argument("--pa-src", type=Path, default=DEFAULT_PA_SRC)
     parser.add_argument("--env-file", type=Path, default=DEFAULT_ENV_FILE)
+    parser.add_argument(
+        "--staging", action="store_true",
+        help=(
+            "Write a dated snapshot + manifest under mockdata/real/users/ "
+            "(IC-U staging mode) instead of --output. Default off keeps the "
+            "existing single-file behaviour."
+        ),
+    )
+    parser.add_argument(
+        "--date", default=None,
+        help="Snapshot date (YYYYMMDD) for --staging (default: today).",
+    )
     args = parser.parse_args()
 
     import asyncio
+    import datetime as _dt
 
-    output_path = validate_output_path(args.output)
+    # Resolve the destination up front (fail fast before the DB read). Both
+    # modes yield a concrete Path; staging mode uses the dated snapshot name and
+    # the shared one-subdirectory-deep guard, non-staging keeps the strict
+    # real_dir-direct guard.
+    if args.staging:
+        from src.ingest import staging as _staging
+        staging_date = args.date or _dt.datetime.now().strftime("%Y%m%d")
+        output_path = _staging.validate_staging_path(
+            _staging.staging_dir("users")
+            / _staging.snapshot_filename("user_profiles_real", staging_date)
+        )
+    else:
+        staging_date = ""
+        output_path = validate_output_path(args.output)
 
     print("LIVE DB READ (SELECT-only, read-only transaction) — not for CI.")
     print(f"  view={VIEW}  limit={args.limit}")
@@ -518,10 +585,6 @@ def main() -> None:
             family_counts.append(n_fam)
 
     ordered = {uid: profiles[uid] for uid in sorted(profiles)}
-    write_output_atomic(
-        output_path,
-        json.dumps(ordered, ensure_ascii=False, indent=2) + "\n",
-    )
 
     seen = len(all_seen_codes)
     matched = len(all_matched_codes)
@@ -549,6 +612,19 @@ def main() -> None:
         "code_match_rate": round(matched / seen, 4) if seen else 0.0,
         "owned_families_per_user": _dist(family_counts),
     }
+
+    if args.staging:
+        # IC-U staging mode: dated snapshot + manifest (contract-validated).
+        # stage_user_profiles re-derives the same guarded path resolved above.
+        output_path, _manifest = stage_user_profiles(
+            profiles, staging_date, backfill_stats=summary
+        )
+    else:
+        write_output_atomic(
+            output_path,
+            json.dumps(ordered, ensure_ascii=False, indent=2) + "\n",
+        )
+
     print("\n=== BACKFILL STATS (aggregates only) ===")
     print(json.dumps(summary, ensure_ascii=False, indent=2))
     print(f"\nWritten {len(ordered)} profiles → {output_path} (mode 0600)")
