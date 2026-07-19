@@ -166,3 +166,33 @@ glb product_id 해소(갭6 — IC-R 검증기는 channel 규칙 검증만).
 ## 완료 보고
 
 _(실행 후 누적)_
+
+## 완료 보고
+
+### IC-1 완료 — 2026-07-20 (Opus 구현, Fable 검토 승인, 커밋 391034d)
+계약 검증기 4종(+RS↔Relation 매핑 표, 로더 드리프트 방지 테스트) — 골든 4종
+전부 무수정 통과(rs 20/20·relation 906/906·카탈로그 517/517[REP_CODE 비정상
+6건은 joinability 집계로]·유저 50/50). staging 공용 모듈(백필 보호 로직 단일화),
+env 2종 호출시점 배선(우선순위: request > 신규 env > legacy DEMO_REVIEW_PATH >
+fixture — request 기본값 None화는 우선순위 구현의 필수 변경으로 Fable 승인),
+full-load `review_format`(기본 relation 비파괴), CLI purchase_events 정합,
+conftest 4종 격리, 유저 커넥터 --staging 모드(기존 경로 호환).
+게이트 1370/0 failed, 스냅샷·픽스처 diff 0.
+
+### IC-2 완료 — 2026-07-20 (Opus 구현, Fable 검토 승인)
+- 리뷰 커넥터 `scripts/fetch_review_triples.py`: ReviewTripleReader IF + File
+  백엔드(.json/.jsonl/디렉토리) + **누적 스냅샷 landing**(매니페스트 포인터 체인,
+  전체 코퍼스 원자 재작성, added/updated/unchanged/conflict 실기록, 동일 키
+  상이 payload는 canonical JSON 대조로 **기본 hard-fail**·--allow-updates 옵트인,
+  포맷 혼합 중단, reject_rate>10% 전체 중단).
+- 상품 커넥터 `scripts/refresh_product_catalog.py`: 계약 검증 + baseline diff
+  (added/removed/changed_by_field/신규 3키 충돌/joinability delta — 집계+상위 N
+  SKU **id만**, 원문 미노출) + 전량 스냅샷 교체 의미론(재추출=전체 진실; 누적
+  병합은 리뷰만 — 부분 코퍼스 왜곡 방지 구분).
+- **e2e 증명 3건**: rs 20건 landing→env→데모 pipeline_run(review_format=
+  rs_jsonl) 소비 / rs→full-load / relation 906건 전량 landing→full-load. 전부 PASS.
+- 게이트 **1401 passed, 50 skipped, 0 failed**(+31), 무파괴 diff 0.
+
+### IC 트랙 상태: 준비분(IC-1·IC-2) 완료 — IC-3는 소스 접근 확정 대기
+남은 사용자 결정(§7): ① 리뷰 소스 S3 vs Snowflake 택1+접근 정보 ② 상품
+재추출 소스 ③ 유저 최초 로드 K. 확정 시 백엔드 구현만으로 실로드 전환 완료.
