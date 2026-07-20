@@ -121,16 +121,22 @@
 
     <!-- Graph Viewer -->
     <div class="section" id="sec-graph">
-      <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center">
-        <select class="input" id="graphTarget" style="width:200px">
-          <option value="">그래프 대상 선택...</option>
+      <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center;flex-wrap:wrap">
+        <select class="input" id="graphTarget" style="width:220px" onchange="updateGraphControlsVisibility()">
+          <option value="full">🌐 전체 그래프</option>
         </select>
         <select class="input" id="graphView" style="width:140px">
           <option value="corpus">Corpus (승격 시그널)</option>
           <option value="evidence">Evidence (전체)</option>
         </select>
         <button class="btn btn-primary btn-sm" onclick="loadGraph()">그래프 로드</button>
+        <button class="btn btn-sm" id="graphResetBtn" style="display:none" onclick="resetFullGraph()">↩ 전체로 돌아가기</button>
         <span id="graphViewInfo" style="font-size:11px;color:var(--text2)"></span>
+      </div>
+      <!-- Full-view only: edge-family toggles + node-type legend/toggles. -->
+      <div id="graphControls" style="display:none;margin-bottom:10px">
+        <div id="graphEdgeToggles" style="margin-bottom:6px"></div>
+        <div id="graphLegend"></div>
       </div>
       <div id="graph-container"></div>
     </div>
@@ -147,7 +153,7 @@
 </div>
 
 <!-- 규칙: static JS/CSS 변경 커밋에는 반드시 ?v= 범프를 포함할 것 (브라우저 캐시 — 2026-07-20 이슈) -->
-<script src="/static/graph_view.js?v=20260720-graph-view"></script>
-<script src="/static/app.js?v=20260720-profile-refs"></script>
+<script src="/static/graph_view.js?v=20260720-full-graph2"></script>
+<script src="/static/app.js?v=20260720-full-graph2"></script>
 </body>
 </html>

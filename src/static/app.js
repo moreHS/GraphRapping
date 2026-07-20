@@ -1126,8 +1126,26 @@ function renderSearchResults(data) {
 }
 
 // =============================================================================
-// Graph Viewer
+// Graph Viewer — F5: full view (users + products + concepts) is the default;
+// per-product/per-user ego views remain selectable (no regression).
 // =============================================================================
+let _fullGraphData = null;
+let _hiddenNodeTypes = new Set();
+let _hiddenEdgeFamilies = new Set();
+let _layoutExcludedTypes = new Set();
+let _graphPanelLoaded = false;
+
+const FULL_FAMILY_LABELS = {
+  product_concept: '상품–개념', user_concept: '유저–개념',
+  owns: '보유(OWNS)', shares_attribute: '상품유사(SHARES)',
+};
+
+// Node types excluded from the full-view cy CONSTRUCTION by default (not merely
+// hidden — hiding does not reduce cose layout cost). `ingredient` alone drives
+// 310 nodes / 2,975 edges (47% of edges); excluding it drops the default layout
+// from ~34s to ~4.5s. Toggling its legend checkbox reconstructs + re-lays out.
+const FULL_HEAVY_TYPES = new Set(['ingredient']);
+
 async function initGraphPanel() {
   try {
     const [products, users] = await Promise.all([
@@ -1135,15 +1153,29 @@ async function initGraphPanel() {
       fetch(API + '/api/users').then(r => r.json()),
     ]);
     const sel = document.getElementById('graphTarget');
-    sel.innerHTML = '<option value="">대상 선택...</option>'
+    sel.innerHTML = '<option value="full">🌐 전체 그래프</option>'
       + products.items.map(p => `<option value="product:${displayText(p.product_id)}">🏷️ ${displayText(productDisplayName(p))}</option>`).join('')
       + users.items.map(u => `<option value="user:${displayText(u.user_id)}">👤 ${displayText(u.user_id)}</option>`).join('');
+    sel.value = 'full';
   } catch(e) {}
+  updateGraphControlsVisibility();
+  // Default = full view; auto-load once (later tab-switches don't re-run cose).
+  if (!_graphPanelLoaded) { _graphPanelLoaded = true; loadGraph(); }
+}
+
+function updateGraphControlsVisibility() {
+  const isFull = document.getElementById('graphTarget').value === 'full';
+  document.getElementById('graphView').style.display = isFull ? 'none' : '';
+  document.getElementById('graphControls').style.display = isFull ? '' : 'none';
+  if (!isFull) document.getElementById('graphResetBtn').style.display = 'none';
 }
 
 async function loadGraph() {
   const target = document.getElementById('graphTarget').value;
   if (!target) return;
+  updateGraphControlsVisibility();
+  if (target === 'full') { await loadFullGraph(); return; }
+
   const [type, id] = target.split(':');
   const view = document.getElementById('graphView').value || 'corpus';
   const viewParam = type === 'product' ? `?view=${view}` : '';
@@ -1156,6 +1188,112 @@ async function loadGraph() {
       : `Evidence view: 전체 시그널 표시 (nodes: ${data.nodes.length}, edges: ${data.edges.length})`;
   }
   GraphView.render(document.getElementById('graph-container'), data);
+}
+
+async function loadFullGraph() {
+  const info = document.getElementById('graphViewInfo');
+  if (info) info.textContent = '전체 그래프 로딩 중...';
+  const data = await fetch(API + '/api/graphs/full').then(r => r.json());
+  _fullGraphData = data;
+  _hiddenNodeTypes = new Set();
+  _hiddenEdgeFamilies = new Set();
+  // Perf default: heavy concept types are left OUT of the initial construction.
+  _layoutExcludedTypes = new Set(FULL_HEAVY_TYPES);
+  buildGraphLegend(data);
+  buildEdgeToggles(data);
+  renderFullGraph();
+}
+
+// Build the cy element set from the cached response, dropping layout-excluded
+// node types AND their incident edges (no dangling). No re-fetch on toggle.
+function fullElementsForLayout() {
+  const nodes = (_fullGraphData.nodes || []).filter(n => !_layoutExcludedTypes.has(n.type));
+  const keep = new Set(nodes.map(n => n.id));
+  const edges = (_fullGraphData.edges || []).filter(e => keep.has(e.source) && keep.has(e.target));
+  return { nodes, edges, meta: _fullGraphData.meta };
+}
+
+// (Re)construct + (re)lay out the full view. Called on initial load and whenever
+// a heavy-type checkbox flips (which changes the constructed element set).
+function renderFullGraph() {
+  const data = fullElementsForLayout();
+  GraphView.render(document.getElementById('graph-container'), data, {
+    mode: 'full',
+    onEgo: () => { document.getElementById('graphResetBtn').style.display = ''; },
+  });
+  document.getElementById('graphResetBtn').style.display = 'none';
+  // Re-apply any active visibility toggles onto the fresh instance.
+  if (_hiddenNodeTypes.size || _hiddenEdgeFamilies.size) {
+    GraphView.applyFullVisibility(document.getElementById('graph-container'), _hiddenNodeTypes, _hiddenEdgeFamilies);
+  }
+  const info = document.getElementById('graphViewInfo');
+  if (info) {
+    const excluded = Array.from(_layoutExcludedTypes);
+    const m = _fullGraphData.meta || {};
+    info.textContent = `전체 뷰 — 노드 ${data.nodes.length} · 엣지 ${data.edges.length}`
+      + (excluded.length ? `  ·  레이아웃 제외: ${excluded.join(', ')}` : '')
+      + '  ·  노드 클릭=이웃 강조 · 더블클릭=이웃만 · 배경=해제'
+      + (m.truncated ? `  ·  ⚠ ${m.total_nodes}개 중 절단` : '');
+  }
+}
+
+function resetFullGraph() {
+  GraphView.restoreFull(document.getElementById('graph-container'));
+  document.getElementById('graphResetBtn').style.display = 'none';
+}
+
+function buildGraphLegend(data) {
+  const colors = (window.GraphView && GraphView.TYPE_COLORS) || {};
+  const counts = {};
+  (data.nodes || []).forEach(n => { counts[n.type] = (counts[n.type] || 0) + 1; });
+  const el = document.getElementById('graphLegend');
+  if (!el) return;
+  el.innerHTML = Object.keys(counts).sort().map(t => {
+    const c = colors[t] || '#6b7280';
+    // Heavy types are construction-controlled (reconstruct+relayout on toggle);
+    // all others are visibility-controlled (instant hide/show).
+    const heavy = FULL_HEAVY_TYPES.has(t);
+    const checked = heavy ? !_layoutExcludedTypes.has(t) : !_hiddenNodeTypes.has(t);
+    const handler = heavy ? 'onLayoutTypeToggle' : 'onNodeTypeToggle';
+    const hint = heavy ? ' <span style="color:var(--text2)">(느릴 수 있음)</span>' : '';
+    return `<label style="display:inline-flex;align-items:center;gap:4px;font-size:11px;margin-right:10px;cursor:pointer">`
+      + `<input type="checkbox" ${checked ? 'checked' : ''} data-nodetype="${displayText(t)}" onchange="${handler}(this)">`
+      + `<span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${c}"></span>`
+      + `${displayText(t)} (${counts[t]})${hint}</label>`;
+  }).join('');
+}
+
+function buildEdgeToggles(data) {
+  const present = {};
+  (data.edges || []).forEach(e => { present[e.family] = (present[e.family] || 0) + 1; });
+  const el = document.getElementById('graphEdgeToggles');
+  if (!el) return;
+  el.innerHTML = '<span style="font-size:11px;color:var(--text2);margin-right:6px">엣지:</span>'
+    + Object.keys(FULL_FAMILY_LABELS).filter(f => present[f]).map(f =>
+      `<label style="display:inline-flex;align-items:center;gap:4px;font-size:11px;margin-right:10px;cursor:pointer">`
+      + `<input type="checkbox" checked data-family="${f}" onchange="onEdgeFamilyToggle(this)">`
+      + `${FULL_FAMILY_LABELS[f]} (${present[f]})</label>`
+    ).join('');
+}
+
+function onNodeTypeToggle(cb) {
+  const t = cb.getAttribute('data-nodetype');
+  if (cb.checked) _hiddenNodeTypes.delete(t); else _hiddenNodeTypes.add(t);
+  GraphView.applyFullVisibility(document.getElementById('graph-container'), _hiddenNodeTypes, _hiddenEdgeFamilies);
+}
+
+// Heavy-type checkbox: flips construction membership, then reconstruct + relayout
+// (checking a heavy type re-includes its nodes/edges — slower, hinted in the UI).
+function onLayoutTypeToggle(cb) {
+  const t = cb.getAttribute('data-nodetype');
+  if (cb.checked) _layoutExcludedTypes.delete(t); else _layoutExcludedTypes.add(t);
+  renderFullGraph();
+}
+
+function onEdgeFamilyToggle(cb) {
+  const f = cb.getAttribute('data-family');
+  if (cb.checked) _hiddenEdgeFamilies.delete(f); else _hiddenEdgeFamilies.add(f);
+  GraphView.applyFullVisibility(document.getElementById('graph-container'), _hiddenNodeTypes, _hiddenEdgeFamilies);
 }
 
 // =============================================================================

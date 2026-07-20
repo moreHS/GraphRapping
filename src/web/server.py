@@ -10,7 +10,7 @@ import functools
 import logging
 import math
 import os
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
@@ -1707,6 +1707,64 @@ async def ask(req: AskRequest):
 _SIMILAR_GRAPH_CAP = 3
 
 
+# =============================================================================
+# F5: full graph (users + products + concepts) — node-identity constants
+# =============================================================================
+#
+# Node-identity principle (plan §F5, codex #5 — "two islands" fix): every concept
+# gets ONE canonical node id, and that id is the concept IRI itself
+# (``concept:Type:Value``). This is exactly the canonical join key the serving
+# schema calls ``*_concept_ids`` — verified identical on both sides: a product's
+# ``brand_concept_ids`` (``concept:Brand:이니스프리``) and a user's scoped
+# ``PREFERS_BRAND`` id (``concept:Brand:이니스프리``) are byte-equal, so the
+# product edge and the user edge land on the SAME node instead of the two
+# disjoint islands the legacy per-view ``id|scope:*`` node scheme produced.
+# Concept scope / edge meaning is carried on the edge, never the node.
+
+# Concept-IRI middle segment -> graph node type (aligns with graph_view.js
+# TYPE_COLORS keys). Unknown segments fall through to a lowercased segment.
+_CONCEPT_TYPE_BY_SEGMENT = {
+    "Brand": "brand",
+    "Category": "category",
+    "BEEAttr": "bee_attr",
+    "Keyword": "keyword",
+    "Concern": "concern",
+    "Ingredient": "ingredient",
+    "Goal": "goal",
+    "Context": "context",
+    "Tool": "tool",
+    "SkinType": "skin_type",
+    "SkinTone": "skin_tone",
+}
+
+# Product -> concept edges. Truth concepts + promoted top_* signals. The bee_attr/
+# keyword/context/concern/tool split reuses the corpus builder's field->label
+# knowledge (see _build_corpus_graph); the truth block adds the concept-IRI forms
+# of brand/category/ingredient/benefit so product and user concepts unify.
+_FULL_PRODUCT_TRUTH_CONCEPT_FIELDS: tuple[tuple[str, str], ...] = (
+    ("brand_concept_ids", "BRAND"),
+    ("category_concept_ids", "IN_CATEGORY"),
+    ("ingredient_concept_ids", "HAS_INGREDIENT"),
+    ("main_benefit_concept_ids", "HAS_BENEFIT"),
+)
+_FULL_PRODUCT_SIGNAL_CONCEPT_FIELDS: tuple[tuple[str, str], ...] = (
+    ("top_bee_attr_ids", "HAS_ATTRIBUTE"),
+    ("top_keyword_ids", "HAS_KEYWORD"),
+    ("top_context_ids", "USED_IN_CONTEXT"),
+    ("top_concern_pos_ids", "ADDRESSES_CONCERN"),
+    ("top_tool_ids", "USED_WITH_TOOL"),
+)
+
+# The four toggleable edge families (plan §F5: `edge_types` param).
+_FULL_EDGE_FAMILIES: tuple[str, ...] = (
+    "product_concept",
+    "user_concept",
+    "owns",
+    "shares_attribute",
+)
+_FULL_GRAPH_MAX_NODES = 2000
+
+
 @app.get("/api/graphs/product/{product_id}")
 async def product_graph(product_id: str, view: str = "corpus"):
     """Build hierarchical product graph.
@@ -1941,6 +1999,310 @@ async def user_graph(user_id: str):
                 edges.append({"source": user_id, "target": nid, "label": edge_label, "weight": weight})
 
     return {"nodes": nodes, "edges": edges}
+
+
+# =============================================================================
+# F5: full graph (users + products + concepts) + focus interaction
+# =============================================================================
+
+# Legacy user preference fields (concept-bearing only) used as a fallback when a
+# profile carries no `scoped_preference_ids` (synthetic fixtures). Owned/product
+# fields are intentionally excluded — the OWNS family handles those.
+_FULL_USER_LEGACY_CONCEPT_FIELDS: tuple[tuple[str, str], ...] = (
+    ("preferred_brand_ids", "PREFERS_BRAND"),
+    ("active_category_ids", "ACTIVE_IN_CATEGORY"),
+    ("preferred_category_ids", "PREFERS_CATEGORY"),
+    ("preferred_ingredient_ids", "PREFERS_INGREDIENT"),
+    ("concern_ids", "HAS_CONCERN"),
+    ("goal_ids", "WANTS_GOAL"),
+    ("preferred_bee_attr_ids", "PREFERS_BEE_ATTR"),
+    ("preferred_keyword_ids", "PREFERS_KEYWORD"),
+    ("preferred_context_ids", "PREFERS_CONTEXT"),
+)
+
+
+def _canonical_concept_node(concept_id: Any) -> dict[str, str] | None:
+    """Canonical graph node ({id,label,type}) for a ``concept:Type:Value`` IRI.
+
+    The node id IS the IRI — the same canonical join key both product profiles
+    (``*_concept_ids`` / ``top_*_ids[].id``) and user scoped preferences
+    (``scoped_preference_ids[].id``) already carry — so both sides unify on one
+    node (plan §F5 / codex #5 "two islands" fix). Type is derived from the IRI's
+    middle segment; the value's last segment is the label. Returns None for empty
+    input.
+    """
+    cid = str(concept_id or "").strip()
+    if not cid:
+        return None
+    parts = cid.split(":")
+    if cid.startswith("concept:") and len(parts) >= 3:
+        node_type = _CONCEPT_TYPE_BY_SEGMENT.get(parts[1], parts[1].lower())
+    else:
+        node_type = "concept"
+    return {"id": cid, "label": parts[-1], "type": node_type}
+
+
+def _full_product_label(product: dict) -> str:
+    pid = str(product.get("product_id") or "")
+    name = product.get("representative_product_name") or pid
+    brand = product.get("brand_name")
+    if brand and name != pid:
+        return f"{brand} {name}"
+    return name or pid
+
+
+def _iter_user_concept_prefs(user: dict) -> Iterator[dict[str, Any]]:
+    """Yield {id, edge_type, scope} for a user's concept preferences.
+
+    Primary source is ``scoped_preference_ids`` (real serving profiles); only
+    ``concept:`` ids are user->concept edges — ``product:`` ids (OWNS_*/
+    REPURCHASES_FAMILY) are left to the OWNS family. Falls back to legacy
+    preference fields only when no scoped preferences exist (mirrors user_graph).
+    """
+    scoped = user.get("scoped_preference_ids") or []
+    if scoped:
+        for item in scoped:
+            if not isinstance(item, dict):
+                continue
+            cid = item.get("id")
+            if not cid or not str(cid).startswith("concept:"):
+                continue
+            yield {
+                "id": str(cid),
+                "edge_type": item.get("edge_type") or "PREFERS",
+                "scope": item.get("scope_group"),
+            }
+        return
+    for field, edge_type in _FULL_USER_LEGACY_CONCEPT_FIELDS:
+        for item in (user.get(field) or []):
+            cid = item.get("id") if isinstance(item, dict) else item
+            if not cid:
+                continue
+            yield {"id": str(cid), "edge_type": edge_type, "scope": None}
+
+
+def _parse_full_edge_types(raw: str | None) -> set[str]:
+    """Parse the ``edge_types`` toggle list. Empty/absent -> all four families.
+    Any unknown family is a 400 (the toggle UI only ever sends known families)."""
+    if raw is None or not raw.strip():
+        return set(_FULL_EDGE_FAMILIES)
+    requested = [t.strip().lower() for t in raw.split(",") if t.strip()]
+    allowed = set(_FULL_EDGE_FAMILIES)
+    unknown = [t for t in requested if t not in allowed]
+    if unknown:
+        raise HTTPException(
+            400, f"invalid edge_types {unknown}; allowed: {sorted(allowed)}"
+        )
+    selected = {t for t in requested if t in allowed}
+    return selected or allowed
+
+
+def _build_full_graph(
+    products: list[dict],
+    users: list[dict],
+    *,
+    edge_types: set[str],
+    min_strength: float,
+    max_nodes: int,
+) -> dict[str, Any]:
+    """Build the mixed user+product+concept graph (plan §F5).
+
+    Node identity: concepts unify on their canonical IRI (see
+    ``_canonical_concept_node``); products keyed by raw pid; users by pseudonym.
+    Edge families (all toggleable via ``edge_types``): product_concept (promoted
+    top_* + truth concepts), user_concept (scoped/legacy prefs), owns
+    (``extract_owned_product_ids`` -> catalog products only), shares_attribute
+    (attached ``similar_product_ids``, unordered-pair dedup, capped per anchor).
+    ``min_strength`` filters ONLY the score-bearing shares_attribute family. All
+    users and products are always nodes; concepts appear only when a surviving
+    edge references them, so toggling a family off drops its orphaned concepts.
+    ``max_nodes`` truncation is deterministic: keep users then products, then
+    concepts by degree desc (id asc tie-break); dangling edges are dropped.
+    """
+    nodes: dict[str, dict] = {}
+    user_ids: list[str] = []
+    product_ids: set[str] = set()
+
+    for u in users:
+        uid = u.get("user_id")
+        if not uid:
+            continue
+        # Privacy (plan §F5): pseudonymous id ONLY — no profile fields ever land
+        # on a user node payload.
+        nodes[str(uid)] = {"id": str(uid), "label": str(uid), "type": "user"}
+        user_ids.append(str(uid))
+
+    for p in products:
+        pid = p.get("product_id")
+        if not pid:
+            continue
+        product_ids.add(str(pid))
+        nodes[str(pid)] = {"id": str(pid), "label": _full_product_label(p), "type": "product"}
+
+    edges: list[dict] = []
+
+    def _ensure_concept(concept_id: Any) -> str | None:
+        node = _canonical_concept_node(concept_id)
+        if node is None:
+            return None
+        nid = node["id"]
+        nodes.setdefault(nid, node)
+        return nid
+
+    # --- product -> concept -------------------------------------------------
+    if "product_concept" in edge_types:
+        pc_seen: set[tuple[str, str, str]] = set()
+        for p in products:
+            pid = p.get("product_id")
+            if not pid:
+                continue
+            pid = str(pid)
+            for field, label in _FULL_PRODUCT_TRUTH_CONCEPT_FIELDS:
+                for raw in (p.get(field) or []):
+                    cid = raw.get("id") if isinstance(raw, dict) else raw
+                    nid = _ensure_concept(cid) if cid else None
+                    if not nid or (pid, nid, label) in pc_seen:
+                        continue
+                    pc_seen.add((pid, nid, label))
+                    edges.append({"source": pid, "target": nid, "label": label,
+                                  "family": "product_concept"})
+            for field, label in _FULL_PRODUCT_SIGNAL_CONCEPT_FIELDS:
+                for item in (p.get(field) or []):
+                    if not isinstance(item, dict):
+                        continue
+                    nid = _ensure_concept(item.get("id")) if item.get("id") else None
+                    if not nid or (pid, nid, label) in pc_seen:
+                        continue
+                    pc_seen.add((pid, nid, label))
+                    edges.append({"source": pid, "target": nid, "label": label,
+                                  "family": "product_concept"})
+
+    # --- user -> concept ----------------------------------------------------
+    if "user_concept" in edge_types:
+        uc_seen: set[tuple[str, str, str, str]] = set()
+        for u in users:
+            uid = u.get("user_id")
+            if not uid:
+                continue
+            uid = str(uid)
+            for pref in _iter_user_concept_prefs(u):
+                nid = _ensure_concept(pref["id"])
+                if not nid:
+                    continue
+                edge_type = str(pref["edge_type"])
+                scope = pref["scope"]
+                key = (uid, nid, edge_type, str(scope or ""))
+                if key in uc_seen:
+                    continue
+                uc_seen.add(key)
+                edge: dict[str, Any] = {"source": uid, "target": nid, "label": edge_type,
+                                        "family": "user_concept"}
+                if scope:
+                    edge["scope"] = str(scope)
+                edges.append(edge)
+
+    # --- user -> product (owned) -------------------------------------------
+    if "owns" in edge_types:
+        for u in users:
+            uid = u.get("user_id")
+            if not uid:
+                continue
+            uid = str(uid)
+            for opid in sorted(extract_owned_product_ids(u)):
+                if opid in product_ids:
+                    edges.append({"source": uid, "target": opid, "label": "OWNS",
+                                  "family": "owns"})
+
+    # --- product <-> product (SHARES_ATTRIBUTE) -----------------------------
+    # Unordered-pair dedup (keep max score); min_strength applies ONLY here
+    # (the sole score-bearing family — plan §F5 / codex #7).
+    if "shares_attribute" in edge_types:
+        pair_score: dict[tuple[str, str], float] = {}
+        for p in products:
+            pid = p.get("product_id")
+            if not pid:
+                continue
+            pid = str(pid)
+            for sim in (p.get("similar_product_ids") or [])[:_SIMILAR_GRAPH_CAP]:
+                if not isinstance(sim, dict):
+                    continue
+                nb = sim.get("product_id")
+                nb = str(nb) if nb else ""
+                if not nb or nb == pid or nb not in product_ids:
+                    continue
+                try:
+                    score = float(sim.get("score") or 0.0)
+                except (TypeError, ValueError):
+                    continue
+                if not math.isfinite(score) or score < min_strength:
+                    continue
+                pair_key = (pid, nb) if pid < nb else (nb, pid)
+                if pair_key not in pair_score or score > pair_score[pair_key]:
+                    pair_score[pair_key] = score
+        for (a, b), score in pair_score.items():
+            edges.append({"source": a, "target": b, "label": "SHARES_ATTRIBUTE",
+                          "family": "shares_attribute", "score": round(score, 4)})
+
+    total_nodes = len(nodes)
+    total_edges = len(edges)
+    truncated = total_nodes > max_nodes
+
+    if truncated:
+        degree: dict[str, int] = {}
+        for e in edges:
+            degree[e["source"]] = degree.get(e["source"], 0) + 1
+            degree[e["target"]] = degree.get(e["target"], 0) + 1
+        concepts_by_degree = sorted(
+            (nid for nid, n in nodes.items() if n["type"] not in ("user", "product")),
+            key=lambda nid: (-degree.get(nid, 0), nid),
+        )
+        ordered = sorted(user_ids) + sorted(product_ids) + concepts_by_degree
+        survivors = set(ordered[:max_nodes])
+        nodes = {nid: n for nid, n in nodes.items() if nid in survivors}
+        edges = [e for e in edges if e["source"] in survivors and e["target"] in survivors]
+
+    return {
+        "nodes": list(nodes.values()),
+        "edges": edges,
+        "meta": {
+            "truncated": truncated,
+            "total_nodes": total_nodes,
+            "total_edges": total_edges,
+            "shown_nodes": len(nodes),
+            "shown_edges": len(edges),
+        },
+    }
+
+
+@app.get("/api/graphs/full")
+async def full_graph(
+    edge_types: str | None = None,
+    min_strength: float = 0.0,
+    max_nodes: int = _FULL_GRAPH_MAX_NODES,
+):
+    """Mixed user+product+concept graph with deterministic guards (plan §F5).
+
+    Query params:
+        edge_types: comma list of {product_concept,user_concept,owns,shares_attribute};
+                    absent/empty -> all four.
+        min_strength: minimum score for shares_attribute edges (other families ignore it).
+        max_nodes: deterministic node cap (default 2000; users+products kept first,
+                   then concepts by degree). Response `meta` carries truncation state.
+    """
+    _check_serving_ready()
+    if max_nodes < 1:
+        raise HTTPException(400, "max_nodes must be >= 1")
+    families = _parse_full_edge_types(edge_types)
+    store = get_serving_store()
+    products = await store.get_products()
+    users = await store.get_users()
+    return _build_full_graph(
+        products,
+        users,
+        edge_types=families,
+        min_strength=min_strength,
+        max_nodes=max_nodes,
+    )
 
 
 # =============================================================================

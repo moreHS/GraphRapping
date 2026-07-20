@@ -22,6 +22,8 @@
     tool: '#3b82f6', comparison: '#ec4899', coused: '#f97316',
     brand: '#a78bfa', category: '#67e8f9', ingredient: '#34d399', goal: '#4ade80',
     avoid_ingredient: '#f87171', concern: '#fbbf24',
+    // F5 full-graph concept types (rare user-demographic concepts).
+    skin_type: '#f472b6', skin_tone: '#fb923c',
   };
   const DEFAULT_NODE_COLOR = '#6b7280';
   const DEFAULT_EDGE_COLOR = '#4b5563';
@@ -36,16 +38,27 @@
     return Math.max(1, Math.min((e.weight || 1) * 3, 6));
   }
 
-  function toElements(data) {
+  // F5 full-graph node-label abbreviation (plan §F5): user = pseudonym tail,
+  // product = truncated name, concept = label as-is. Only applied in full mode;
+  // product/user/rec subgraphs keep their full labels.
+  function abbrevLabel(n) {
+    const label = n.label || n.id || '';
+    if (n.type === 'user') return '…' + String(n.id || '').slice(-4);
+    if (n.type === 'product') return label.length > 12 ? label.slice(0, 12) + '…' : label;
+    return label;
+  }
+
+  function toElements(data, opts) {
+    const full = !!(opts && opts.full);
     const elements = [];
     (data.nodes || []).forEach(n => {
       elements.push({ data: {
         id: n.id,
-        label: n.label || n.id,
+        label: full ? abbrevLabel(n) : (n.label || n.id),
         type: n.type,
         main: n.main,
         color: TYPE_COLORS[n.type] || DEFAULT_NODE_COLOR,
-        size: n.main ? 40 : 25,
+        size: n.main ? 40 : (full ? 18 : 25),
       }});
     });
     (data.edges || []).forEach(e => {
@@ -53,6 +66,9 @@
         source: e.source,
         target: e.target,
         label: e.label,
+        // F5: edge family (product_concept/user_concept/owns/shares_attribute)
+        // drives the full-graph family toggles.
+        family: e.family || null,
         width: edgeWidth(e),
         lineColor: e.color || DEFAULT_EDGE_COLOR,
         // Phase 8 G2: similarity edges carry their shared-attribute evidence so
@@ -145,15 +161,127 @@
 
   const DEFAULT_LAYOUT = { name: 'cose', padding: 40, nodeRepulsion: 8000, idealEdgeLength: 120 };
 
+  // F5 full-graph mode: built-in cose only (fcose is NOT installed — plan §F5).
+  // Perf tuning (Fable perf round): the ingredient-excluded default (~820 nodes /
+  // ~3.4k edges) settles in ~4.5s with numIter=150 (headless measured 4.46s;
+  // headless≈browser at a 1.01x calibrated ratio vs the 34.2s browser baseline).
+  // cose repulsion is O(numIter·n²), so numIter is the dominant lever; animate:
+  // false + randomize:true skip inter-step renders and warm-start from a spread.
+  const FULL_LAYOUT = {
+    name: 'cose', padding: 40, nodeRepulsion: 9000, idealEdgeLength: 90,
+    animate: false, randomize: true, numIter: 150,
+  };
+  // Extra stylesheet appended (per-instance) only for the full view: edge labels
+  // hidden until zoomed in / focused; non-neighbourhood elements dim on focus.
+  const FULL_EXTRA_STYLE = [
+    { selector: 'edge', style: { 'text-opacity': 0 } },
+    { selector: 'edge.gv-labeled', style: { 'text-opacity': 1 } },
+    { selector: 'edge.gv-hl', style: { 'text-opacity': 1 } },
+    { selector: '.gv-dim', style: { 'opacity': 0.1, 'text-opacity': 0 } },
+    { selector: 'node.gv-hl', style: { 'border-width': 2, 'border-color': '#f8fafc' } },
+  ];
+  const EDGE_LABEL_ZOOM = 1.6;   // reveal edge labels past this zoom
+  const DBLTAP_MS = 300;         // manual double-tap window (cross-version safe)
+
+  function focusNode(cy, node) {
+    const hood = node.closedNeighborhood();
+    cy.batch(() => {
+      cy.elements().addClass('gv-dim').removeClass('gv-hl');
+      hood.removeClass('gv-dim').addClass('gv-hl');
+    });
+    cy.animate({ fit: { eles: hood, padding: 80 } }, { duration: 300 });
+  }
+
+  function clearFocus(cy) {
+    cy.batch(() => cy.elements().removeClass('gv-dim gv-hl'));
+  }
+
+  // Double-click a node -> ego view: only that node + neighbours, re-laid out.
+  // Original full-layout positions are snapshotted once so restoreFull() can
+  // put every node back exactly where it was.
+  function egoLayout(cy, node) {
+    if (!cy.scratch('_gvPos')) {
+      const pos = {};
+      cy.nodes().forEach(n => { const p = n.position(); pos[n.id()] = { x: p.x, y: p.y }; });
+      cy.scratch('_gvPos', pos);
+    }
+    const hood = node.closedNeighborhood();
+    cy.batch(() => {
+      cy.elements().removeClass('gv-dim gv-hl').style('display', 'none');
+      hood.style('display', 'element');
+      node.addClass('gv-hl');
+    });
+    hood.layout(Object.assign({}, FULL_LAYOUT, { padding: 40 })).run();
+    cy.fit(hood, 60);
+  }
+
+  function wireFullInteractions(cy, opts) {
+    let labeled = false;
+    cy.on('zoom', () => {
+      const show = cy.zoom() >= EDGE_LABEL_ZOOM;
+      if (show !== labeled) { labeled = show; cy.edges().toggleClass('gv-labeled', show); }
+    });
+    let lastTap = 0, lastId = null;
+    cy.on('tap', 'node', evt => {
+      const now = Date.now(), id = evt.target.id();
+      if (now - lastTap < DBLTAP_MS && lastId === id) {
+        egoLayout(cy, evt.target);
+        if (opts.onEgo) opts.onEgo(id);
+        lastTap = 0; lastId = null;
+      } else {
+        focusNode(cy, evt.target);
+        if (opts.onFocus) opts.onFocus(id);
+        lastTap = now; lastId = id;
+      }
+    });
+    cy.on('tap', evt => {
+      if (evt.target === cy) { clearFocus(cy); if (opts.onFocus) opts.onFocus(null); }
+    });
+  }
+
+  // Toggle node types / edge families on the current full-graph instance.
+  // Hiding a node type also hides any edge touching it (no dangling stubs).
+  function applyFullVisibility(container, hiddenTypes, hiddenFamilies) {
+    const cy = instances.get(container);
+    if (!cy) return;
+    const ht = hiddenTypes || new Set();
+    const hf = hiddenFamilies || new Set();
+    cy.batch(() => {
+      cy.nodes().forEach(n => n.style('display', ht.has(n.data('type')) ? 'none' : 'element'));
+      cy.edges().forEach(e => {
+        const hidden = hf.has(e.data('family'))
+          || ht.has(e.source().data('type')) || ht.has(e.target().data('type'));
+        e.style('display', hidden ? 'none' : 'element');
+      });
+    });
+  }
+
+  // "전체로 돌아가기": un-hide everything, restore snapshotted positions, refit.
+  function restoreFull(container) {
+    const cy = instances.get(container);
+    if (!cy) return;
+    const pos = cy.scratch('_gvPos');
+    cy.batch(() => {
+      cy.elements().removeClass('gv-dim gv-hl').style('display', 'element');
+      if (pos) cy.nodes().forEach(n => { if (pos[n.id()]) n.position(pos[n.id()]); });
+    });
+    cy.fit(cy.elements(), 40);
+  }
+
   function render(container, data, opts) {
     if (!container) return null;
     opts = opts || {};
     destroy(container);  // idempotent: replace any prior instance on this element
+    const full = opts.mode === 'full';
     const cy = cytoscape({
       container,
-      elements: toElements(data || {}),
-      style: STYLE,
-      layout: Object.assign({}, DEFAULT_LAYOUT, opts.layout || {}),
+      elements: toElements(data || {}, { full }),
+      // Per-instance style: the full view appends FULL_EXTRA_STYLE so the shared
+      // STYLE (used by product/user/rec subgraphs) is never mutated.
+      style: full ? STYLE.concat(FULL_EXTRA_STYLE) : STYLE,
+      layout: full
+        ? Object.assign({}, FULL_LAYOUT, opts.layout || {})
+        : Object.assign({}, DEFAULT_LAYOUT, opts.layout || {}),
     });
     // Phase 8 G2: reveal the shared-attribute evidence on hover/tap of a
     // similarity edge (no tooltip infra existed before). Scoped to
@@ -164,6 +292,16 @@
     cy.on('mouseout', SIM_SELECTOR, hideTooltip);
     cy.on('tap', SIM_SELECTOR, showTooltipFor);
     cy.on('tap', evt => { if (evt.target === cy) hideTooltip(); });
+    if (full) {
+      // Layout telemetry for the perf gate (main session re-measures in-browser).
+      const perf = (typeof window !== 'undefined' && window.performance) || Date;
+      const t0 = perf.now();
+      cy.one('layoutstop', () => {
+        console.log('[GraphView] full layout ' + Math.round(perf.now() - t0) + 'ms'
+          + ' — nodes ' + cy.nodes().length + ' edges ' + cy.edges().length);
+      });
+      wireFullInteractions(cy, opts);
+    }
     instances.set(container, cy);
     return cy;
   }
@@ -178,5 +316,5 @@
     }
   }
 
-  window.GraphView = { render, destroy, TYPE_COLORS };
+  window.GraphView = { render, destroy, TYPE_COLORS, applyFullVisibility, restoreFull };
 })();
