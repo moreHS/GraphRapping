@@ -551,6 +551,7 @@ def test_to_dict_shape() -> None:
         "unresolved_terms",
         "llm_used",
         "warnings",
+        "profile_refs",
     }
     assert payload["intent"] == "recommend"
     assert payload["llm_used"] is True
@@ -558,6 +559,84 @@ def test_to_dict_shape() -> None:
     assert all("concept_id" in c for c in payload["resolved_concepts"])
     # Frontend contract: warnings is always present and a list (default []).
     assert payload["warnings"] == []
+    # [F4-c''] profile_refs always present and a list (default []).
+    assert payload["profile_refs"] == []
+
+
+# ---------------------------------------------------------------------------
+# [F4-c''] Profile-reference class selection (gate + prompt + fallback)
+# ---------------------------------------------------------------------------
+
+
+def test_prompt_advertises_profile_ref_schema_and_new_keys() -> None:
+    from src.rec.query_understanding import PROFILE_REF_CLASSES, _build_system_prompt
+
+    prompt = _build_system_prompt()
+    # New output-schema keys are part of the JSON contract example.
+    assert '"profile_refs": []' in prompt
+    assert '"unresolved_terms": []' in prompt
+    # Every closed class name is advertised so the LLM selects from the enum.
+    for cls in PROFILE_REF_CLASSES:
+        assert cls in prompt
+
+
+def test_profile_refs_gate_keeps_enum_members_only() -> None:
+    products = _products()
+    fake = FakeLLMClient(_fake_json(profile_refs=["concerns", "not_a_class", "goals"]))
+    interp = understand_query("내 고민이랑 목표에 맞는 거", products, llm=fake)
+    assert interp.profile_refs == ["concerns", "goals"]  # out-of-enum dropped
+
+
+def test_profile_refs_gate_dedups_and_caps_at_three() -> None:
+    products = _products()
+    fake = FakeLLMClient(
+        _fake_json(profile_refs=["concerns", "concerns", "goals", "preferred_brands", "owned"])
+    )
+    interp = understand_query("x", products, llm=fake)
+    # dedup then cap at 3 (owned drops off the end).
+    assert interp.profile_refs == ["concerns", "goals", "preferred_brands"]
+
+
+def test_profile_refs_default_empty_when_llm_omits_field() -> None:
+    products = _products()
+    interp = understand_query("보습 토너", products, llm=FakeLLMClient(_fake_json()))
+    assert interp.profile_refs == []
+
+
+def test_llm_declared_unresolved_terms_merged_and_capped() -> None:
+    products = _products()
+    # 6 declared terms (> the 5 cap) with an over-length item inside the first 5.
+    fake = FakeLLMClient(
+        _fake_json(unresolved_terms=["a1", "x" * 60, "a3", "a4", "a5", "a6"])
+    )
+    interp = understand_query("이니스프리 신제품", products, llm=fake)
+    assert set(interp.unresolved_terms) == {"a1", "a3", "a4", "a5"}
+    assert ("x" * 60) not in interp.unresolved_terms  # over-length dropped
+    assert "a6" not in interp.unresolved_terms  # beyond the 5-item cap
+
+
+def test_fallback_profile_refs_detects_possessive_marker(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("GRAPHRAPPING_QUERY_LLM", raising=False)
+    interp = understand_query("내 고민에 맞는 토너", _products())  # llm=None → fallback
+    assert interp.llm_used is False
+    assert "concerns" in interp.profile_refs
+
+
+def test_fallback_profile_refs_not_triggered_by_generic_query(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("GRAPHRAPPING_QUERY_LLM", raising=False)
+    interp = understand_query("피부에 맞는 스킨케어", _products())
+    assert interp.llm_used is False
+    assert interp.profile_refs == []  # no possessive marker → no false positive
+
+
+def test_fallback_profile_refs_capped_at_three(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("GRAPHRAPPING_QUERY_LLM", raising=False)
+    # Hits concerns + goals + preferred_brands + repurchase (>3) → enum-order cap 3.
+    interp = understand_query("내 고민 내 목표 좋아하는 브랜드 자주 사는 걸로", _products())
+    assert interp.llm_used is False
+    assert interp.profile_refs == ["concerns", "goals", "preferred_brands"]
 
 
 # ---------------------------------------------------------------------------

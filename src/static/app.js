@@ -925,6 +925,20 @@ function toggleRecGraph(idx) {
 // re-run"; editing the query text and resubmitting is the interaction.
 const ASK_CHIP_FALLBACK_COLOR = '#6b7280';  // matches graph_view.js's DEFAULT_NODE_COLOR
 
+// [F4-c''] Profile-reference class -> Korean label (server sends enum class names
+// only; localization lives here, next to the other ask-UI labels). Violet chip
+// color distinguishes "my profile reflected" chips from query-concept chips.
+const PROFILE_REF_CHIP_COLOR = '#7c3aed';
+const PROFILE_REF_CLASS_LABELS = {
+  concerns: '고민',
+  skin: '피부',
+  goals: '목표',
+  preferred_brands: '선호 브랜드',
+  preferred_keywords: '취향',
+  repurchase: '재구매',
+  owned: '보유 제품',
+};
+
 function conceptIdSegment(id) {
   return String(id || '').split(':').pop();
 }
@@ -956,33 +970,68 @@ function renderAskInterpretation(data) {
   // whether or not the response already carries the warnings contract.
   const warnings = interp.warnings || [];
 
-  const chips = resolved.map(c => {
-    const seg = conceptIdSegment(c.concept_id);
-    const label = (c.label && String(c.label).trim()) || seg;
+  // Resolved-concept labels are reused for both the chips and the F4-a summary line.
+  const resolvedLabels = resolved.map(c => (c.label && String(c.label).trim()) || conceptIdSegment(c.concept_id));
+  const chips = resolved.map((c, i) => {
     const color = askConceptColor(c.concept_type);
-    return `<span class="chip ask-chip" style="background:${color}26;color:${color};border-color:${color}66" title="${displayText(c.concept_id)}">${displayText(label)}</span>`;
+    return `<span class="chip ask-chip" style="background:${color}26;color:${color};border-color:${color}66" title="${displayText(c.concept_id)}">${displayText(resolvedLabels[i])}</span>`;
   }).concat(avoided.map(id => (
     `<span class="chip ask-chip ask-chip-avoid" title="${displayText(id)}">🚫 ${displayText(conceptIdSegment(id))}</span>`
   ))).concat(unresolved.map(term => (
     `<span class="chip ask-chip ask-chip-unresolved" title="아직 사전에 없는 표현이에요">${displayText(term)}</span>`
   )));
 
+  // [F4-c''] "내 프로필 반영" chips from applied_profile_refs (recommend mode only —
+  // absent for anonymous search, so no profile chips render there). Each chip:
+  // "고민(진정·보습)".
+  const appliedRefs = data.applied_profile_refs || [];
+  const profileClassLabels = appliedRefs.map(r => PROFILE_REF_CLASS_LABELS[r.class] || r.class);
+  const profileChips = appliedRefs.map(r => {
+    const cls = displayText(PROFILE_REF_CLASS_LABELS[r.class] || r.class);
+    const concepts = (r.concepts || []).map(displayText).join('·');
+    const color = PROFILE_REF_CHIP_COLOR;
+    return `<span class="chip ask-chip" style="background:${color}26;color:${color};border-color:${color}66">${concepts ? `${cls}(${concepts})` : cls}</span>`;
+  });
+
+  // [F4-a] One-line reflection summary above the chips.
+  const resolvedSummary = [...new Set(resolvedLabels.map(displayText))].join('·');
+  const profileSummary = [...new Set(profileClassLabels.map(displayText))].join('·');
+  let summaryInner = '';
+  if (resolvedSummary && profileSummary) {
+    summaryInner = `이 결과: ${resolvedSummary} + 내 프로필 반영 ${profileSummary} 기반`;
+  } else if (resolvedSummary) {
+    summaryInner = `이 결과: ${resolvedSummary} 기반`;
+  } else if (profileSummary) {
+    summaryInner = `이 결과: 내 프로필 반영 ${profileSummary} 기반`;
+  } else if (data.resolved_mode === 'recommend') {
+    // Recommend mode always personalizes off stored prefs even with no query/profile hit.
+    summaryInner = '이 결과: 개인화 기반';
+  }
+  const summary = summaryInner
+    ? `<div class="ask-summary" style="margin:2px 0 8px;color:#6b7280;font-size:13px">${summaryInner}</div>`
+    : '';
+
   const badge = interp.llm_used === false ? '<span class="ask-badge">사전 해석</span>' : '';
   const banner = data.relaxed ? '<div class="ask-banner ask-banner-info">조건에 꼭 맞는 상품이 적어 관련도순으로 보여드려요</div>' : '';
   const warningBanners = warnings.map(w => `<div class="ask-banner ask-banner-warn">${displayText(w)}</div>`).join('');
 
-  if (!chips.length && !badge && !banner && !warningBanners) {
+  const queryRow = (chips.length || badge)
+    ? `<div class="ask-interpretation-row"><span class="ask-interpretation-label">질의 해석</span>${badge}${chips.join('')}</div>`
+    : '';
+  const profileRow = profileChips.length
+    ? `<div class="ask-interpretation-row ask-profile-row"><span class="ask-interpretation-label">내 프로필 반영</span>${profileChips.join('')}</div>`
+    : '';
+
+  if (!queryRow && !profileRow && !banner && !warningBanners && !summary) {
     el.innerHTML = '';
     return;
   }
   el.innerHTML = `
     ${warningBanners}
     ${banner}
-    <div class="ask-interpretation-row">
-      ${chips.length || badge ? '<span class="ask-interpretation-label">질의 해석</span>' : ''}
-      ${badge}
-      ${chips.join('')}
-    </div>
+    ${summary}
+    ${queryRow}
+    ${profileRow}
   `;
 }
 

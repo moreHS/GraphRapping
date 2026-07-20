@@ -148,6 +148,7 @@ def _fake_interp(
     concepts: list[MatchedConcept] | None = None,
     avoided: list[str] | None = None,
     unresolved: list[str] | None = None,
+    profile_refs: list[str] | None = None,
 ) -> QueryInterpretation:
     return QueryInterpretation(
         query=query,
@@ -156,7 +157,37 @@ def _fake_interp(
         avoided_ingredient_concept_ids=list(avoided or []),
         unresolved_terms=list(unresolved or []),
         llm_used=True,
+        profile_refs=list(profile_refs or []),
     )
+
+
+def _repurchase_user(uid: str = "U_re") -> dict[str, Any]:
+    """Scoped user with a REPURCHASES_CATEGORY pref (수분크림) that is NOT already a
+    PREFERS_CATEGORY — so the ``repurchase`` profile-ref maps REPURCHASES_CATEGORY →
+    PREFERS_CATEGORY and genuinely (idempotently) injects a new scoring signal
+    (``injected: true``)."""
+    return {
+        "user_id": uid,
+        "scoped_preference_ids": [
+            {"edge_type": "HAS_CONCERN", "id": "concept:Concern:concern_dryness", "weight": 0.5,
+             "scope_group": None, "source_sections": ["chat.face.skin_concerns"]},
+            {"edge_type": "REPURCHASES_CATEGORY", "id": "concept:Category:수분크림", "weight": 1.0,
+             "scope_group": None, "source_sections": ["purchase.repurchase"]},
+        ],
+    }
+
+
+def _owner_user(uid: str = "U_own") -> dict[str, Any]:
+    """Scoped user who OWNS P_moist (owned_product_ids — the shape
+    extract_owned_product_ids reads) — used to prove ``owned`` is display-only."""
+    return {
+        "user_id": uid,
+        "scoped_preference_ids": [
+            {"edge_type": "HAS_CONCERN", "id": "concept:Concern:concern_dryness", "weight": 0.5,
+             "scope_group": None, "source_sections": ["chat.face.skin_concerns"]},
+        ],
+        "owned_product_ids": [{"id": "product:P_moist"}],
+    }
 
 
 def _patch_understanding(monkeypatch: pytest.MonkeyPatch, interp: QueryInterpretation) -> None:
@@ -556,3 +587,144 @@ def test_ask_surfaces_unreflected_terms_via_live_fallback(
     # + a warning banner) rather than dropped silently.
     assert interp["unresolved_terms"] == ["피부에", "맞는"]
     assert interp["warnings"] and "반영되지 않았습니다" in interp["warnings"][0]
+
+
+# ---------------------------------------------------------------------------
+# (h) [F4-c''] profile-reference selection → deterministic injection / display
+# ---------------------------------------------------------------------------
+
+
+def test_ask_profile_ref_same_edge_class_is_scoring_no_op(
+    ask_env: tuple[TestClient, DemoState], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A same-edge class (concerns → HAS_CONCERN) reflects an ALREADY-active stored
+    preference, so it is a scoring no-op: results are identical to the same query
+    with no profile ref, and the applied entry reports injected=False."""
+    client, _state = ask_env
+    base_concepts = [MatchedConcept("goal", "보습", "보습", "보습")]
+
+    _patch_understanding(monkeypatch, _fake_interp("보습 크림", concepts=base_concepts))
+    baseline = client.post("/api/ask", json={"user_id": "U1", "query": "보습 크림"}).json()
+
+    _patch_understanding(
+        monkeypatch, _fake_interp("보습 크림", concepts=base_concepts, profile_refs=["concerns"]))
+    variant = client.post("/api/ask", json={"user_id": "U1", "query": "보습 크림"}).json()
+
+    # No-op: the concern is already a stored HAS_CONCERN pref → scores unchanged.
+    assert variant["results"] == baseline["results"]
+    refs = variant["applied_profile_refs"]
+    assert [r["class"] for r in refs] == ["concerns"]
+    assert refs[0]["injected"] is False
+    assert refs[0]["concepts"]  # the user's concern concept is surfaced for display
+    # Baseline (no profile_refs) still carries the field, empty.
+    assert baseline["applied_profile_refs"] == []
+
+
+def test_ask_profile_ref_repurchase_injects_new_pref(
+    ask_env: tuple[TestClient, DemoState], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """repurchase maps REPURCHASES_CATEGORY → PREFERS_CATEGORY, a scoring edge the
+    user does not already carry → a genuine (idempotent) injection (injected=True)."""
+    client, state = ask_env
+    state.serving_users.append(_repurchase_user("U_re"))
+
+    _patch_understanding(monkeypatch, _fake_interp("크림", profile_refs=["repurchase"]))
+    payload = client.post("/api/ask", json={"user_id": "U_re", "query": "크림"}).json()
+
+    refs = payload["applied_profile_refs"]
+    assert [r["class"] for r in refs] == ["repurchase"]
+    assert refs[0]["injected"] is True
+    assert "수분크림" in refs[0]["concepts"]
+    assert payload["results"], "recommend must still return results after the boost"
+
+
+def test_ask_profile_ref_owned_is_display_only(
+    ask_env: tuple[TestClient, DemoState], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """owned is never injected (G4 already boosts owned on the shared path): results
+    are identical to the no-profile-ref baseline, and the class shows injected=False."""
+    client, state = ask_env
+    state.serving_users.append(_owner_user("U_own"))
+
+    _patch_understanding(monkeypatch, _fake_interp("크림"))
+    baseline = client.post("/api/ask", json={"user_id": "U_own", "query": "크림"}).json()
+
+    _patch_understanding(monkeypatch, _fake_interp("크림", profile_refs=["owned"]))
+    variant = client.post("/api/ask", json={"user_id": "U_own", "query": "크림"}).json()
+
+    assert variant["results"] == baseline["results"]  # owned injects nothing
+    refs = variant["applied_profile_refs"]
+    assert [r["class"] for r in refs] == ["owned"]
+    assert refs[0]["injected"] is False
+    assert refs[0]["concepts"] == ["P_moist"]  # product: prefix stripped, segment shown
+
+
+def test_ask_search_mode_omits_applied_profile_refs_and_preserves_results(
+    ask_env: tuple[TestClient, DemoState], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """[anonymous identity] Even when the LLM selects profile-ref classes, the
+    anonymous search response OMITS applied_profile_refs entirely and its result
+    ids/scores are unaffected by the selection (the join never runs without a user)."""
+    client, _state = ask_env
+    base_concepts = [MatchedConcept("goal", "보습", "보습", "보습")]
+
+    _patch_understanding(monkeypatch, _fake_interp("보습 크림", concepts=base_concepts))
+    baseline = client.post("/api/ask", json={"query": "보습 크림"}).json()
+
+    _patch_understanding(
+        monkeypatch,
+        _fake_interp("보습 크림", concepts=base_concepts, profile_refs=["concerns", "goals"]))
+    variant = client.post("/api/ask", json={"query": "보습 크림"}).json()
+
+    assert "applied_profile_refs" not in baseline
+    assert "applied_profile_refs" not in variant
+    # Result identity (ids AND full dicts): selection has zero effect on anonymous.
+    assert variant["results"] == baseline["results"]
+    # Class names still surface in the interpretation contract (join is user-only).
+    assert variant["interpretation"]["profile_refs"] == ["concerns", "goals"]
+
+
+def test_ask_profile_ref_injection_does_not_persist_into_store(
+    ask_env: tuple[TestClient, DemoState], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """[C1] The repurchase → PREFERS_CATEGORY injection lands only on the request's
+    deep copy: the shared store user is untouched and /api/recommend is identical
+    before and after."""
+    client, state = ask_env
+    state.serving_users.append(_repurchase_user("U_re"))
+    stored = next(u for u in state.serving_users if u["user_id"] == "U_re")
+    scoped_before = copy.deepcopy(stored["scoped_preference_ids"])
+    recommend_body = {"user_id": "U_re", "category_group": "all", "top_k": 10}
+
+    before = client.post("/api/recommend", json=recommend_body)
+    assert before.status_code == 200
+
+    _patch_understanding(monkeypatch, _fake_interp("크림", profile_refs=["repurchase"]))
+    ask_resp = client.post("/api/ask", json={"user_id": "U_re", "query": "크림"}).json()
+    assert ask_resp["applied_profile_refs"][0]["injected"] is True  # injection ran
+
+    after = client.post("/api/recommend", json=recommend_body)
+    assert after.json() == before.json()  # recommend unaffected by the ask
+    assert stored["scoped_preference_ids"] == scoped_before  # store untouched
+    assert not any(
+        item.get("source_sections") == ["profile_ref"]
+        for item in stored["scoped_preference_ids"]
+    )
+
+
+def test_ask_applied_profile_refs_payload_shape(
+    ask_env: tuple[TestClient, DemoState], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """applied_profile_refs is a list of {class:str, concepts:list[str],
+    injected:bool} — the exact shape the frontend summary line + chips render."""
+    client, _state = ask_env
+    _patch_understanding(monkeypatch, _fake_interp("보습 크림", profile_refs=["concerns"]))
+    refs = client.post(
+        "/api/ask", json={"user_id": "U1", "query": "보습 크림"}
+    ).json()["applied_profile_refs"]
+    assert isinstance(refs, list) and refs
+    for entry in refs:
+        assert set(entry) == {"class", "concepts", "injected"}
+        assert isinstance(entry["class"], str)
+        assert isinstance(entry["concepts"], list)
+        assert isinstance(entry["injected"], bool)

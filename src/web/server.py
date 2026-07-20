@@ -32,7 +32,12 @@ from src.rec.candidate_generator import (
     extract_owned_product_ids,
     generate_candidates_prefiltered,
 )
-from src.rec.scoped_preferences import collect_preference_ids
+from src.rec.scoped_preferences import (
+    GLOBAL_SCOPES,
+    collect_preference_ids,
+    has_scoped_preferences,
+    iter_scoped_preferences,
+)
 from src.rec.scorer import Scorer
 from src.rec.reranker import rerank
 from src.rec.explainer import explain, ExplanationService
@@ -1293,6 +1298,175 @@ def _inject_query_preferences(
     return injected_ids
 
 
+# [F4-c''] Profile-reference injection — the server side of query_understanding's
+# schema-based class selection. Distinct from _inject_query_preferences: profile
+# refs are the LOGGED-IN USER's OWN stored concepts, joined deterministically from
+# the enum classes the LLM picked. They must NOT join resolved_concepts (no query
+# narrowing) and must NOT be relabeled "질의에서 언급" (they are stored prefs, not
+# query mentions), so the adapter returns a display payload the caller keeps
+# separate from the query-injected id set.
+#
+# Each class → list of (source_edge, inject_edge, legacy_field, label_kind):
+#   - source_edge : scoped_preference edge_type to READ the user's concepts (+ their
+#                   scope) from — mirrors build_serving_views._collect field origins.
+#   - inject_edge : scoring edge_type to WRITE. For the "same-edge" classes it equals
+#                   source_edge, so re-injection is a scoring NO-OP (candidate_generator
+#                   collects prefs as a SET) — pure display. ``repurchase`` maps
+#                   REPURCHASES_* → PREFERS_*, which the scorer DOES consume, so it can
+#                   add a genuine but idempotent boost.
+#   - legacy_field: fallback source when the profile carries no scoped prefs (older
+#                   shape); scope defaults to global there.
+_PROFILE_REF_SPECS: dict[str, tuple[tuple[str, str, str, str], ...]] = {
+    "concerns": (("HAS_CONCERN", "HAS_CONCERN", "concern_ids", "concern"),),
+    "skin": (("HAS_CONCERN", "HAS_CONCERN", "concern_ids", "concern"),),
+    "goals": (("WANTS_GOAL", "WANTS_GOAL", "goal_ids", "goal"),),
+    "preferred_brands": (("PREFERS_BRAND", "PREFERS_BRAND", "preferred_brand_ids", "brand"),),
+    "preferred_keywords": (("PREFERS_KEYWORD", "PREFERS_KEYWORD", "preferred_keyword_ids", "keyword"),),
+    "repurchase": (
+        ("REPURCHASES_BRAND", "PREFERS_BRAND", "repurchase_brand_ids", "brand"),
+        ("REPURCHASES_CATEGORY", "PREFERS_CATEGORY", "repurchase_category_ids", "category"),
+    ),
+}
+# ``owned`` is display-only: Phase 8 G4's similar-boost already reflects owned
+# products on the shared scored path (_run_scored_pipeline), so re-injecting them
+# would double an always-on signal. Accepted as a class and shown, never injected.
+_PROFILE_REF_OWNED_CLASS = "owned"
+_PROFILE_REF_LABEL_CAP = 6  # concepts shown per class in the response (display only)
+_PROFILE_REF_SOURCE_SECTION = "profile_ref"
+
+
+def _norm_profile_scope(scope: Any) -> str:
+    """Canonical scope token for dedup: all global-equivalent scopes collapse to
+    "global" so a None-scoped and a "global"-scoped entry are treated as one."""
+    return "global" if scope in GLOBAL_SCOPES else str(scope)
+
+
+def _profile_ref_label(kind: str, concept_id: str) -> str:
+    """Human label for a profile-ref concept, reusing existing conventions: the
+    concern axis has a Korean label map (concept_resolver.concern_label); every
+    other axis embeds its surface in the id suffix (brand/goal/keyword/category),
+    matching the ask-chip + user-graph rendering (last ':' segment)."""
+    if kind == "concern":
+        from src.common.concept_resolver import concern_label
+        label = concern_label(concept_id)
+        # concern_label passes unmapped ids through unchanged (full IRI) —
+        # fall back to the id-suffix convention like every other axis.
+        if label != concept_id:
+            return label
+    return concept_id.split(":")[-1] if ":" in concept_id else concept_id
+
+
+def _profile_ref_concepts(
+    user_profile: dict[str, Any],
+    source_edge: str,
+    legacy_field: str,
+) -> list[tuple[str, Any]]:
+    """(concept_id, scope) pairs for a source edge, scope-preserving. Mirrors
+    collect_preference_ids' branch exactly: scoped-first (carries scope), else the
+    legacy top-level field (scope defaults to None → global). Deterministic order,
+    deduped on concept_id."""
+    pairs: list[tuple[str, Any]] = []
+    seen: set[str] = set()
+    if has_scoped_preferences(user_profile):
+        for item in iter_scoped_preferences(user_profile, edge_type=source_edge):
+            cid = str(item.get("id") or "")
+            if cid and cid not in seen:
+                seen.add(cid)
+                pairs.append((cid, item.get("scope_group")))
+        return pairs
+    for raw in user_profile.get(legacy_field) or []:
+        cid = str((raw.get("id") if isinstance(raw, dict) else raw) or "")
+        if cid and cid not in seen:
+            seen.add(cid)
+            pairs.append((cid, None))
+    return pairs
+
+
+def _apply_profile_refs(
+    user_profile: dict[str, Any],
+    classes: list[str],
+) -> list[dict[str, Any]]:
+    """Join the logged-in user's concepts for the LLM-selected profile-ref
+    ``classes`` onto ``user_profile`` (a DEEP COPY — same C1 contract as
+    _inject_query_preferences) and return the display payload
+    ``[{class, concepts: [labels], injected}]``.
+
+    Semantics (plan §F4-c'', codex #1/#2):
+      - resolved_concepts are NOT touched (no query narrowing).
+      - Each injected entry preserves the concept's ORIGINAL scope.
+      - Dedup on (inject_edge, normalized_id, normalized_scope): an already-active
+        preference is recorded (its class stays displayed) but NOT re-appended — the
+        candidate generator collects prefs as a set, so a duplicate is a scoring no-op.
+      - ``owned`` is display-only (never injected — G4 already boosts owned).
+      - Returns only classes that resolved to ≥1 concept; empty classes are dropped
+        (nothing to show) while interpretation.profile_refs keeps the raw selection.
+    """
+    scoped = user_profile.get("scoped_preference_ids")
+    if not isinstance(scoped, list):
+        scoped = []
+        user_profile["scoped_preference_ids"] = scoped
+
+    active: set[tuple[str, str, str]] = {
+        (
+            str(item.get("edge_type") or ""),
+            normalize_signal_id(item.get("id")),
+            _norm_profile_scope(item.get("scope_group")),
+        )
+        for item in scoped
+        if isinstance(item, dict) and item.get("id")
+    }
+
+    applied: list[dict[str, Any]] = []
+    seen_class: set[str] = set()
+    for cls in classes:
+        if cls in seen_class:
+            continue
+        seen_class.add(cls)
+
+        if cls == _PROFILE_REF_OWNED_CLASS:
+            owned = sorted(extract_owned_product_ids(user_profile))
+            if owned:
+                applied.append({
+                    "class": cls,
+                    "concepts": [pid.split(":")[-1] for pid in owned[:_PROFILE_REF_LABEL_CAP]],
+                    "injected": False,
+                })
+            continue
+
+        specs = _PROFILE_REF_SPECS.get(cls)
+        if not specs:
+            continue
+
+        labels: list[str] = []
+        seen_label: set[str] = set()
+        injected_any = False
+        for source_edge, inject_edge, legacy_field, kind in specs:
+            for concept_id, scope in _profile_ref_concepts(user_profile, source_edge, legacy_field):
+                label = _profile_ref_label(kind, concept_id)
+                if label not in seen_label:
+                    seen_label.add(label)
+                    labels.append(label)
+                key = (inject_edge, normalize_signal_id(concept_id), _norm_profile_scope(scope))
+                if key in active:
+                    continue  # already active → scoring no-op, display only
+                scoped.append({
+                    "edge_type": inject_edge,
+                    "id": concept_id,
+                    "weight": 1.0,
+                    "scope_group": scope,
+                    "source_sections": [_PROFILE_REF_SOURCE_SECTION],
+                })
+                active.add(key)
+                injected_any = True
+        if labels:
+            applied.append({
+                "class": cls,
+                "concepts": labels[:_PROFILE_REF_LABEL_CAP],
+                "injected": injected_any,
+            })
+    return applied
+
+
 def _narrow_candidate_universe(
     interp: QueryInterpretation,
     product_map: dict[str, dict[str, Any]],
@@ -1438,6 +1612,11 @@ async def ask(req: AskRequest):
     user_scoped = copy.deepcopy(user)
     scope_group = "global" if category_group == "all" else category_group
     injected_ids = _inject_query_preferences(user_scoped, interp, scope_group)
+    # [F4-c''] Join the user's own concepts for the LLM-selected profile-ref classes
+    # onto the SAME deep copy (scoring no-op for already-active prefs; genuine
+    # idempotent boost for repurchase → PREFERS_*). Kept SEPARATE from injected_ids
+    # so the "질의에서 언급" relabel below never mislabels a stored preference.
+    applied_profile_refs = _apply_profile_refs(user_scoped, interp.profile_refs)
 
     product_map = {p["product_id"]: p for p in products}
     category_universe_ids = _category_universe_ids(product_map, category_group)
@@ -1509,6 +1688,10 @@ async def ask(req: AskRequest):
         "candidate_count": candidate_count,
         "weights_used": scorer.weights,
         "preset_used": preset_used,
+        # [F4-c''] Recommend-branch ONLY (never in the anonymous search response, so
+        # the anonymous shape + result id/score identity are unchanged). Class names
+        # ride in interpretation.profile_refs; the joined concepts/labels are here.
+        "applied_profile_refs": applied_profile_refs,
         "results": results,
         "related_products": related,
     }
