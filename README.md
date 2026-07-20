@@ -154,6 +154,14 @@ uvicorn src.web.server:app --reload
 | `ANTHROPIC_API_KEY` | Anthropic API key (required when `GRAPHRAPPING_QUERY_LLM=anthropic`; model defaults to `claude-haiku-4-5`). Read from env only; never logged | unset |
 | `GRAPHRAPPING_ENABLE_PIPELINE_RUN` | Set `1` to allow `POST /api/pipeline/run` (demo data load) | unset (disabled) |
 | `GRAPHRAPPING_USER_PROFILES_JSON` | Opt-in path to a user-profile file that replaces the fixture default for the demo pipeline — used for the pseudonymized real-profile mode (`mockdata/real/...`). Unset = fixture file, byte-identical. Loopback-only; see Real User Profiles section | unset |
+| `ES_CLOUD_URL` / `ES_CLOUD_KEY` | Elasticsearch base URL + API key (`Authorization: ApiKey …`) for the product-master re-extraction backend (`scripts/fetch_product_catalog_es.py`). Read from env/`.env` only; never logged | unset |
+| `ES_AMORE_INDEX` / `ES_INNI_INDEX` | Product index names (Amore ch. 031 / Innisfree ch. 036); the ES export defaults to their de-duplicated union (override with `--indices`) | unset |
+| `AIBE_DB_URL` · `AIBE_DB_PORT` · `AIBE_DB_NM` · `AIBE_DB_USER` · `AIBE_DB_PW` · `AIBE_DB_SCHEMA` | Azure PG credentials for the user-profile backfill (`scripts/fetch_user_profiles_pg.py`), resolved **env-first, then the `--env-file` personal-agent `.env` fallback**. Never logged | unset (falls back to the legacy personal-agent `.env`) |
+
+DB-related variables can be centralized in a **git-ignored `.env`** at the repo
+root (`cp .env.example .env`); the connector scripts load it opt-in at startup
+and shell/CI values always take precedence. See
+[DECISIONS/2026-07-20_ic3_env_and_es_backend.md](DECISIONS/2026-07-20_ic3_env_and_es_backend.md).
 
 Each subcommand exposes its own `--help`. The underlying functions
 (`src.db.migrate.migrate`, `src.jobs.run_full_load_db.run_full_load_to_db`,

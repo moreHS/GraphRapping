@@ -27,6 +27,8 @@ ENV/
 # Environment and local config
 .env
 .env.*
+# ...but the placeholder template IS committed (documents the keys; no secrets).
+!.env.example
 
 # Logs and local runtime files
 *.log

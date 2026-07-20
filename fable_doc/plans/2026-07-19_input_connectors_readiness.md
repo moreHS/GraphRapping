@@ -193,6 +193,42 @@ conftest 4종 격리, 유저 커넥터 --staging 모드(기존 경로 호환).
   rs_jsonl) 소비 / rs→full-load / relation 906건 전량 landing→full-load. 전부 PASS.
 - 게이트 **1401 passed, 50 skipped, 0 failed**(+31), 무파괴 diff 0.
 
-### IC 트랙 상태: 준비분(IC-1·IC-2) 완료 — IC-3는 소스 접근 확정 대기
-남은 사용자 결정(§7): ① 리뷰 소스 S3 vs Snowflake 택1+접근 정보 ② 상품
-재추출 소스 ③ 유저 최초 로드 K. 확정 시 백엔드 구현만으로 실로드 전환 완료.
+### IC 트랙 상태: 준비분(IC-1·IC-2) 완료 → IC-3 사용자 확정 반영 (2026-07-20)
+
+§7 결정 확정(사용자):
+1. **상품 마스터 = ES9** — 접속 방식은 recommend-agent에서 확인(Fable 정찰):
+   REST `{ES_CLOUD_URL}/{index}/_search` + `Authorization: ApiKey {ES_CLOUD_KEY}`,
+   인덱스 `ES_AMORE_INDEX`/`ES_INNI_INDEX` 2종. ES 문서 필드가 카탈로그 컬럼과
+   동일 네이밍(BRAND_NAME/CTGR_SS_NAME…) — 픽스처의 원 출처로 확정. → IC-3에서
+   ES 재추출 백엔드 구현(전량 export → 기존 refresh_product_catalog 체인).
+2. **env 일원화** — GraphRapping 자체 `.env`(git-ignore)로 DB 관련 환경변수
+   전부 관리(`.env.example` 커밋): ES 3종+KEY, 유저 Azure PG(AIBE_DB_* — 기존
+   personal-agent .env 경로 참조는 fallback으로 유지=무파괴 이관), 기존
+   GRAPHRAPPING_DATABASE_URL 등, 미래 SNOWFLAKE_*/AWS 규약 주석. 로딩은
+   **명시적 opt-in**(스크립트/서버 기동 시 호출, 이미 설정된 os.environ 우선 —
+   테스트는 .env 미로드로 격리 유지).
+3. **리뷰 소스 = 대기 확정** — inference-gerter 정찰: SageMaker 배치
+   (gerter_ner_step → gerter_bee_step, relation 스텝은 합류 예정 — 사용자 확인),
+   산출은 Snowflake NER/BEE 테이블(`SNF_{OWN,EXTN,GLOBAL}_NER_TBL_NAME`) +
+   S3 TransformOutput 양쪽. relation 합류 후 최종 rs.jsonl 형태/위치 확정 시
+   백엔드 구현(인터페이스는 IC-2에서 준비 완료).
+4. **유저 최초 로드 K=100** (상한 500 내).
+
+### IC-3(가용분) 완료 — 2026-07-20 (Opus 구현, Fable 검토·실값 이관·라이브 스모크)
+- **.env 일원화**: `src/common/env_file.py`(의존성 0, os.environ 우선, opt-in 호출만)
+  + `.env.example` 커밋(플레이스홀더) + `.env` git-ignore. 실값 이관은 메인 세션이
+  수행(recommend-agent ES 4종 + personal-agent AIBE_DB 6종 → GraphRapping `.env`,
+  0600, 값 미출력). 서버 .env 로드는 보류(데모/테스트 오염 방지 — DECISIONS).
+- **상품 ES 백엔드**: `scripts/fetch_product_catalog_es.py` — search_after
+  (ONLINE_PROD_SERIAL_NUMBER,_doc 정렬, PIT/scroll 없이 stateless) 전량 export →
+  기존 refresh_product_catalog 체인 재사용. **라이브 스모크(Fable)**: AMORE
+  33,963 + INNI 11,307 = **실상품 ~45k 확인**, 정렬키 실 매핑 정상(override 불요).
+- **유저 이관+K=100**: 자격증명 해석 GraphRapping env 우선→personal-agent
+  fallback(무파괴), DEFAULT_LIMIT=100. **라이브 스모크(Fable)**: K=100 staging
+  최초 로드 성공(매칭률 49.2%, owned families/user 평균 2.04,
+  `mockdata/real/users/user_profiles_real_20260720.json` 0600+매니페스트).
+- 게이트 **1431 passed, 50 skipped, 0 failed**(+30), 무파괴 diff 0.
+- **잔여 = 리뷰 백엔드만**(대기 확정): inference-gerter relation 스텝 합류 후
+  rs.jsonl 최종 형태/위치 확정 시 `ReviewTripleReader` 백엔드 1개 구현.
+- **규모 참고**: 실 카탈로그 ~45k는 데모 517의 87배 — 전환 시 유사도 사전 계산은
+  배치 분리(갭 1·2, A3 수용 판정의 전제) 선행 권장.

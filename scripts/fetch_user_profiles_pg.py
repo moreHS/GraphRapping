@@ -25,8 +25,13 @@ PRIVACY / SAFETY
 ----------------
 * Live read-only DB tool — NOT run in CI. Unit tests exercise the pure helpers
   with mock rows only.
-* Credentials are read at runtime from the personalization agent ``.env`` by
-  *path reference only* (never copied into this repo) and never logged.
+* Credentials are resolved at runtime, never logged, never copied into this repo.
+  Resolution order (IC-3 env unification): (1) ``os.environ`` — populated from
+  GraphRapping's own git-ignored ``.env`` by the opt-in ``load_env_file`` call at
+  the top of ``main()`` (shell/CI values win); (2) fallback to the personalization
+  agent ``.env`` by *path reference only* (``--env-file``). So the tool keeps
+  working whether the ``AIBE_DB_*`` keys live in GraphRapping's ``.env``, the
+  shell, or the legacy personal-agent file — a non-destructive migration.
 * user_id is pseudonymized to ``real_<first 12 chars of incs_no>`` (incs_no is
   itself an already-hashed value). Rows with a missing/blank/short incs_no are
   skipped (counted); a 12-char prefix collision aborts the whole run.
@@ -38,7 +43,7 @@ PRIVACY / SAFETY
   (deterministic), ``--limit`` hard-capped at 500.
 
 Usage:
-    python scripts/fetch_user_profiles_pg.py --limit 50
+    python scripts/fetch_user_profiles_pg.py --limit 100
 """
 
 from __future__ import annotations
@@ -47,6 +52,7 @@ import argparse
 import importlib.util
 import json
 import logging
+import os
 import re
 import sys
 import types
@@ -71,6 +77,8 @@ DEFAULT_ENV_FILE = Path("/Users/amore/workplace/agent-aibc/persnal-agent/.env")
 
 VIEW = "agent.aibe_user_context_mstr_v"
 MAX_LIMIT = 500
+# Initial real-profile load size K (user decision, IC-3): 100, within the 500 cap.
+DEFAULT_LIMIT = 100
 
 # Representative product codes are 9-digit numerics (session-measured; e.g.
 # "131172879"). Enforced on BOTH catalog indexing and raw-profile extraction;
@@ -351,6 +359,10 @@ def stage_user_profiles(
 # Runtime-only helpers (DB creds, personalization normalizer)
 # =============================================================================
 
+_REQUIRED_DB_KEYS = ("AIBE_DB_URL", "AIBE_DB_NM", "AIBE_DB_USER", "AIBE_DB_PW")
+_OPTIONAL_DB_KEYS = ("AIBE_DB_PORT", "AIBE_DB_SCHEMA")
+
+
 def load_db_credentials(env_path: Path) -> dict[str, str]:
     """Parse AIBE_DB_* keys from the personalization .env (values never logged)."""
     if not env_path.exists():
@@ -364,10 +376,33 @@ def load_db_credentials(env_path: Path) -> dict[str, str]:
         key = key.strip()
         if key.startswith("AIBE_DB"):
             creds[key] = value.strip().strip('"').strip("'")
-    missing = [k for k in ("AIBE_DB_URL", "AIBE_DB_NM", "AIBE_DB_USER", "AIBE_DB_PW") if not creds.get(k)]
+    missing = [k for k in _REQUIRED_DB_KEYS if not creds.get(k)]
     if missing:
         raise ValueError(f"missing required DB credentials in {env_path}: {missing}")
     return creds
+
+
+def resolve_db_credentials(
+    env_path: Path, environ: Mapping[str, str] | None = None
+) -> tuple[dict[str, str], str]:
+    """Resolve AIBE_DB_* credentials with env-first, file-fallback semantics (IC-3).
+
+    Order: (1) ``os.environ`` — populated from GraphRapping's ``.env`` by the
+    opt-in ``load_env_file`` in ``main()``, or set directly in the shell/CI — used
+    when ALL four required keys are present; (2) fall back to parsing ``env_path``
+    (the legacy personalization-agent ``.env``). Returns ``(creds, source)`` where
+    ``source`` is ``"environ"`` or ``"env_file(fallback)"`` — a label only, no
+    credential value is ever returned in it or logged.
+    """
+    source = environ if environ is not None else os.environ
+    if all(source.get(k) for k in _REQUIRED_DB_KEYS):
+        creds = {k: source[k] for k in _REQUIRED_DB_KEYS}
+        for k in _OPTIONAL_DB_KEYS:
+            value = source.get(k)
+            if value:
+                creds[k] = value
+        return creds, "environ"
+    return load_db_credentials(env_path), "env_file(fallback)"
 
 
 def load_personalization_normalizer(
@@ -493,9 +528,16 @@ def _limit_type(value: str) -> int:
 
 
 def main() -> None:
+    from src.common.env_file import load_env_file
+
+    # Opt-in .env load (shell/CI values win — override=False). Import never does
+    # this; only an explicit run merges GraphRapping's .env into os.environ so the
+    # AIBE_DB_* credentials can be resolved env-first below.
+    load_env_file(GRAPHRAPPING_ROOT / ".env")
+
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--limit", type=_limit_type, default=50,
-                        help=f"max rows (default 50, hard cap {MAX_LIMIT})")
+    parser.add_argument("--limit", type=_limit_type, default=DEFAULT_LIMIT,
+                        help=f"max rows (default {DEFAULT_LIMIT} = initial load K, hard cap {MAX_LIMIT})")
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT,
                         help=f"output file — must live inside {REAL_DATA_DIR}")
     parser.add_argument("--catalog", type=Path, default=DEFAULT_CATALOG)
@@ -533,11 +575,11 @@ def main() -> None:
         staging_date = ""
         output_path = validate_output_path(args.output)
 
+    creds, cred_source = resolve_db_credentials(args.env_file)
     print("LIVE DB READ (SELECT-only, read-only transaction) — not for CI.")
     print(f"  view={VIEW}  limit={args.limit}")
-    print(f"  credentials (path-ref only): {args.env_file}")
+    print(f"  credentials source: {cred_source} (env-first; fallback --env-file={args.env_file})")
 
-    creds = load_db_credentials(args.env_file)
     normalize_profile, parse_column, profile_columns = load_personalization_normalizer(args.pa_src)
 
     catalog_records = json.loads(args.catalog.read_text(encoding="utf-8"))
