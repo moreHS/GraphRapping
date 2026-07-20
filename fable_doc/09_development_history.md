@@ -130,13 +130,38 @@ G4/D1의 병목 = owned 엣지(합성 1/50). 사용자 지시로 **개인화 에
 - **결과**: owned 39/50 유저 → **G4 boost 실발화 39/39** — Phase 8이 실구매
   데이터로 살아있음을 실증. D1 collab은 데이터 준비 완료(활성화는 별도 결정).
 
-## 9. 현재 상태와 보류 항목 (2026-07-19 기준)
+## 9. 입력 커넥터 트랙(IC) — 실 DB 전환 준비 (2026-07-19~20)
 
-- 게이트: ruff / mypy(117) / pytest **1318 passed, 50 skipped, 0 failed**.
-  origin 동기화(`cf36944`).
-- **보류(조건·결정 대기)**: 0.5 랭킹 라벨 전략(사용자 숙고 — 체계적 튜닝 개시
-  시 재상정) · B3 임베딩(승인 초안 [05](05_embedding_model_approval_request_draft.md),
-  제출은 사용자) · Track E 액션/인텐트 본체(외부 모델 스펙 대기) ·
-  **D1 collab attach 활성화**(데이터 준비 완료 — 결정만 남음, 켜면 스냅샷
-  재승인 1회) · Track F 인사이트(수요 확인 시) · retention 잔여·glb 온보딩
-  (실데이터 연속 적재/Phase 5 시점).
+서비스화 평가([10](10_service_transition_assessment.md))의 갭 #3 실행.
+[계획 v2](plans/2026-07-19_input_connectors_readiness.md)(코덱스 8건 반영 —
+"shape 어댑터 불요" 정정·누적 landing·9자리 완화 등) → Fable 실측 재검토 →
+3배치 실행(각 배치 Opus 구현·Fable 완료검토):
+
+- **IC-1**: 계약 검증기 4종(raw rs.jsonl/relation landing/상품/유저 — 골든
+  픽스처 4종 무수정 통과, RS↔Relation 매핑 표 단일 진실) + staging 규약
+  (`mockdata/real/{users,reviews,products}/`) + env 배선 2종(호출시점 해석,
+  우선순위 명문화) + full-load `review_format`(raw 직접 소비) + CLI 구매 정합.
+- **IC-2**: 리뷰 커넥터(리더 인터페이스+파일 백엔드+**누적 스냅샷 landing** —
+  부분 코퍼스 금지, 동일 키 상이 payload hard-fail) + 상품 커넥터(검증+baseline
+  diff 리포터 — 집계와 SKU id만). e2e: landing→env→데모/full-load 소비 증명.
+- **IC-3**: GraphRapping 자체 **`.env` 일원화**(로더 의존성 0, os.environ 우선,
+  실값 이관 완료) + **상품 ES 백엔드**(recommend-agent 접속 패턴 —
+  REST ApiKey+search_after; 라이브 스모크 **실상품 ~45k** 확인) + 유저
+  K=100(staging 최초 로드 완료, 매칭률 49.2%). **리뷰 백엔드만 대기**
+  (inference-gerter relation 스텝 합류 후 — 정찰: SageMaker NER→BEE,
+  Snowflake 테이블+S3 산출).
+
+무파괴 계약 전 배치 검증: env 미설정 시 기존 경로 byte-identical, 스냅샷 diff 0.
+
+## 10. 현재 상태와 보류 항목 (2026-07-20 기준)
+
+- 게이트: ruff / mypy(120) / pytest **1431 passed, 50 skipped, 0 failed**.
+  origin 동기화(`2204cb6`). 인수인계 기준점: 루트 `HANDOFF.md`.
+- **재개 트리거 있는 항목**: 리뷰 백엔드(relation 합류 통보 시) · 유사도
+  영속화+refresh 백그라운드화(실카탈로그 45k 전환 전 선행 권장) · retention
+  (실데이터 연속 적재 시작) · glb 온보딩.
+- **보류(결정 대기)**: 0.5 랭킹 라벨 전략(체계적 튜닝 개시 시 재상정) ·
+  B3 임베딩(승인 초안 [05](05_embedding_model_approval_request_draft.md),
+  제출은 사용자) · Track E 액션/인텐트 본체(외부 모델 스펙) ·
+  **D1 collab attach 활성화**(실유저 owned 데이터 준비 완료 — 결정만, 켜면
+  스냅샷 재승인 1회) · Track F 인사이트(수요 확인 시).
