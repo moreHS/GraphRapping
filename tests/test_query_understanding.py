@@ -361,6 +361,90 @@ def test_fallback_negation_is_case_insensitive_free_marker(
 
 
 # ---------------------------------------------------------------------------
+# (e3) [F2] fallback surfaces UNREFLECTED query tokens — no LLM. Meaningful
+# tokens the dictionary reflected nowhere are surfaced (unresolved_terms + one
+# warning) so two differently-worded queries stop collapsing to the same
+# interpretation; request words / negation-consumed tokens are NOT re-surfaced.
+# ---------------------------------------------------------------------------
+
+
+def test_fallback_surfaces_unreflected_tokens(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("GRAPHRAPPING_QUERY_LLM", raising=False)
+    interp = understand_query("피부에 맞는 스킨케어", _products())
+
+    assert interp.llm_used is False
+    # The category IS reflected...
+    assert "concept:Category:skincare" in _ids(interp)
+    # ...and the tokens reflected nowhere are surfaced verbatim, in appearance
+    # order (previously dropped silently — the reported bug).
+    assert interp.unresolved_terms == ["피부에", "맞는"]
+    assert len(interp.warnings) == 1
+    assert "피부에, 맞는" in interp.warnings[0]
+    assert "반영되지 않았습니다" in interp.warnings[0]
+
+
+def test_fallback_two_worded_queries_no_longer_collapse(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The reported bug: "피부에 맞는 스킨케어" and "성분이 좋은 스킨케어" resolved the
+    identical (skincare-only) interpretation with no trace of the dropped words.
+    Concepts still match, but unresolved_terms now distinguishes them."""
+    monkeypatch.delenv("GRAPHRAPPING_QUERY_LLM", raising=False)
+    products = _products()
+    a = understand_query("피부에 맞는 스킨케어", products)
+    b = understand_query("성분이 좋은 스킨케어", products)
+
+    assert _typed_ids(a.resolved_concepts) == _typed_ids(b.resolved_concepts)
+    assert a.unresolved_terms == ["피부에", "맞는"]
+    assert b.unresolved_terms == ["성분이", "좋은"]
+    assert a.unresolved_terms != b.unresolved_terms
+
+
+def test_fallback_fully_resolved_query_surfaces_nothing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("GRAPHRAPPING_QUERY_LLM", raising=False)
+    interp = understand_query("이니스프리 토너", _products())
+    assert interp.llm_used is False
+    assert interp.unresolved_terms == []
+    assert interp.warnings == []
+
+
+def test_fallback_request_word_not_surfaced(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("GRAPHRAPPING_QUERY_LLM", raising=False)
+    interp = understand_query("수분크림 추천해줘", _products())
+    assert interp.llm_used is False
+    # "수분크림" is reflected (수분/크림); "추천해줘" is request phrasing — neither surfaces.
+    assert interp.unresolved_terms == []
+    assert interp.warnings == []
+
+
+def test_fallback_negation_consumed_token_not_resurfaced(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A negated ingredient + its marker are owned by the negation path; F2 must
+    not re-surface them as unreflected tokens (and adds no second warning)."""
+    monkeypatch.delenv("GRAPHRAPPING_QUERY_LLM", raising=False)
+    interp = understand_query("레티놀 없는 수분크림", _products())
+    assert interp.llm_used is False
+    assert interp.avoided_ingredient_concept_ids == ["concept:Ingredient:레티놀"]
+    assert interp.unresolved_terms == []  # 레티놀 / 없는 not re-surfaced; 수분크림 reflected
+    assert interp.warnings == []
+
+
+def test_fallback_unknown_negation_does_not_double_warn(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When the negation path already surfaces its own unresolved term + warning,
+    F2 adds neither a duplicate term nor a second warning."""
+    monkeypatch.delenv("GRAPHRAPPING_QUERY_LLM", raising=False)
+    interp = understand_query("저분자콜라겐 없는 크림", _products())
+    assert interp.unresolved_terms == ["저분자콜라겐"]  # from negation only, not duplicated
+    assert len(interp.warnings) == 1  # negation warning only — no second F2 warning
+    assert "성분으로 해석하지 못했습니다" in interp.warnings[0]
+
+
+# ---------------------------------------------------------------------------
 # (f) cache: identical query does not re-call the LLM
 # ---------------------------------------------------------------------------
 

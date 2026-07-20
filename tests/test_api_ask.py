@@ -532,3 +532,27 @@ def test_ask_surfaces_unresolved_terms(
     interp = resp.json()["interpretation"]
     assert interp["unresolved_terms"] == ["저분자"]  # surfaced, never silently dropped
     assert interp["llm_used"] is True
+
+
+# ---------------------------------------------------------------------------
+# (g2) [F2] unreflected terms surfaced by the LIVE dictionary fallback (no LLM,
+# no monkeypatch): tokens the dictionary reflected nowhere reach the response
+# so the frontend can render them, instead of two queries collapsing silently.
+# ---------------------------------------------------------------------------
+
+
+def test_ask_surfaces_unreflected_terms_via_live_fallback(
+    ask_env: tuple[TestClient, DemoState],
+) -> None:
+    client, _state = ask_env  # GRAPHRAPPING_QUERY_LLM unset → real dictionary fallback
+    resp = client.post("/api/ask", json={"query": "피부에 맞는 스킨케어"})
+    assert resp.status_code == 200
+    interp = resp.json()["interpretation"]
+
+    assert interp["llm_used"] is False  # proves the live fallback produced this
+    resolved_ids = {c["concept_id"] for c in interp["resolved_concepts"]}
+    assert "concept:Category:skincare" in resolved_ids  # category still reflected
+    # The unreflected tokens are surfaced (contract the frontend renders as chips
+    # + a warning banner) rather than dropped silently.
+    assert interp["unresolved_terms"] == ["피부에", "맞는"]
+    assert interp["warnings"] and "반영되지 않았습니다" in interp["warnings"][0]

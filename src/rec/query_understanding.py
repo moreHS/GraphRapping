@@ -46,6 +46,14 @@ Known limitations:
   (it is subtracted from the positive concepts), so the wanted intent for that
   ingredient can be lost (e.g. a "레티놀 토너인데 레티놀 없는" style query loses the
   toner-with-retinol reading).
+- Dictionary-fallback unreflected-term surfacing is coarse by design: query
+  tokens the dictionary reflected nowhere are surfaced verbatim (whitespace
+  tokens, no morphological analysis) in ``unresolved_terms`` + one ``warnings``
+  line, so "피부에 맞는 스킨케어" and "성분이 좋은 스킨케어" no longer collapse to the
+  identical (category-only) interpretation. A small request-word stoplist + a
+  single-character floor trim the obvious filler; over-showing a real token
+  (a chip the user can read) is preferred to hiding one. The LLM path keeps its
+  own gate-based ``unresolved_terms`` and is unchanged.
 """
 
 from __future__ import annotations
@@ -100,6 +108,28 @@ _POSITIVE_FIELDS = (
 _NEGATION_KO_RE = re.compile(r"([0-9A-Za-z가-힣]+?)\s*(없는|없이|빼고|제외한?)")
 _NEGATION_FREE_RE = re.compile(
     r"([0-9A-Za-z가-힣]+?)[\s-]+(프리|free)", re.IGNORECASE
+)
+
+# [F2] Conservative request/filler stems for the dictionary-fallback
+# unresolved-surfacing path. A whitespace token containing one of these is
+# treated as request phrasing, not an unresolved concept, so it is not surfaced
+# as a chip. Deliberately minimal (under-dropping beats over-dropping): every
+# stem is request-specific and unlikely to appear inside a cosmetics content
+# word ("추천" is the workhorse — it also covers 추천해/추천해줘/추천해주세요; "주세요"
+# covers 해주세요/알려주세요/보여주세요). Single-character 조사/의존어 (좀·것·거 등)
+# are dropped by a separate length-1 floor, so they need no entry here. This is
+# NOT morphological analysis — matching is plain substring on the raw token.
+_REQUEST_WORD_STEMS: tuple[str, ...] = (
+    "추천",
+    "해줘",
+    "주세요",
+    "알려줘",
+    "보여줘",
+    "찾아줘",
+    "골라줘",
+    "부탁",
+    "궁금",
+    "필요해",
 )
 
 
@@ -340,6 +370,75 @@ def _negated_ingredients(
     return avoided, unresolved, warnings
 
 
+def _negation_consumed_surfaces(query: str) -> list[str]:
+    """Normalized surfaces (negated word + its marker) the ingredient-negation
+    step consumes on the RAW query. Used by ``_unreflected_terms`` (F2) so a
+    token the negation path already owns — and already surfaces/warns about when
+    it cannot map to a catalog ingredient — is never re-surfaced or double-warned.
+    """
+    surfaces: list[str] = []
+    for match in (*_NEGATION_KO_RE.finditer(query), *_NEGATION_FREE_RE.finditer(query)):
+        for group in (match.group(1), match.group(2)):
+            norm = normalize_text(group)
+            if norm:
+                surfaces.append(norm)
+    return surfaces
+
+
+def _unreflected_terms(
+    query: str,
+    resolved: list[MatchedConcept],
+    already_unresolved: list[str],
+) -> tuple[list[str], list[str]]:
+    """[F2] Raw whitespace tokens the dictionary path reflected nowhere, so the
+    fallback surfaces them instead of dropping them silently.
+
+    A token is surfaced UNLESS it is:
+
+    - one character or less after normalization (조사/의존어 단독 토큰: 좀·것·거 …);
+    - a request/filler word (contains a ``_REQUEST_WORD_STEMS`` stem, e.g. the
+      compound "추천해줘" via "추천");
+    - reflected by a resolved concept — its normalized form contains, or is
+      contained by, some concept's ``matched_text`` (partial match, so "스킨케어"
+      and "수분크림" are covered by the "스킨케어"/"수분"·"크림" hits); or
+    - consumed by ingredient negation (the negated word or its marker), which
+      the negation path already surfaces and warns about on its own.
+
+    No morphological analysis: the tokens are the verbatim ``str.split()``
+    surfaces (so "피부에"/"맞는" surface with their particles — still useful to a
+    user). Deterministic: appearance order, deduplicated (also against
+    ``already_unresolved``). Returns ``(new_terms, warnings)``; ``warnings`` holds
+    at most one message, and only when ``new_terms`` is non-empty.
+    """
+    matched_norms = [
+        norm for norm in (normalize_text(c.matched_text) for c in resolved) if norm
+    ]
+    neg_surfaces = _negation_consumed_surfaces(query)
+
+    terms: list[str] = []
+    seen: set[str] = {n for n in (normalize_text(t) for t in already_unresolved) if n}
+    for token in query.split():
+        norm = normalize_text(token)
+        if len(norm) <= 1 or norm in seen:
+            continue
+        if any(stem in norm for stem in _REQUEST_WORD_STEMS):
+            continue
+        if any(m in norm or norm in m for m in matched_norms):
+            continue
+        if any(s in norm or norm in s for s in neg_surfaces):
+            continue
+        seen.add(norm)
+        terms.append(token)
+
+    if not terms:
+        return [], []
+    warning = (
+        f"'{', '.join(terms)}' 표현은 이번 해석에 반영되지 않았습니다 "
+        "(사전 매칭 없음 — LLM 질의 이해를 켜면 확장됩니다)"
+    )
+    return terms, [warning]
+
+
 def _fallback(query: str, products: list[dict[str, Any]]) -> QueryInterpretation:
     """Dictionary-only interpretation (identical return shape to the LLM path).
 
@@ -358,6 +457,17 @@ def _fallback(query: str, products: list[dict[str, Any]]) -> QueryInterpretation
         for concept in resolved
         if (concept.concept_type, concept.concept_id) not in avoided_set
     ]
+
+    # [F2] Surface meaningful query tokens the dictionary path reflected NOWHERE
+    # (previously dropped silently, so "피부에 맞는 스킨케어" and "성분이 좋은
+    # 스킨케어" looked identical). Uses the full ``resolved`` set (pre-avoided
+    # subtraction) so avoided-ingredient surfaces count as reflected too. The
+    # negation path already owns (and warns about) its own tokens, so its
+    # unresolved list is passed in to avoid double-counting.
+    extra_terms, extra_warnings = _unreflected_terms(query, resolved, unresolved)
+    unresolved = unresolved + extra_terms
+    warnings = warnings + extra_warnings
+
     return QueryInterpretation(
         query=query,
         intent="search",

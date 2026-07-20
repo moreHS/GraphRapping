@@ -149,25 +149,46 @@ class AzureOpenAIClient:
         self._headers = {"api-key": api_key, "content-type": "application/json"}
 
     def complete_json(self, system: str, user: str, *, timeout_sec: float) -> dict[str, Any]:
-        body: dict[str, Any] = {
-            "messages": [
-                {"role": "system", "content": system},
-                {"role": "user", "content": user},
-            ],
-            "temperature": 0,
-            "max_tokens": 800,
-            "response_format": {"type": "json_object"},
-        }
-        try:
-            return self._post(body, timeout_sec)
-        except self._httpx.HTTPStatusError as exc:
-            status = getattr(getattr(exc, "response", None), "status_code", None)
-            if status in (400, 404, 422):
-                # Deployment likely does not support response_format — retry
-                # without it (prompt still instructs JSON-only).
-                body.pop("response_format", None)
+        messages = [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ]
+        # Parameter ladder across Azure deployment generations (2026-07-20):
+        # newer reasoning-class deployments (e.g. GPT-5.x) reject `max_tokens`
+        # (400: use `max_completion_tokens`) and non-default `temperature`,
+        # while older chat deployments predate `max_completion_tokens`. Try the
+        # modern shape first, then the legacy shape, then legacy without
+        # response_format (pre-existing fallback for deployments lacking JSON
+        # mode — the prompt still instructs JSON-only).
+        attempts: list[dict[str, Any]] = [
+            {
+                "messages": messages,
+                "max_completion_tokens": 800,
+                "response_format": {"type": "json_object"},
+            },
+            {
+                "messages": messages,
+                "temperature": 0,
+                "max_tokens": 800,
+                "response_format": {"type": "json_object"},
+            },
+            {
+                "messages": messages,
+                "temperature": 0,
+                "max_tokens": 800,
+            },
+        ]
+        last_exc: Exception | None = None
+        for i, body in enumerate(attempts):
+            try:
                 return self._post(body, timeout_sec)
-            raise
+            except self._httpx.HTTPStatusError as exc:
+                status = getattr(getattr(exc, "response", None), "status_code", None)
+                if status in (400, 404, 422) and i < len(attempts) - 1:
+                    last_exc = exc
+                    continue
+                raise
+        raise last_exc if last_exc else RuntimeError("unreachable")
 
     def _post(self, body: dict[str, Any], timeout_sec: float) -> dict[str, Any]:
         resp = self._httpx.post(self._url, headers=self._headers, json=body, timeout=timeout_sec)

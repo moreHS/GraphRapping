@@ -192,6 +192,8 @@ scripts and tests — see `src/cli.py` for the full mapping.
 - **"관련 상품 더보기"** (G5): search/ask results append a related-products
   section anchored on the top primary results, each entry attributed to its
   anchor ("'X'과 속성 공유") with evidence chips.
+- **개발 노트**: `src/static`의 JS/CSS를 변경하면 `index.html`의 `?v=` 캐시버스터를
+  반드시 범프할 것 — 안 하면 브라우저가 이전 파일을 캐시에서 계속 사용한다.
 
 ## Development History
 
