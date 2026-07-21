@@ -778,6 +778,23 @@ function renderRecommendResults(data) {
               ? '-'
               : `${contribution >= 0 ? '+' : ''}${contribution.toFixed(3)}`;
             const concept = p.id ? p.id.split(':').pop() : '-';
+            if (p.type === 'similar') {
+              // G4 similar boost: readable row — owned anchor NAME + shared-axis
+              // evidence chips (payload carries anchor_name/shared_axes; a bare
+              // product id told the user nothing — 2026-07-21).
+              const axes = (p.shared_axes || []).slice(0, 4);
+              return `
+                <div class="path-row">
+                  <span class="chip ner">보유 상품</span>
+                  <span class="arrow">→</span>
+                  <span class="chip bee">${displayText(p.anchor_name || concept)}</span>
+                  <span class="arrow">→</span>
+                  <span class="chip rel">속성 공유</span>
+                  <span style="margin-left:8px;color:var(--green)">(${contributionText})</span>
+                </div>
+                ${axes.length ? `<div style="margin:2px 0 6px 4px;font-size:11px"><span style="color:var(--text2)">공유 속성:</span> ${axes.map(a => `<span class="chip bee" title="IDF ${a.idf}">${displayText(a.label)}</span>`).join('')}</div>` : ''}
+              `;
+            }
             return `
               <div class="path-row">
                 <span class="chip ner">${displayText(p.user_edge)}</span>

@@ -703,6 +703,7 @@ async def _run_scored_pipeline(
     # attached to `similar` explanation paths below — no second store/DB access.
     similar_boost: dict[str, list[tuple[str, float]]] | None = None
     similar_axes_by_pair: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    anchor_names_by_id: dict[str, str] = {}
     ungated_getter = getattr(store, "get_ungated_similar", None)
     if ungated_getter is not None:
         owned_ids = extract_owned_product_ids(user_profile)
@@ -714,6 +715,14 @@ async def _run_scored_pipeline(
         if signals_by_anchor:
             similar_boost = build_similar_boost_index(owned_ids, signals_by_anchor) or None
         if similar_boost:
+            # Anchor display names for similar explanation paths (owned set is
+            # tiny — a handful of store lookups once per request).
+            for anchor in signals_by_anchor:
+                anchor_profile = await store.get_product(anchor)
+                if anchor_profile:
+                    anchor_names_by_id[anchor] = (
+                        anchor_profile.get("representative_product_name") or anchor
+                    )
             for anchor, anchor_signals in signals_by_anchor.items():
                 for sig in anchor_signals:
                     neighbor = _similar_signal_field(sig, "product_id")
@@ -781,7 +790,20 @@ async def _run_scored_pipeline(
                 axes = similar_axes_by_pair.get((p.concept_id, r.product_id))
                 if axes:
                     path_row["shared_axes"] = [dict(ax) for ax in axes]
+                # Card-rendering aid (2026-07-21): the path id is the owned
+                # ANCHOR product id — surface its human name so the UI can say
+                # "보유 상품 '헤라 …'와 속성 공유" instead of a bare id.
+                anchor_name = anchor_names_by_id.get(p.concept_id)
+                if anchor_name:
+                    path_row["anchor_name"] = anchor_name
             explanation_paths.append(path_row)
+        # Readability patch (2026-07-21): the Korean summary references the
+        # similar anchor by raw product id ("보유하신 '50165' 제품과 …") —
+        # substitute the anchor's display name resolved above.
+        summary_ko = exp.summary_ko
+        if anchor_names_by_id and summary_ko:
+            for _aid, _aname in anchor_names_by_id.items():
+                summary_ko = summary_ko.replace(f"'{_aid}'", f"'{_aname}'")
         results.append({
             "rank": r.final_rank + 1,
             "product_id": r.product_id,
@@ -798,7 +820,7 @@ async def _run_scored_pipeline(
             "eligibility": candidate.eligibility.to_dict(),
             "review_summary": summary_by_product.get(r.product_id),
             "source_trust": _source_trust(product_profile),
-            "explanation": exp.summary_ko,
+            "explanation": summary_ko,
             "explanation_paths": explanation_paths,
             "hooks": {"discovery": hooks.discovery, "consideration": hooks.consideration, "conversion": hooks.conversion},
         })
