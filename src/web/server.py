@@ -177,7 +177,15 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 @app.get("/")
 async def index():
-    return FileResponse(str(STATIC_DIR / "index.html"))
+    # no-cache on the DOCUMENT only: the browser must always revalidate
+    # index.html so bumped `?v=` asset URLs take effect on a plain reload
+    # (without this, heuristic caching can pin an old index -> old JS even
+    # after a deploy — 2026-07-21 user-observed staleness). Static assets
+    # themselves stay cacheable; the ?v= param versions them.
+    return FileResponse(
+        str(STATIC_DIR / "index.html"),
+        headers={"Cache-Control": "no-cache"},
+    )
 
 
 # =============================================================================
