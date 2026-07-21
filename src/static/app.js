@@ -175,15 +175,85 @@ function jsStringArg(value) {
 // =============================================================================
 // Data Explorer
 // =============================================================================
+// Detail is shown as an accordion row expanded directly beneath the clicked
+// list row (review/product/user share one pattern). Only one row is open at a
+// time; clicking the open row again collapses it. This replaces the old
+// bottom-of-page #explorerDetail panel (which users never found).
+let openAccordionTrigger = null;  // the data <tr> whose detail is currently open
+
+function resetExplorerAccordion() {
+  // The list loaders replace #explorerContent wholesale, destroying any open
+  // detail row with it -- just drop the now-stale reference.
+  openAccordionTrigger = null;
+}
+
+function closeExplorerAccordion() {
+  if (!openAccordionTrigger) return;
+  const next = openAccordionTrigger.nextElementSibling;
+  if (next && next.classList.contains('detail-expand')) next.remove();
+  openAccordionTrigger.classList.remove('expanded');
+  openAccordionTrigger = null;
+}
+
+// Toggle an accordion detail row directly below triggerRow. `fill(inner,
+// isCurrent)` populates the expand cell and may be async; it MUST re-check
+// isCurrent() after every await and bail if the row was closed/replaced.
+async function openExplorerRow(triggerRow, fill) {
+  const wasOpen = openAccordionTrigger === triggerRow;
+  closeExplorerAccordion();
+  if (wasOpen) return;  // same row clicked again -> collapse only
+
+  const tr = document.createElement('tr');
+  tr.className = 'detail-expand';
+  const td = document.createElement('td');
+  td.colSpan = triggerRow.children.length;
+  const inner = document.createElement('div');
+  inner.className = 'detail-expand-inner';
+  inner.innerHTML = '<div class="loading">불러오는 중…</div>';
+  td.appendChild(inner);
+  tr.appendChild(td);
+  triggerRow.after(tr);
+  triggerRow.classList.add('expanded');
+  openAccordionTrigger = triggerRow;
+  requestAnimationFrame(() => tr.classList.add('open'));  // trigger fade-in
+
+  const isCurrent = () => openAccordionTrigger === triggerRow && inner.isConnected;
+  try {
+    await fill(inner, isCurrent);
+  } catch (e) {
+    if (isCurrent()) inner.innerHTML = '<div class="empty">상세를 불러오지 못했습니다</div>';
+  }
+}
+
+// Original JSON, folded so the accordion isn't dominated by it (expands to the
+// exact same <pre> as before). NOTE: the literal `<pre>${jsonHtml(d)}</pre>`
+// substring is asserted by tests/test_recommendation_contract_consistency.py.
+function jsonDetails(d) {
+  return `<details class="detail-json"><summary>원본 JSON</summary><pre>${jsonHtml(d)}</pre></details>`;
+}
+
+// Activate the 데이터 탐색기 section + its nav link WITHOUT the global `event`
+// (showSection() reads event.target, wrong when navigating programmatically
+// from a review link or a recommend related-product card).
+function activateExplorerSection() {
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  const sec = document.getElementById('sec-explorer');
+  if (sec) sec.classList.add('active');
+  document.querySelectorAll('.nav a').forEach(a => a.classList.remove('active'));
+  const link = document.getElementById('navExplorer');
+  if (link) link.classList.add('active');
+}
+
 async function loadReviews() {
   const res = await fetch(API + '/api/reviews?size=50');
   const data = await res.json();
   const panel = document.getElementById('explorerContent');
+  resetExplorerAccordion();
   if (!data.items.length) { panel.innerHTML = '<div class="empty">리뷰 없음</div>'; return; }
   panel.innerHTML = `<table><thead><tr>
     <th>Review ID</th><th>매칭</th><th>상품</th><th>Entity</th><th>Fact</th><th>Signal</th><th>격리</th>
   </tr></thead><tbody>${data.items.map(r => `
-    <tr class="clickable" onclick="showReviewDetail(${jsStringArg(r.review_id)})">
+    <tr class="clickable" data-rid="${escapeHtml(r.review_id)}" onclick="showReviewDetail(this)">
       <td style="font-size:11px">${displayText(String(r.review_id || '').substring(0,30))}...</td>
       <td><span class="chip ${r.match_status === 'QUARANTINE' ? 'neg' : 'pos'}">${displayText(r.match_status)}</span></td>
       <td>${r.matched_product_id
@@ -194,22 +264,25 @@ async function loadReviews() {
     </tr>`).join('')}</tbody></table>`;
 }
 
-async function showReviewDetail(id) {
-  const res = await fetch(API + '/api/reviews/' + encodeURIComponent(id));
-  const d = await res.json();
-  const dp = document.getElementById('explorerDetail');
-  dp.style.display = 'block';
-  dp.innerHTML = `<h3>리뷰 상세: ${displayText(id.substring(0,40))}...</h3><pre>${jsonHtml(d)}</pre>`;
+function showReviewDetail(triggerRow) {
+  const id = triggerRow.dataset.rid;
+  openExplorerRow(triggerRow, async (inner, isCurrent) => {
+    const res = await fetch(API + '/api/reviews/' + encodeURIComponent(id));
+    const d = await res.json();
+    if (!isCurrent()) return;
+    inner.innerHTML = `<h3>리뷰 상세: ${displayText(String(id).substring(0,40))}...</h3>` + jsonDetails(d);
+  });
 }
 
 async function loadProducts() {
   const res = await fetch(API + '/api/products');
   const data = await res.json();
   const panel = document.getElementById('explorerContent');
+  resetExplorerAccordion();
   panel.innerHTML = `<table><thead><tr>
     <th>상품명</th><th>브랜드</th><th>카테고리</th><th>원천 6M 리뷰</th><th>원천 평점</th><th>그래프 근거</th><th>Top BEE</th>
   </tr></thead><tbody>${data.items.map(p => `
-    <tr class="clickable" onclick="showProductDetail(${jsStringArg(p.product_id)})">
+    <tr class="clickable" data-pid="${escapeHtml(p.product_id)}" onclick="showProductDetailRow(this)">
       <td>${displayText(productDisplayName(p))}</td><td>${displayText(p.brand_name)}</td><td>${displayText(p.category_name)}</td>
       <td>${fmtCount(p.source_review_count_6m)}</td>
       <td>${fmtRating(p.source_avg_rating_6m)}</td>
@@ -218,40 +291,64 @@ async function loadProducts() {
     </tr>`).join('')}</tbody></table>`;
 }
 
-// Phase 8 G3: latest opened detail id — guards the async similar-products
-// fetch against racing a newer detail render (stale section insertion).
+// Phase 8 G3: latest opened product id — guards the async similar-products
+// fetch against racing a newer detail render (stale section insertion). Now
+// compared against the currently-open accordion product (not the old panel).
 let currentDetailId = null;
 
-async function showProductDetail(id) {
-  currentDetailId = id;
-  const res = await fetch(API + '/api/products/' + encodeURIComponent(id));
-  const d = await res.json();
-  const dp = document.getElementById('explorerDetail');
-  dp.style.display = 'block';
-  const sp = d.serving_profile || {};
-  const name = sp.representative_product_name ? productDisplayName(sp) : id;
-  const summary = d.review_summary;
-  const summaryText = summary ? (summary.short_summary || summary.long_summary || '-') : '-';
-  dp.innerHTML = `
-    <h3>상품 상세: ${displayText(name)}</h3>
-    <div class="kpi-grid">
-      <div class="kpi-card"><div class="label">원천 6M 리뷰</div><div class="value blue">${fmtCount(sp.source_review_count_6m)}</div></div>
-      <div class="kpi-card"><div class="label">원천 6M 평점</div><div class="value green">${fmtRating(sp.source_avg_rating_6m)}</div></div>
-      <div class="kpi-card"><div class="label">그래프 근거 리뷰</div><div class="value">${fmtCount(sp.review_count_all || 0)}</div></div>
-      <div class="kpi-card"><div class="label">리뷰 요약</div><div class="value" style="font-size:13px">${displayText(summaryStatusLabel(summary))}</div></div>
-    </div>
-    ${summary ? `<div class="panel" style="margin-top:12px">
-      <h2>리뷰 요약</h2>
-      <p>${displayText(summaryText)}</p>
-    </div>` : ''}
-    <pre>${jsonHtml(d)}</pre>
-  `;
-  // Phase 8 G3: attribute-similar products ("비슷한 상품") widget. Rendered after
-  // the detail (fetched separately); an empty result hides the section entirely.
-  renderSimilarProducts(id);
+// Accordion detail for a product row (explorer 상품 목록). Reuses the previous
+// bottom-panel markup verbatim, only re-homed into the expand cell with the raw
+// JSON folded into <details> (jsonDetails) and the "비슷한 상품" widget scoped to
+// this row's container instead of the retired #explorerDetail panel.
+function showProductDetailRow(triggerRow) {
+  const id = triggerRow.dataset.pid;
+  openExplorerRow(triggerRow, async (inner, isCurrent) => {
+    currentDetailId = id;
+    const res = await fetch(API + '/api/products/' + encodeURIComponent(id));
+    const d = await res.json();
+    if (!isCurrent()) return;
+    const sp = d.serving_profile || {};
+    const name = sp.representative_product_name ? productDisplayName(sp) : id;
+    const summary = d.review_summary;
+    const summaryText = summary ? (summary.short_summary || summary.long_summary || '-') : '-';
+    inner.innerHTML = `
+      <h3>상품 상세: ${displayText(name)}</h3>
+      <div class="kpi-grid">
+        <div class="kpi-card"><div class="label">원천 6M 리뷰</div><div class="value blue">${fmtCount(sp.source_review_count_6m)}</div></div>
+        <div class="kpi-card"><div class="label">원천 6M 평점</div><div class="value green">${fmtRating(sp.source_avg_rating_6m)}</div></div>
+        <div class="kpi-card"><div class="label">그래프 근거 리뷰</div><div class="value">${fmtCount(sp.review_count_all || 0)}</div></div>
+        <div class="kpi-card"><div class="label">리뷰 요약</div><div class="value" style="font-size:13px">${displayText(summaryStatusLabel(summary))}</div></div>
+      </div>
+      ${summary ? `<div class="panel" style="margin-top:12px">
+        <h2>리뷰 요약</h2>
+        <p>${displayText(summaryText)}</p>
+      </div>` : ''}
+      ${jsonDetails(d)}
+    `;
+    // Phase 8 G3: attribute-similar products ("비슷한 상품") widget, inserted
+    // above the JSON (below the summary). An empty result hides the section.
+    renderSimilarProducts(id, inner);
+  });
 }
 
-async function renderSimilarProducts(id) {
+// Jump entry point — called by the review-list 상품 링크 AND the 추천 관련상품 카드
+// (renderRelatedProducts, recommend section). Switch to the explorer 상품 목록,
+// scroll the product into view, and expand its accordion.
+async function showProductDetail(id) {
+  activateExplorerSection();
+  await loadProducts();
+  let row = null;
+  document.querySelectorAll('#explorerContent tr[data-pid]').forEach(r => {
+    if (r.dataset.pid === String(id)) row = r;
+  });
+  if (!row) return;
+  row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  if (openAccordionTrigger !== row) showProductDetailRow(row);
+}
+
+// container = the accordion's .detail-expand-inner (was the #explorerDetail
+// panel). Inserts the widget above the folded JSON (below the summary).
+async function renderSimilarProducts(id, container) {
   let items = [];
   try {
     const res = await fetch(API + '/api/products/' + encodeURIComponent(id) + '/similar');
@@ -260,8 +357,7 @@ async function renderSimilarProducts(id) {
   } catch (e) { return; }
   if (!items.length) return;  // empty array → section not shown (per G3 UX contract)
   if (currentDetailId !== id) return;  // a newer detail replaced this one meanwhile
-  const dp = document.getElementById('explorerDetail');
-  if (!dp) return;
+  if (!container || !container.isConnected) return;  // accordion closed meanwhile
   const section = document.createElement('div');
   section.className = 'panel';
   section.style.marginTop = '12px';
@@ -276,18 +372,19 @@ async function renderSimilarProducts(id) {
         <div style="margin-top:4px">${axes || '<span style="color:var(--text2);font-size:11px">공유 근거 없음</span>'}</div>
       </div>`;
     }).join('');
-  const pre = dp.querySelector('pre');
-  if (pre) dp.insertBefore(section, pre); else dp.appendChild(section);
+  const anchor = container.querySelector('details.detail-json');
+  if (anchor) container.insertBefore(section, anchor); else container.appendChild(section);
 }
 
 async function loadUsers() {
   const res = await fetch(API + '/api/users');
   const data = await res.json();
   const panel = document.getElementById('explorerContent');
+  resetExplorerAccordion();
   panel.innerHTML = `<table><thead><tr>
     <th>User ID</th><th>연령대</th><th>성별</th><th>피부타입</th><th>고민</th><th>선호 브랜드</th><th>스코프 선호</th>
   </tr></thead><tbody>${data.items.map(u => `
-    <tr class="clickable" onclick="showUserDetail(${jsStringArg(u.user_id)})">
+    <tr class="clickable" data-uid="${escapeHtml(u.user_id)}" onclick="showUserDetail(this)">
       <td>${displayText(u.user_id)}</td><td>${displayText(u.age_band)}</td><td>${displayText(u.gender)}</td>
       <td>${displayText(u.skin_type)}</td>
       <td>${displayText((u.concern_ids||[]).slice(0,2).map(c => c.id ? c.id.split(':').pop() : '').join(', '))}</td>
@@ -296,12 +393,14 @@ async function loadUsers() {
     </tr>`).join('')}</tbody></table>`;
 }
 
-async function showUserDetail(id) {
-  const res = await fetch(API + '/api/users/' + id);
-  const d = await res.json();
-  const dp = document.getElementById('explorerDetail');
-  dp.style.display = 'block';
-  dp.innerHTML = `<h3>유저 상세: ${displayText(id)}</h3><pre>${jsonHtml(d)}</pre>`;
+function showUserDetail(triggerRow) {
+  const id = triggerRow.dataset.uid;
+  openExplorerRow(triggerRow, async (inner, isCurrent) => {
+    const res = await fetch(API + '/api/users/' + encodeURIComponent(id));
+    const d = await res.json();
+    if (!isCurrent()) return;
+    inner.innerHTML = `<h3>유저 상세: ${displayText(id)}</h3>` + jsonDetails(d);
+  });
 }
 
 function scopeSummary(u) {

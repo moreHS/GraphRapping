@@ -23,7 +23,7 @@
 <div class="layout">
   <nav class="nav">
     <a href="#" class="active" onclick="showSection('dashboard')">📊 대시보드</a>
-    <a href="#" onclick="showSection('explorer')">🔍 데이터 탐색기</a>
+    <a href="#" id="navExplorer" onclick="showSection('explorer')">🔍 데이터 탐색기</a>
     <a href="#" onclick="showSection('recommend')">💡 추천 테스터</a>
     <a href="#" onclick="showSection('graph')">🕸️ 그래프 뷰어</a>
     <a href="#" onclick="showSection('quarantine')">🚧 격리함</a>
@@ -48,7 +48,6 @@
         <button class="btn btn-sm" onclick="loadUsers()">유저</button>
       </div>
       <div class="panel" id="explorerContent"><div class="empty">데이터를 로드 후 탭을 선택하세요</div></div>
-      <div class="detail-panel" id="explorerDetail" style="display:none"></div>
     </div>
 
     <!-- Recommendation Tester -->
@@ -156,6 +155,6 @@
 
 <!-- 규칙: static JS/CSS 변경 커밋에는 반드시 ?v= 범프를 포함할 것 (브라우저 캐시 — 2026-07-20 이슈) -->
 <script src="/static/graph_view.js?v=20260721-node-tooltip"></script>
-<script src="/static/app.js?v=20260721-similar-path-ui"></script>
+<script src="/static/app.js?v=20260721-explorer-accordion"></script>
 </body>
 </html>

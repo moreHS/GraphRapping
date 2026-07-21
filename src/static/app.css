@@ -166,9 +166,27 @@ body.dev-mode-on .user-only { display: none; }
 .rec-graph-inline { width: 100%; height: 280px; margin-top: 10px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
 .rec-graph-inline .empty { padding: 24px; }
 
-/* Detail panel */
-.detail-panel { background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; margin-top: 12px; max-height: 500px; overflow-y: auto; }
-.detail-panel pre { font-size: 11px; color: var(--text2); white-space: pre-wrap; word-break: break-all; }
+/* Explorer detail accordion — expands directly beneath the clicked list row
+   (replaces the old bottom-of-page .detail-panel that users never found).
+   Height is left to content; a single fade/slide transition on .open keeps it
+   smooth without max-height guessing. */
+tr.clickable.expanded > td { background: var(--surface2); }
+tr.detail-expand > td { padding: 0; border-bottom: 1px solid var(--border); }
+.detail-expand-inner {
+  background: var(--surface2);
+  border-left: 3px solid var(--primary);
+  padding: 16px;
+  opacity: 0;
+  transform: translateY(-4px);
+  transition: opacity .15s ease, transform .15s ease;
+}
+tr.detail-expand.open .detail-expand-inner { opacity: 1; transform: translateY(0); }
+.detail-expand-inner > h3 { font-size: 15px; margin-bottom: 10px; color: var(--text); }
+.detail-expand-inner .kpi-grid { margin-bottom: 0; }
+.detail-expand-inner details.detail-json { margin-top: 12px; }
+.detail-expand-inner details.detail-json summary { cursor: pointer; color: var(--primary-light); user-select: none; font-size: 12px; }
+.detail-expand-inner details.detail-json summary:hover { color: var(--text); }
+.detail-expand-inner details.detail-json pre { margin-top: 8px; font-size: 11px; color: var(--text2); white-space: pre-wrap; word-break: break-all; }
 
 /* Integrated query bar + interpretation chips (Phase 6 Track B3): one input
    drives both the existing /api/recommend UI and POST /api/ask (search, or
