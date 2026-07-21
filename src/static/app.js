@@ -186,7 +186,9 @@ async function loadReviews() {
     <tr class="clickable" onclick="showReviewDetail(${jsStringArg(r.review_id)})">
       <td style="font-size:11px">${displayText(String(r.review_id || '').substring(0,30))}...</td>
       <td><span class="chip ${r.match_status === 'QUARANTINE' ? 'neg' : 'pos'}">${displayText(r.match_status)}</span></td>
-      <td>${displayText(r.matched_product_id)}</td>
+      <td>${r.matched_product_id
+        ? `<a href="#" style="color:var(--accent, #7c83ff);text-decoration:underline" onclick="event.stopPropagation();showProductDetail(${jsStringArg(r.matched_product_id)});return false;">${displayText(r.matched_product_id)}</a>`
+        : displayText(r.matched_product_id)}</td>
       <td>${fmtCount(r.entity_count)}</td><td>${fmtCount(r.fact_count)}</td><td>${fmtCount(r.signal_count)}</td>
       <td>${fmtCount(r.quarantine_count)}</td>
     </tr>`).join('')}</tbody></table>`;
