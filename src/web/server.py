@@ -1777,14 +1777,18 @@ async def product_graph(product_id: str, view: str = "corpus"):
     if not product:
         raise HTTPException(404)
 
+    # Graph nodes carry the product name WITHOUT a brand prefix (the brand is
+    # its own node; ~95% of representative names already start with the brand —
+    # user-facing dedupe 2026-07-21). The brand rides in node data for tooltips.
     product_label = product.get("representative_product_name") or product_id
     brand = product.get("brand_name")
-    if brand and product_label != product_id:
-        product_label = f"{brand} {product_label}"
 
-    nodes_map: dict[str, dict] = {
-        product_id: {"id": product_id, "label": product_label, "type": "product", "main": True}
+    main_node: dict[str, Any] = {
+        "id": product_id, "label": product_label, "type": "product", "main": True,
     }
+    if brand:
+        main_node["brand"] = brand
+    nodes_map: dict[str, dict] = {product_id: main_node}
     edges: list[dict] = []
 
     # Brand node
@@ -2043,11 +2047,13 @@ def _canonical_concept_node(concept_id: Any) -> dict[str, str] | None:
 
 
 def _full_product_label(product: dict) -> str:
+    # Brand is intentionally NOT prefixed: the full graph carries a separate
+    # brand node (via ``brand_concept_ids``) and each product node ships its
+    # ``brand`` on the payload for the hover tooltip, so a "{brand} {name}"
+    # label duplicated the brand (many representative names already begin with
+    # it, e.g. "이니스프리 그린티…").
     pid = str(product.get("product_id") or "")
     name = product.get("representative_product_name") or pid
-    brand = product.get("brand_name")
-    if brand and name != pid:
-        return f"{brand} {name}"
     return name or pid
 
 
@@ -2137,7 +2143,13 @@ def _build_full_graph(
         if not pid:
             continue
         product_ids.add(str(pid))
-        nodes[str(pid)] = {"id": str(pid), "label": _full_product_label(p), "type": "product"}
+        node = {"id": str(pid), "label": _full_product_label(p), "type": "product"}
+        # Brand rides along (not in the label) so the node hover tooltip can show
+        # "브랜드 … · id …"; omitted when absent so the payload stays minimal.
+        brand = p.get("brand_name")
+        if brand:
+            node["brand"] = brand
+        nodes[str(pid)] = node
 
     edges: list[dict] = []
 

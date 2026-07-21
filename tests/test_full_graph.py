@@ -129,6 +129,46 @@ def test_full_graph_node_types_and_edge_families_present():
 
 
 # ---------------------------------------------------------------------------
+# product node label — brand is NOT prefixed (dedup); brand rides the payload
+# ---------------------------------------------------------------------------
+
+def test_full_product_label_omits_brand_prefix():
+    # Brand is carried on the node payload + a separate brand node, so the label
+    # is the representative name alone (no "{brand} {name}" duplication).
+    assert server._full_product_label(
+        {"product_id": "P1", "representative_product_name": "토너", "brand_name": "BrandA"}
+    ) == "토너"
+    # A name that already begins with the brand is returned unchanged (no double).
+    assert server._full_product_label(
+        {"product_id": "P9", "representative_product_name": "BrandA 토너", "brand_name": "BrandA"}
+    ) == "BrandA 토너"
+    # No representative name -> product_id fallback.
+    assert server._full_product_label({"product_id": "P0", "brand_name": "BrandA"}) == "P0"
+
+
+def test_full_graph_product_nodes_carry_brand_without_prefixing_label():
+    out = _build()
+    byid = {n["id"]: n for n in out["nodes"]}
+    p1 = byid["P1"]
+    assert p1["label"] == "토너"       # brand NOT prefixed onto the visible label
+    assert p1["brand"] == "BrandA"      # brand rides the payload (for the hover tooltip)
+    assert byid["P3"]["brand"] == "BrandB"
+
+
+def test_full_graph_product_node_omits_brand_key_when_absent():
+    out = server._build_full_graph(
+        [{"product_id": "PX", "representative_product_name": "무브랜드"}],
+        [],
+        edge_types=set(server._FULL_EDGE_FAMILIES),
+        min_strength=0.0,
+        max_nodes=server._FULL_GRAPH_MAX_NODES,
+    )
+    px = {n["id"]: n for n in out["nodes"]}["PX"]
+    assert "brand" not in px
+    assert px["label"] == "무브랜드"
+
+
+# ---------------------------------------------------------------------------
 # privacy — pseudonymous user nodes only
 # ---------------------------------------------------------------------------
 

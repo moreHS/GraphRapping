@@ -55,6 +55,11 @@
       elements.push({ data: {
         id: n.id,
         label: full ? abbrevLabel(n) : (n.label || n.id),
+        // Un-abbreviated label + brand ride along for the node hover tooltip:
+        // the full view truncates the visible label, so the tooltip restores
+        // the whole name; brand is present only on full-view product nodes.
+        fullLabel: n.label || n.id,
+        brand: n.brand || null,
         type: n.type,
         main: n.main,
         color: TYPE_COLORS[n.type] || DEFAULT_NODE_COLOR,
@@ -103,6 +108,7 @@
       maxWidth: '300px', padding: '6px 10px', borderRadius: '6px',
       fontSize: '11px', lineHeight: '1.5', background: '#1f2430', color: '#e4e6eb',
       border: '1px solid #c084fc', boxShadow: '0 2px 10px rgba(0,0,0,0.45)',
+      whiteSpace: 'pre-line',  // node tooltip uses "\n" for its brand·id line
     });
     document.body.appendChild(tooltipEl);
     return tooltipEl;
@@ -114,6 +120,44 @@
     const tip = ensureTooltip();
     const score = evt.target.data('score');
     tip.textContent = (typeof score === 'number') ? `${text}  ·  score ${score.toFixed(2)}` : text;
+    tip.style.display = 'block';
+    const oe = evt.originalEvent;
+    if (oe && typeof oe.clientX === 'number') {
+      tip.style.left = (oe.clientX + 12) + 'px';
+      tip.style.top = (oe.clientY + 12) + 'px';
+    }
+  }
+
+  // Node hover/tap tooltip (all graph views). Reuses the shared tooltip element
+  // above; node vs edge stay on separate cy selectors so they never collide.
+  // The full view truncates node labels, so the tooltip surfaces the whole
+  // label + a type tag. Product nodes additionally show brand + id, but only
+  // when the node carries a brand (full-view product nodes do; per-product and
+  // rec-subgraph product nodes do not). User nodes stay pseudonym-only — no
+  // profile field ever rides the node payload.
+  const NODE_TYPE_LABELS = {
+    product: '상품', user: '유저', brand: '브랜드', category: '카테고리',
+    ingredient: '성분', goal: '목표', bee_attr: 'BEE속성', keyword: '키워드',
+    context: '맥락', concern: '고민', concern_pos: '고민(긍정)',
+    concern_neg: '고민(부정)', tool: '도구', coused: '함께쓰는 제품',
+    comparison: '비교', avoid_ingredient: '기피 성분',
+    skin_type: '피부타입', skin_tone: '피부톤',
+  };
+  function formatNodeTooltip(node) {
+    const type = node.data('type') || '';
+    const label = node.data('fullLabel') || node.data('label') || node.data('id') || '';
+    if (type === 'user') return `[유저] ${label}`;
+    if (type === 'product') {
+      const brand = node.data('brand');
+      return brand
+        ? `[상품] ${label}\n브랜드 ${brand} · id ${node.data('id')}`
+        : `[상품] ${label}`;
+    }
+    return `[${NODE_TYPE_LABELS[type] || type || '노드'}] ${label}`;
+  }
+  function showNodeTooltipFor(evt) {
+    const tip = ensureTooltip();
+    tip.textContent = formatNodeTooltip(evt.target);
     tip.style.display = 'block';
     const oe = evt.originalEvent;
     if (oe && typeof oe.clientX === 'number') {
@@ -291,6 +335,11 @@
     cy.on('mousemove', SIM_SELECTOR, showTooltipFor);
     cy.on('mouseout', SIM_SELECTOR, hideTooltip);
     cy.on('tap', SIM_SELECTOR, showTooltipFor);
+    // Node hover/tap tooltip — every view, separate selector from the edge one.
+    cy.on('mouseover', 'node', showNodeTooltipFor);
+    cy.on('mousemove', 'node', showNodeTooltipFor);
+    cy.on('mouseout', 'node', hideTooltip);
+    cy.on('tap', 'node', showNodeTooltipFor);
     cy.on('tap', evt => { if (evt.target === cy) hideTooltip(); });
     if (full) {
       // Layout telemetry for the perf gate (main session re-measures in-browser).

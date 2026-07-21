@@ -227,7 +227,7 @@ async function showProductDetail(id) {
   const dp = document.getElementById('explorerDetail');
   dp.style.display = 'block';
   const sp = d.serving_profile || {};
-  const name = sp.representative_product_name ? `${sp.brand_name || ''} ${sp.representative_product_name}` : id;
+  const name = sp.representative_product_name ? productDisplayName(sp) : id;
   const summary = d.review_summary;
   const summaryText = summary ? (summary.short_summary || summary.long_summary || '-') : '-';
   dp.innerHTML = `
@@ -315,9 +315,12 @@ function scopeSummary(u) {
 // Product display name helper
 // =============================================================================
 function productDisplayName(p) {
-  const name = p.representative_product_name || p.product_name || '';
-  const brand = p.brand_name || '';
-  if (name && brand) return `${brand} ${name}`;
+  // Keep the "브랜드 상품명" shape but drop the duplicate brand: most
+  // representative names already start with the brand (e.g. "이니스프리 그린티
+  // 세럼"), which naively prefixing turned into "이니스프리 이니스프리 …".
+  const name = (p.representative_product_name || p.product_name || '').trim();
+  const brand = (p.brand_name || '').trim();
+  if (name && brand) return name.startsWith(brand) ? name : `${brand} ${name}`;
   if (name) return name;
   return p.product_id;
 }
@@ -733,7 +736,7 @@ function renderRecommendResults(data) {
     const hooks = r.hooks || {};
     const overlap = r.overlap_concepts || [];
     const productName = product.representative_product_name
-      ? [product.brand_name, product.representative_product_name].filter(Boolean).join(' ')
+      ? productDisplayName(product)
       : (r.product_id || product.product_id || '-');
     const finalScore = fmtScore(r.final_score);
     const rankScore = fmtScore(r.rank_score);
@@ -832,7 +835,7 @@ function buildExplanationSubgraph(result, userId) {
   const product = result.product || {};
   const productId = result.product_id || product.product_id || 'product';
   const productName = product.representative_product_name
-    ? [product.brand_name, product.representative_product_name].filter(Boolean).join(' ')
+    ? productDisplayName(product)
     : String(productId);
   const userNodeId = 'user:' + userId;
   const productNodeId = 'product:' + productId;
@@ -1105,7 +1108,7 @@ function renderSearchResults(data) {
     const evidenceFamilies = (r.eligibility || {}).evidence_families || [];
     const overlap = r.overlap_concepts || [];
     const productName = product.representative_product_name
-      ? [product.brand_name, product.representative_product_name].filter(Boolean).join(' ')
+      ? productDisplayName(product)
       : (r.product_id || product.product_id || '-');
     return `
       <div class="rec-card">
