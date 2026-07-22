@@ -409,5 +409,13 @@
     }
   }
 
-  window.GraphView = { render, destroy, TYPE_COLORS, applyFullVisibility, restoreFull };
+  // Re-fit the canvas to its container. cytoscape auto-handles window resize,
+  // but a container hidden via display:none during a resize sizes to 0x0; call
+  // this on section re-entry to restore it (no-op if no instance on `container`).
+  function resize(container) {
+    const cy = instances.get(container);
+    if (cy) cy.resize();
+  }
+
+  window.GraphView = { render, destroy, resize, TYPE_COLORS, applyFullVisibility, restoreFull };
 })();

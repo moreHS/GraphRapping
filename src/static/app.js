@@ -14,7 +14,15 @@ function showSection(name) {
   if (name === 'dashboard') loadDashboard();
   if (name === 'quarantine') loadQuarantine();
   if (name === 'recommend') initRecommendPanel();
-  if (name === 'graph') initGraphPanel();
+  if (name === 'graph') {
+    initGraphPanel();
+    // The graph tab is display:none while other sections are active, so a window
+    // resize during that time sizes cytoscape's canvas to 0x0. Re-match it on re-entry,
+    // after the display flip has been laid out (next frame -- requestAnimationFrame).
+    if (window.GraphView && GraphView.resize) {
+      requestAnimationFrame(() => GraphView.resize(document.getElementById('graph-container')));
+    }
+  }
 }
 
 // =============================================================================
