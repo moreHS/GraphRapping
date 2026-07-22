@@ -47,6 +47,10 @@ from src.rec.search import search_products
 # narrow the recommend candidate universe to query-relevant products (no logic is
 # reimplemented, and search.py itself is unmodified beyond search_products' sig).
 from src.rec.search import MatchedConcept, _product_overlap
+from src.rec.ingredient_constraint import (
+    matched_name_labels,
+    product_passes_constraints,
+)
 from src.rec.semantic_compatibility import normalize_signal_id
 from src.rec.query_understanding import understand_query, QueryInterpretation
 from src.rec.provenance_provider import (
@@ -671,6 +675,7 @@ async def _run_scored_pipeline(
     scorer: Scorer,
     diversity_weight: float,
     top_k: int,
+    ingredient_name_labels: dict[str, list[str]] | None = None,
 ) -> tuple[list[dict[str, Any]], int]:
     """Shared recommend pipeline: prefilter -> candidates -> score -> rerank ->
     explain -> per-path snippets -> result dicts.
@@ -680,7 +685,11 @@ async def _run_scored_pipeline(
     only differences live in the caller: which user profile is scored, which
     candidate universe is scored, and any post-hoc explanation relabeling. Returns
     the result dicts and the raw candidate count (for the response candidate_count).
-    """
+
+    ``ingredient_name_labels`` (Phase 6 B2) is forwarded to the candidate generator
+    so a name-only wanted-ingredient carrier earns a ``product_name:<관용어>``
+    overlap axis (evidence-qualified, PRODUCT_MASTER_TRUTH). None (default; the
+    /api/recommend caller) keeps the pipeline byte-identical."""
     prefiltered_product_ids = candidate_universe_ids
     if _candidate_prefilter_enabled():
         # Optional store capability (duck-typed like provenance.prefetch): the
@@ -737,6 +746,7 @@ async def _run_scored_pipeline(
         mode=mode,
         max_candidates=50,
         similar_boost=similar_boost,
+        ingredient_name_labels=ingredient_name_labels,
     )
 
     scored = []
@@ -1096,6 +1106,7 @@ async def _related_products(
     exclude_ids: set[str],
     limit: int = 5,
     anchor_names: dict[str, str] | None = None,
+    require_ids: set[str] | None = None,
 ) -> list[dict[str, Any]]:
     """Assemble the G5 "related products" list from the anchors' ungated sidecar.
 
@@ -1112,6 +1123,12 @@ async def _related_products(
     ``shared_axes`` evidence ([C1]: the response must never alias store state)
     and names the anchor it was attributed to. Empty result → ``[]``.
 
+    ``require_ids`` (Phase 6 B2): when given, a neighbour is kept ONLY if its id is
+    in this set — the caller passes the wanted-ingredient constraint passers so a
+    non-containing product is never re-surfaced under a 1차 result of an active
+    ingredient filter. ``None`` (default) keeps every neighbour (no filter); the
+    caller passes ``None`` when no ingredient filter is active OR it was relaxed.
+
     ``get_ungated_similar`` is duck-typed (an optional store capability, exactly
     as ``_run_scored_pipeline`` treats it): a store without the accessor yields
     no related products rather than erroring."""
@@ -1126,6 +1143,8 @@ async def _related_products(
             neighbor_raw = _similar_signal_field(sig, "product_id")
             neighbor = str(neighbor_raw) if neighbor_raw else ""
             if not neighbor or neighbor == anchor or neighbor in exclude_ids:
+                continue
+            if require_ids is not None and neighbor not in require_ids:
                 continue
             try:
                 score = float(_similar_signal_field(sig, "score"))
@@ -1183,24 +1202,26 @@ def _clamp_search_top_k(top_k: int) -> int:
 
 
 async def _run_search(query: str, top_k: int) -> dict[str, Any]:
+    """`/api/search` internally unified onto the anonymous /api/ask pipeline (plan
+    §B2 v3, user-agreed 2번안): understand_query → wanted-ingredient constraints →
+    search_products(+constraints) → related (same matcher filter), returning the
+    identical anonymous-ask payload.
+
+    Input contract stays on the route (shared payload receives a validated
+    (query, top_k)): a blank/whitespace query returns HTTP 200 + the no-concept
+    guidance message (never 400 — existing search contract), top_k defaults to 20
+    and is clamped to [1, 200] inside the flow, and only an over-length query is
+    rejected with 400 (aligned with /api/ask; understand_query truncates at the
+    same limit)."""
+    query = (query or "").strip()
+    if len(query) > _ASK_MAX_QUERY_LEN:
+        raise HTTPException(400, f"query exceeds the {_ASK_MAX_QUERY_LEN}-character limit.")
     _check_serving_ready()
     store = get_serving_store()
     products = await store.get_products()
-    outcome = search_products(query, products, max_results=_clamp_search_top_k(top_k))
-    payload = outcome.to_dict()
-    payload["message"] = None if outcome.resolved else _SEARCH_NO_CONCEPT_MESSAGE
-    # Phase 8 G5 (additive): "related products" from the top results' ungated
-    # similarity neighbours. Anonymous surface — exclude only the 1차 results
-    # themselves (no user context to derive owned/avoided from).
-    results = payload.get("results") or []
-    result_pids = [str(r["product_id"]) for r in results if r.get("product_id")]
-    payload["related_products"] = await _related_products(
-        result_pids[:5],
-        store=store,
-        exclude_ids=set(result_pids),
-        anchor_names=_related_anchor_names(results),
-    )
-    return payload
+    interp = await _understand_query_async(query, products)
+    category_group = _ask_category_group(interp, None)
+    return await _anonymous_ask_payload(query, interp, products, store, top_k, category_group)
 
 
 @app.get("/api/search")
@@ -1502,12 +1523,19 @@ def _narrow_candidate_universe(
     product_map: dict[str, dict[str, Any]],
     category_universe_ids: list[str],
 ) -> tuple[list[str], bool]:
-    """Narrow the category universe to products carrying a NON-category query
-    concept (the axes actually injected as preferences). Empty intersection →
-    return the full category universe with ``relaxed=True`` (recall protection,
-    plan decision 2). No such concept → no narrowing, ``relaxed=False``."""
+    """Narrow the category universe to products carrying a NON-category, NON-
+    ingredient query concept (the soft axes injected as preferences). Empty
+    intersection → return the full category universe with ``relaxed=True`` (recall
+    protection, plan decision 2). No such concept → no narrowing, ``relaxed=False``.
+
+    Ingredient concepts are EXCLUDED from this OR-reduction (Phase 6 B2): the
+    wanted-ingredient hard gate already narrowed the universe upstream, so counting
+    ingredient here would double-apply it (raw families) or let an LLM-only family
+    hard-narrow the universe (llm families are soft-boost only)."""
     narrowing: list[MatchedConcept] = [
-        c for c in interp.resolved_concepts if c.concept_type != "category"
+        c
+        for c in interp.resolved_concepts
+        if c.concept_type not in ("category", "ingredient")
     ]
     if not narrowing:
         return list(category_universe_ids), False
@@ -1553,6 +1581,164 @@ def _ask_preset_config(
     return preset_used, materialized_weights, effective_mode, effective_shrinkage_k, effective_diversity_weight
 
 
+# ---------------------------------------------------------------------------
+# Phase 6 B2: wanted-ingredient hard filter + relaxation + shared anonymous flow
+# ---------------------------------------------------------------------------
+#
+# The wanted-ingredient hard gate keeps only products that CARRY a query
+# ingredient family (structured ∪ product-name axis, AND across families), using
+# the single pure matcher (src/rec/ingredient_constraint.py). Only raw-provenance
+# constraints are hard (an alias/INCI surface literally in the query, outside a
+# negation span); LLM-only families stay soft (PREFERS_INGREDIENT boost). If the
+# gate empties the universe it is relaxed (ingredient condition only) so the user
+# still gets a broadened, honestly-labelled result instead of nothing.
+
+# User-facing reason attached to ``ingredient_filter`` when the gate matched no
+# product and was relaxed (plan §B2 relax c안).
+_INGREDIENT_RELAX_REASON = "요청한 성분을 함유한 상품이 없어 성분 조건을 완화했습니다"
+
+
+def _ingredient_filter_meta(
+    labels: list[str],
+    matched_products: int,
+    relaxed: bool,
+    reason: str | None,
+) -> dict[str, Any]:
+    """The ``ingredient_filter`` response block (plan §B2). ``applied`` is True only
+    when a raw ingredient family constrained the returned results (labels present
+    AND not relaxed): an LLM-only family (no labels here) or a relaxed gate both
+    report ``applied=False`` while ``labels`` still names what was requested."""
+    return {
+        "applied": bool(labels) and not relaxed,
+        "labels": list(labels),
+        "matched_products": matched_products,
+        "relaxed": relaxed,
+        "reason": reason,
+    }
+
+
+async def _understand_query_async(
+    query: str, products: list[dict[str, Any]]
+) -> QueryInterpretation:
+    """Run the synchronous ``understand_query`` off the event loop (blocking httpx
+    on the active-provider path; the off/fallback path is cheap but harmless to
+    offload). Shared by /api/ask and the /api/search unification."""
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(
+        None, functools.partial(understand_query, query, products)
+    )
+
+
+async def _anonymous_ask_payload(
+    query: str,
+    interp: QueryInterpretation,
+    products: list[dict[str, Any]],
+    store: ServingStore,
+    top_k: int,
+    category_group: str,
+) -> dict[str, Any]:
+    """Anonymous concept search shared by /api/ask (no user_id) and /api/search
+    (plan §B2 v3 unification). Applies the raw wanted-ingredient hard gate (+ relax
+    when it empties the results), the avoided-ingredient hard filter, and the same
+    matcher filter on related products; returns the unified anonymous payload
+    (ask shape + the ``message`` no-concept rule /api/search keeps)."""
+    raw_constraints = [c for c in interp.ingredient_constraints if c.provenance == "raw"]
+    avoided_ids = interp.avoided_ingredient_concept_ids
+    query_avoided = {str(cid) for cid in (avoided_ids or []) if cid}
+    max_results = _clamp_search_top_k(top_k)
+
+    def _carries_avoided(product: dict[str, Any]) -> bool:
+        return bool(query_avoided) and bool(
+            {str(v) for v in (product.get("ingredient_concept_ids") or [])} & query_avoided
+        )
+
+    ingredient_relaxed = False
+    if raw_constraints:
+        # F4: honour the category gate for the ingredient universe (login parity)
+        # — a "히알루론 수분크림" must not surface a lipstick hyaluron carrier.
+        if category_group != "all":
+            universe = [
+                p for p in products
+                if classify_product_category_group(p) == category_group
+            ]
+        else:
+            universe = products
+        # F5: matched = carriers in the (category) universe AFTER removing avoided
+        # carriers, so applied/relaxed reflect what search_products actually
+        # returns — never applied=true with 0 results.
+        matched_products = [
+            p for p in universe
+            if not _carries_avoided(p) and product_passes_constraints(p, raw_constraints)
+        ]
+        ingredient_relaxed = not matched_products
+        outcome = search_products(
+            query,
+            universe,
+            max_results=max_results,
+            avoided_ingredient_concept_ids=avoided_ids,
+            # Relax the ingredient condition ONLY (category + avoided still apply)
+            # when nothing carries the family — broaden honestly rather than [].
+            ingredient_constraints=None if ingredient_relaxed else raw_constraints,
+        )
+        ingredient_filter = _ingredient_filter_meta(
+            [c.label for c in raw_constraints],
+            len(matched_products),
+            ingredient_relaxed,
+            _INGREDIENT_RELAX_REASON if ingredient_relaxed else None,
+        )
+    else:
+        outcome = search_products(
+            query,
+            products,
+            max_results=max_results,
+            avoided_ingredient_concept_ids=avoided_ids,
+        )
+        ingredient_filter = _ingredient_filter_meta([], 0, False, None)
+
+    payload = outcome.to_dict()
+    search_results = payload["results"]
+
+    # Related products (additive): exclude the 1차 results + any query-negated
+    # ingredient carrier; when the ingredient filter is ACTIVE (raw families,
+    # not relaxed), also require neighbours to pass the same matcher so a
+    # non-containing product is never re-surfaced under the filter. Related is
+    # intentionally cross-category, so require_ids is the CORPUS-WIDE carrier set
+    # (not the category-scoped matched set above).
+    search_result_pids = [str(r["product_id"]) for r in search_results if r.get("product_id")]
+    exclude_ids = set(search_result_pids)
+    if query_avoided:
+        exclude_ids.update(
+            str(p.get("product_id")) for p in products if _carries_avoided(p)
+        )
+    require_ids: set[str] | None = None
+    if raw_constraints and not ingredient_relaxed:
+        require_ids = {
+            str(p.get("product_id"))
+            for p in products
+            if p.get("product_id") and product_passes_constraints(p, raw_constraints)
+        }
+    related = await _related_products(
+        search_result_pids[:5],
+        store=store,
+        exclude_ids=exclude_ids,
+        anchor_names=_related_anchor_names(search_results),
+        require_ids=require_ids,
+    )
+
+    return {
+        "query": query,
+        "interpretation": interp.to_dict(),
+        "resolved_mode": "search",
+        "relaxed": ingredient_relaxed,
+        "category_group": category_group,
+        "preset_used": None,
+        "message": None if outcome.resolved else _SEARCH_NO_CONCEPT_MESSAGE,
+        "ingredient_filter": ingredient_filter,
+        "results": search_results,
+        "related_products": related,
+    }
+
+
 @app.post("/api/ask")
 async def ask(req: AskRequest):
     query = (req.query or "").strip()
@@ -1573,62 +1759,14 @@ async def ask(req: AskRequest):
     # LLM query understanding. understand_query builds its own provider from
     # GRAPHRAPPING_QUERY_LLM (auto-off/dictionary-fallback when unset) and never
     # raises — a provider outage degrades to the dictionary path transparently.
-    # It is synchronous (blocking httpx on the active-provider path), so run it in
-    # the default executor to avoid stalling the event loop; the off/fallback path
-    # is cheap but harmless to offload.
-    loop = asyncio.get_running_loop()
-    interp = await loop.run_in_executor(
-        None, functools.partial(understand_query, query, products)
-    )
+    interp = await _understand_query_async(query, products)
     category_group = _ask_category_group(interp, req.category_group)
 
-    # --- (a) Anonymous search mode ---
+    # --- (a) Anonymous search mode (shared with /api/search, plan §B2 v3) ---
     if not req.user_id:
-        outcome = search_products(
-            query,
-            products,
-            max_results=_clamp_search_top_k(req.top_k),
-            avoided_ingredient_concept_ids=interp.avoided_ingredient_concept_ids,
+        return await _anonymous_ask_payload(
+            query, interp, products, store, req.top_k, category_group,
         )
-        search_results = outcome.to_dict()["results"]
-        # Phase 8 G5 (additive): anonymous rule — exclude the 1차 results, PLUS
-        # products carrying a query-negated ingredient. The 1차 results already
-        # hard-filter those (search_products avoided_ingredient_concept_ids,
-        # Phase 6 negation); the related section must not reintroduce what the
-        # query explicitly excluded. Same match semantics as the primary filter
-        # (ingredient_concept_ids ∩ avoided).
-        search_result_pids = [
-            str(r["product_id"]) for r in search_results if r.get("product_id")
-        ]
-        exclude_ids = set(search_result_pids)
-        query_avoided = {
-            str(cid)
-            for cid in (interp.avoided_ingredient_concept_ids or [])
-            if cid
-        }
-        if query_avoided:
-            exclude_ids.update(
-                str(p.get("product_id"))
-                for p in products
-                if {str(v) for v in (p.get("ingredient_concept_ids") or [])}
-                & query_avoided
-            )
-        related = await _related_products(
-            search_result_pids[:5],
-            store=store,
-            exclude_ids=exclude_ids,
-            anchor_names=_related_anchor_names(search_results),
-        )
-        return {
-            "query": query,
-            "interpretation": interp.to_dict(),
-            "resolved_mode": "search",
-            "relaxed": False,
-            "category_group": category_group,
-            "preset_used": None,
-            "results": search_results,
-            "related_products": related,
-        }
 
     # --- (b) Query-scoped recommend mode ---
     user = await store.get_user(req.user_id)
@@ -1650,9 +1788,51 @@ async def ask(req: AskRequest):
 
     product_map = {p["product_id"]: p for p in products}
     category_universe_ids = _category_universe_ids(product_map, category_group)
-    candidate_universe_ids, relaxed = _narrow_candidate_universe(
-        interp, product_map, category_universe_ids,
+    # Avoided-ingredient carriers (query-injected AVOIDS_INGREDIENT + stored prefs)
+    # computed once — reused by both the ingredient gate (F5) and related below.
+    avoided_pids = _avoided_ingredient_product_ids(user_scoped, product_map)
+
+    # Ingredient HARD gate (raw-provenance families only), applied INSIDE the
+    # category universe, BEFORE soft narrowing (plan §B2 order). A product passes
+    # via the structured OR product-name axis (AND across families). 0 matches →
+    # relax the ingredient condition ONLY (keep the category universe; category /
+    # avoided / other conditions untouched); ≥1 → keep the gate (honest).
+    raw_constraints = [c for c in interp.ingredient_constraints if c.provenance == "raw"]
+    ingredient_relaxed = False
+    ingredient_matched_count = 0
+    ingredient_name_labels: dict[str, list[str]] = {}
+    if raw_constraints:
+        # F5: exclude avoided carriers from the gate universe BEFORE counting, so
+        # matched/relaxed reflect the true candidate set — never applied=true while
+        # every carrier is dropped by the avoided filter (→ 0 results).
+        gated_ids = [
+            pid
+            for pid in category_universe_ids
+            if pid not in avoided_pids
+            and product_passes_constraints(product_map[pid], raw_constraints)
+        ]
+        ingredient_matched_count = len(gated_ids)
+        if ingredient_matched_count == 0:
+            ingredient_universe_ids = category_universe_ids
+            ingredient_relaxed = True
+        else:
+            ingredient_universe_ids = gated_ids
+            # Name-only carriers (structured carriers already earn an ingredient
+            # overlap via the injected PREFERS_INGREDIENT) get a product_name axis
+            # so they clear the candidate evidence gate.
+            for pid in gated_ids:
+                labels = matched_name_labels(product_map[pid], raw_constraints)
+                if labels:
+                    ingredient_name_labels[pid] = labels
+    else:
+        ingredient_universe_ids = category_universe_ids
+
+    candidate_universe_ids, soft_relaxed = _narrow_candidate_universe(
+        interp, product_map, ingredient_universe_ids,
     )
+    # Top-level relaxed = soft-narrow relax ∨ ingredient relax (plan §B2); the
+    # ingredient-specific reason rides in ``ingredient_filter`` below.
+    relaxed = soft_relaxed or ingredient_relaxed
 
     scorer = Scorer()
     scorer.load_config()
@@ -1671,6 +1851,7 @@ async def ask(req: AskRequest):
         scorer=scorer,
         diversity_weight=effective_diversity_weight,
         top_k=req.top_k,
+        ingredient_name_labels=ingredient_name_labels or None,
     )
 
     # user_edge rewrite: candidate_generator cannot distinguish an injected query
@@ -1696,12 +1877,30 @@ async def ask(req: AskRequest):
     result_pids = [str(r["product_id"]) for r in results if r.get("product_id")]
     exclude_ids = set(result_pids)
     exclude_ids |= extract_owned_product_ids(user_scoped)
-    exclude_ids |= _avoided_ingredient_product_ids(user_scoped, product_map)
+    exclude_ids |= avoided_pids  # computed once above (reused from the gate)
+    # Phase 6 B2: when the wanted-ingredient gate is ACTIVE (raw families, not
+    # relaxed), related neighbours must pass the same matcher — a non-containing
+    # product must not re-surface beneath a filtered 1차 list.
+    require_ids: set[str] | None = None
+    if raw_constraints and not ingredient_relaxed:
+        require_ids = {
+            pid
+            for pid in product_map
+            if product_passes_constraints(product_map[pid], raw_constraints)
+        }
     related = await _related_products(
         result_pids[:5],
         store=store,
         exclude_ids=exclude_ids,
         anchor_names=_related_anchor_names(results),
+        require_ids=require_ids,
+    )
+
+    ingredient_filter = _ingredient_filter_meta(
+        [c.label for c in raw_constraints],
+        ingredient_matched_count,
+        ingredient_relaxed,
+        _INGREDIENT_RELAX_REASON if ingredient_relaxed else None,
     )
 
     return {
@@ -1709,6 +1908,7 @@ async def ask(req: AskRequest):
         "interpretation": interp.to_dict(),
         "resolved_mode": "recommend",
         "relaxed": relaxed,
+        "ingredient_filter": ingredient_filter,
         "category_group": category_group,
         # KPI meta (parity with /api/recommend) so the frontend dashboard can show
         # real counts instead of placeholders. category_filtered_count is the tab

@@ -37,6 +37,7 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
+from src.rec.ingredient_constraint import IngredientConstraint
 from src.rec.query_understanding import QueryInterpretation
 from src.rec.search import MatchedConcept
 from src.web import server
@@ -149,6 +150,7 @@ def _fake_interp(
     avoided: list[str] | None = None,
     unresolved: list[str] | None = None,
     profile_refs: list[str] | None = None,
+    ingredient_constraints: list[IngredientConstraint] | None = None,
 ) -> QueryInterpretation:
     return QueryInterpretation(
         query=query,
@@ -158,6 +160,7 @@ def _fake_interp(
         unresolved_terms=list(unresolved or []),
         llm_used=True,
         profile_refs=list(profile_refs or []),
+        ingredient_constraints=list(ingredient_constraints or []),
     )
 
 
@@ -346,8 +349,8 @@ def test_ask_query_injection_does_not_persist_into_store(
     after = client.post("/api/recommend", json=recommend_body)
     assert after.status_code == 200
 
-    # 1) /api/recommend is bit-identical before and after the ask.
-    assert after.json() == baseline.json()
+    # 1) /api/recommend is bit-identical before and after the ask (raw bytes, F8).
+    assert after.content == baseline.content
     # 2) The store-side user dict carries no query-injected entry at all.
     assert stored_user["scoped_preference_ids"] == scoped_before
     assert not any(
@@ -728,3 +731,221 @@ def test_ask_applied_profile_refs_payload_shape(
         assert isinstance(entry["class"], str)
         assert isinstance(entry["concepts"], list)
         assert isinstance(entry["injected"], bool)
+
+
+# ---------------------------------------------------------------------------
+# (i) [B2] Wanted-ingredient hard filter + relaxation + /api/search unification.
+# The marquee bug: "히알루론 든거 뭐 좋은거 없나" returned products with no hyaluron
+# evidence. The fixture products carry the REAL catalog INCI the alias map points
+# at (소듐하이알루로네이트), so the LIVE dictionary fallback (GRAPHRAPPING_QUERY_LLM
+# unset) builds a raw constraint end-to-end — no monkeypatch of understand_query.
+# ---------------------------------------------------------------------------
+
+_HYA_S = "concept:Ingredient:소듐하이알루로네이트"
+_MARQUEE = "히알루론 든거 뭐 좋은거 없나"
+
+
+def _hya_name_product(pid: str = "P_name") -> dict[str, Any]:
+    """A carrier by NAME only (no structured hyaluron), but brand 헤라 so it is a
+    recommend candidate — used to prove the product_name overlap axis is attached."""
+    product = _product(pid, "수분크림", [])
+    product["representative_product_name"] = "그린티히알루론산 로션"
+    return product
+
+
+def _set_hya_universe(state: DemoState) -> None:
+    state.serving_products = [
+        _product("P_struct", "수분크림", [_HYA_S]),  # structured carrier
+        _hya_name_product("P_name"),                 # name-only carrier
+        _product("P_plain", "수분크림", []),          # no hyaluron
+    ]
+
+
+def test_ask_search_mode_ingredient_hard_gate_live(
+    ask_env: tuple[TestClient, DemoState],
+) -> None:
+    client, state = ask_env  # GRAPHRAPPING_QUERY_LLM unset → real dictionary fallback
+    _set_hya_universe(state)
+
+    payload = client.post("/api/ask", json={"query": _MARQUEE}).json()
+    assert payload["resolved_mode"] == "search"
+    assert payload["interpretation"]["llm_used"] is False  # live fallback built the constraint
+
+    ids = {r["product_id"] for r in payload["results"]}
+    assert ids == {"P_struct", "P_name"}  # both carriers; non-carrier hard-gated out
+
+    meta = payload["ingredient_filter"]
+    assert meta["applied"] is True
+    assert meta["labels"] == ["히알루론"]
+    assert meta["matched_products"] == 2
+    assert meta["relaxed"] is False
+    # The name-only carrier earns the product_name overlap axis (PRODUCT_MASTER_TRUTH).
+    name_res = next(r for r in payload["results"] if r["product_id"] == "P_name")
+    assert "product_name:히알루론" in name_res["overlap_concepts"]
+    assert "PRODUCT_MASTER_TRUTH" in name_res["eligibility"]["evidence_families"]
+
+
+def test_ask_recommend_mode_ingredient_hard_gate_live(
+    ask_env: tuple[TestClient, DemoState],
+) -> None:
+    client, state = ask_env
+    _set_hya_universe(state)
+
+    payload = client.post("/api/ask", json={"user_id": "U1", "query": _MARQUEE}).json()
+    assert payload["resolved_mode"] == "recommend"
+    assert payload["ingredient_filter"]["applied"] is True
+    assert payload["ingredient_filter"]["labels"] == ["히알루론"]
+    assert payload["ingredient_filter"]["relaxed"] is False
+
+    ids = {r["product_id"] for r in payload["results"]}
+    assert ids  # results exist
+    assert "P_plain" not in ids  # non-carrier hard-gated out of the candidate universe
+    assert ids <= {"P_struct", "P_name"}  # every result is a hyaluron carrier
+
+
+def test_ask_ingredient_llm_only_not_hard_filtered(
+    ask_env: tuple[TestClient, DemoState], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """LLM-only family (adopted via ingredients_wanted, no raw surface) is
+    provenance="llm" → NOT hard-filtered. The non-carrier P_plain (matching on
+    goal/keyword) stays in the results, and ingredient_filter.applied is False."""
+    client, state = ask_env
+    _set_hya_universe(state)
+    _patch_understanding(
+        monkeypatch,
+        _fake_interp(
+            "보습 크림 추천",
+            concepts=[
+                MatchedConcept("goal", "보습", "보습", "보습"),
+                MatchedConcept("keyword", "kw_moisturizing", "보습", "보습"),
+            ],
+            ingredient_constraints=[
+                IngredientConstraint("히알루론", [_HYA_S], ["히알루론"], "llm"),
+            ],
+        ),
+    )
+    payload = client.post("/api/ask", json={"query": "보습 크림 추천"}).json()
+    assert payload["ingredient_filter"]["applied"] is False  # llm provenance → no gate
+    ids = {r["product_id"] for r in payload["results"]}
+    assert "P_plain" in ids  # not dropped by an ingredient gate (matches goal/keyword)
+
+
+def test_ask_recommend_mode_ingredient_relax_when_no_carrier(
+    ask_env: tuple[TestClient, DemoState], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """0 carriers in the category universe → relax the INGREDIENT condition only
+    (keep category/other), returning broadened results with relaxed=True + reason."""
+    client, state = ask_env
+    # No product carries hyaluron (structured or by name).
+    state.serving_products = [_product("P_plain", "수분크림", []), _lipstick("P_lip")]
+    _patch_understanding(
+        monkeypatch,
+        _fake_interp(
+            "히알루론 크림",
+            concepts=[
+                MatchedConcept("goal", "보습", "보습", "보습"),
+                MatchedConcept("category", "concept:Category:skincare", "크림", "스킨케어"),
+            ],
+            ingredient_constraints=[
+                IngredientConstraint("히알루론", [_HYA_S], ["히알루론"], "raw"),
+            ],
+        ),
+    )
+    payload = client.post("/api/ask", json={"user_id": "U1", "query": "히알루론 크림"}).json()
+    assert payload["resolved_mode"] == "recommend"
+    assert payload["relaxed"] is True  # top-level relaxed reflects the ingredient relax
+    meta = payload["ingredient_filter"]
+    assert meta["applied"] is False and meta["relaxed"] is True
+    assert meta["labels"] == ["히알루론"] and meta["matched_products"] == 0
+    assert meta["reason"]  # user-facing "성분 조건을 완화" notice
+    assert payload["results"], "relax must broaden to the category universe, not return nothing"
+
+
+def test_ask_ingredient_query_does_not_perturb_no_query_recommend(
+    ask_env: tuple[TestClient, DemoState],
+) -> None:
+    """[C1 byte-identity] Running an ingredient ask (which builds request-scoped
+    constraints + name-label maps) must not mutate shared state: a no-query
+    /api/recommend is bit-identical before and after."""
+    client, state = ask_env
+    _set_hya_universe(state)
+    body = {"user_id": "U1", "category_group": "all", "top_k": 10}
+
+    baseline = client.post("/api/recommend", json=body)
+    assert baseline.status_code == 200
+
+    ask_resp = client.post("/api/ask", json={"user_id": "U1", "query": _MARQUEE}).json()
+    assert ask_resp["ingredient_filter"]["applied"] is True  # the gate actually ran
+
+    after = client.post("/api/recommend", json=body)
+    assert after.status_code == 200
+    # Raw-bytes byte-identity (F8): stricter than a parsed-JSON compare.
+    assert after.content == baseline.content  # no request-scoped state leaked
+
+
+def test_search_endpoint_equivalent_to_anonymous_ask(
+    ask_env: tuple[TestClient, DemoState],
+) -> None:
+    """[unification] /api/search returns the identical anonymous /api/ask payload
+    for the same (query, top_k) — the two entry points share one flow (plan §B2 v3)."""
+    client, _state = ask_env
+    search_payload = client.get("/api/search", params={"query": "보습 크림", "top_k": 10}).json()
+    ask_payload = client.post("/api/ask", json={"query": "보습 크림", "top_k": 10}).json()
+    assert search_payload == ask_payload
+
+
+def test_ask_anonymous_payload_carries_ingredient_filter_and_message(
+    ask_env: tuple[TestClient, DemoState],
+) -> None:
+    """The anonymous payload now carries ingredient_filter + the message rule
+    (unified with /api/search); a no-ingredient query reports applied=False."""
+    client, _state = ask_env
+    payload = client.post("/api/ask", json={"query": "보습 크림 추천해줘"}).json()
+    assert payload["message"] is None  # resolved → no no-concept guidance
+    assert payload["ingredient_filter"] == {
+        "applied": False, "labels": [], "matched_products": 0,
+        "relaxed": False, "reason": None,
+    }
+
+
+def test_ask_search_mode_ingredient_gate_honours_category_universe(
+    ask_env: tuple[TestClient, DemoState],
+) -> None:
+    """[F4] With a category in the query, the anonymous ingredient gate is scoped to
+    that category group (login parity) — a makeup hyaluron carrier must not surface
+    for "히알루론 수분크림"."""
+    client, state = ask_env
+    state.serving_products = [
+        _product("SK", "수분크림", [_HYA_S]),   # skincare hyaluron carrier
+        _product("LIP", "립스틱", [_HYA_S]),     # makeup hyaluron carrier
+    ]
+    payload = client.post("/api/ask", json={"query": "히알루론 수분크림"}).json()
+    assert payload["category_group"] == "skincare"
+    ids = {r["product_id"] for r in payload["results"]}
+    assert ids == {"SK"}  # the makeup carrier is excluded by the category universe
+    assert payload["ingredient_filter"]["matched_products"] == 1
+
+
+def test_ask_search_mode_relax_when_all_carriers_are_avoided(
+    ask_env: tuple[TestClient, DemoState], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """[F5] Carriers exist but ALL also carry an avoided ingredient → matched is
+    counted AFTER avoided exclusion, so the filter reports applied=false + relaxed=true
+    (never applied=true with 0 results — the pre-fix inconsistency)."""
+    client, state = ask_env
+    retinol = "concept:Ingredient:레티놀"
+    # The lone hyaluron carrier ALSO carries retinol (the avoided ingredient).
+    state.serving_products = [_product("P_bad", "수분크림", [_HYA_S, retinol])]
+    _patch_understanding(
+        monkeypatch,
+        _fake_interp(
+            "히알루론 있고 레티놀 없는",
+            concepts=[MatchedConcept("goal", "보습", "보습", "보습")],
+            avoided=[retinol],
+            ingredient_constraints=[IngredientConstraint("히알루론", [_HYA_S], ["히알루론"], "raw")],
+        ),
+    )
+    meta = client.post("/api/ask", json={"query": "히알루론 있고 레티놀 없는"}).json()["ingredient_filter"]
+    assert meta["matched_products"] == 0  # the only carrier is avoided-excluded
+    assert meta["relaxed"] is True and meta["applied"] is False
+    assert meta["reason"]

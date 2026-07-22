@@ -119,6 +119,7 @@ def generate_candidates(
     *,
     require_evidence: bool = True,
     similar_boost: dict[str, list[tuple[str, float]]] | None = None,
+    ingredient_name_labels: dict[str, list[str]] | None = None,
 ) -> list[CandidateProduct]:
     """Generate recommendation candidates.
 
@@ -133,6 +134,14 @@ def generate_candidates(
             strength)]}`` assembled by the caller (see
             ``build_similar_boost_index``). None (default) keeps the channel
             dormant — the default path is byte-identical.
+        ingredient_name_labels: Phase 6 B2 map ``{product_id: [관용어, ...]}`` for
+            products the query's wanted-ingredient hard gate matched only by their
+            ``representative_product_name`` (name axis). Each label appends a
+            ``product_name:<관용어>`` overlap concept BEFORE evidence
+            classification, so a name-only carrier is evidence-qualified
+            (PRODUCT_MASTER_TRUTH) and survives the ``require_evidence`` gate. None
+            (default) keeps the default recommend path byte-identical; the scorer
+            assigns product_name no weight, so scores are unchanged either way.
     """
     # Extract user signals for filtering
     avoided_ingredients = _extract_ids(user_profile.get("avoided_ingredient_ids", []))
@@ -451,6 +460,15 @@ def generate_candidates(
         if candidate.repurchased_family_match and product_family:
             overlap.append(f"repurchased_family:{product_family}")
 
+        # Phase 6 B2: attach the product-name axis for a wanted-ingredient family
+        # this product matched only by its representative_product_name. Appended
+        # BEFORE overlap_score/eligibility so a name-only carrier both survives
+        # the require_evidence gate (product_name ∈ MASTER_TRUTH_TYPES) and earns
+        # a retrieval-cut overlap unit. Dormant (default None) → byte-identical.
+        if ingredient_name_labels:
+            for label in ingredient_name_labels.get(pid, ()):
+                overlap.append(f"product_name:{label}")
+
         candidate.overlap_concepts = overlap
         # Retrieval aggregate — 4종 공통: boost-only는 retrieval 절단 순위를 사지
         # 못한다. ALL boost-only types (comparison/collab/comention/similar,
@@ -495,6 +513,7 @@ def generate_candidates_prefiltered(
     *,
     require_evidence: bool = True,
     similar_boost: dict[str, list[tuple[str, float]]] | None = None,
+    ingredient_name_labels: dict[str, list[str]] | None = None,
 ) -> list[CandidateProduct]:
     """Generate candidates from a pre-filtered set of product IDs.
 
@@ -505,6 +524,9 @@ def generate_candidates_prefiltered(
     keyed on candidate pids, so anchors OUTSIDE the prefiltered set (e.g. an
     owned product from another category tab) still boost in-tab candidates —
     the sidecar the caller assembles from is corpus-wide.
+
+    ``ingredient_name_labels`` (Phase 6 B2) is forwarded unchanged (keyed on
+    candidate pids); None (default) keeps the default path byte-identical.
     """
     product_profiles = [
         product_profiles_by_id[pid]
@@ -518,6 +540,7 @@ def generate_candidates_prefiltered(
         max_candidates,
         require_evidence=require_evidence,
         similar_boost=similar_boost,
+        ingredient_name_labels=ingredient_name_labels,
     )
 
 

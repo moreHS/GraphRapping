@@ -552,6 +552,7 @@ def test_to_dict_shape() -> None:
         "llm_used",
         "warnings",
         "profile_refs",
+        "ingredient_constraints",
     }
     assert payload["intent"] == "recommend"
     assert payload["llm_used"] is True
@@ -561,6 +562,9 @@ def test_to_dict_shape() -> None:
     assert payload["warnings"] == []
     # [F4-c''] profile_refs always present and a list (default []).
     assert payload["profile_refs"] == []
+    # [B2] ingredient_constraints always present and a list (default []); this
+    # query mentions no ingredient family, so it is empty here.
+    assert payload["ingredient_constraints"] == []
 
 
 # ---------------------------------------------------------------------------
@@ -637,6 +641,178 @@ def test_fallback_profile_refs_capped_at_three(monkeypatch: pytest.MonkeyPatch) 
     interp = understand_query("내 고민 내 목표 좋아하는 브랜드 자주 사는 걸로", _products())
     assert interp.llm_used is False
     assert interp.profile_refs == ["concerns", "goals", "preferred_brands"]
+
+
+# ---------------------------------------------------------------------------
+# [B1] Ingredient alias layer end-to-end through understand_query. The alias
+# layer lives in resolve_query_concepts, so both paths inherit it; these assert
+# the query-understanding-level consequences (adoption, unresolved cleanup,
+# LLM ingredients_wanted flowing through the SAME alias gate).
+# ---------------------------------------------------------------------------
+
+
+def _hyaluron_products() -> list[dict[str, Any]]:
+    """Catalog carrying real 하이알루 tokens (what the alias map 히알루론 → INCI points
+    at) — distinct from _products()'s concept:Ingredient:히알루론산, which the alias
+    map does NOT point at, so the alias layer only fires when these are present."""
+    return [
+        _product(
+            "P_hya",
+            category_name="크림",
+            category_concept_ids=["concept:Category:크림"],
+            ingredient_concept_ids=[
+                "concept:Ingredient:소듐하이알루로네이트",
+                "concept:Ingredient:하이알루로닉애씨드",
+            ],
+        ),
+    ]
+
+
+def test_alias_fallback_adopts_and_clears_unresolved(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Dictionary fallback: the marquee 히알루론 query adopts the catalog INCI, and
+    히알루론 does NOT also appear as an unresolved chip (the contradiction B1 fixes)."""
+    monkeypatch.delenv("GRAPHRAPPING_QUERY_LLM", raising=False)
+    interp = understand_query("히알루론 든거", _hyaluron_products())
+
+    assert interp.llm_used is False
+    ids = _ids(interp)
+    assert "concept:Ingredient:소듐하이알루로네이트" in ids
+    assert "concept:Ingredient:하이알루로닉애씨드" in ids
+    assert not any("히알루론" in t for t in interp.unresolved_terms)
+
+
+def test_alias_fallback_negation_avoids_family_no_positive(monkeypatch: pytest.MonkeyPatch) -> None:
+    """"히알루론 없는 크림": no positive hyaluron adoption (resolution-level negation
+    guard), and — because the alias layer now maps 히알루론 to catalog INCI inside
+    the negation preprocessor — the family is recorded as AVOIDED with no warning."""
+    monkeypatch.delenv("GRAPHRAPPING_QUERY_LLM", raising=False)
+    interp = understand_query("히알루론 없는 크림", _hyaluron_products())
+
+    assert interp.llm_used is False
+    assert not any(c.concept_type == "ingredient" for c in interp.resolved_concepts)
+    assert set(interp.avoided_ingredient_concept_ids) == {
+        "concept:Ingredient:소듐하이알루로네이트",
+        "concept:Ingredient:하이알루로닉애씨드",
+    }
+    assert interp.warnings == []
+
+
+def test_alias_llm_declared_surface_removed_from_unresolved() -> None:
+    """The LLM re-declares 히알루론 in unresolved_terms, but the base query resolved it
+    through the alias layer — it must be dropped from unresolved (no double state)."""
+    fake = FakeLLMClient(_fake_json(unresolved_terms=["히알루론"]))
+    interp = understand_query("히알루론 든거", _hyaluron_products(), llm=fake)
+
+    assert interp.llm_used is True
+    assert "concept:Ingredient:소듐하이알루로네이트" in _ids(interp)
+    assert "히알루론" not in interp.unresolved_terms
+
+
+def test_alias_llm_ingredients_wanted_flows_through_gate() -> None:
+    """[recall] 히알루론 is absent from the raw query; the LLM supplies it as
+    ingredients_wanted and it resolves through the SAME alias/catalog gate to the
+    catalog INCI (the existing recall-expansion contract, now via the alias layer)."""
+    fake = FakeLLMClient(_fake_json(ingredients_wanted=["히알루론"]))
+    interp = understand_query("보습 크림 추천", _hyaluron_products(), llm=fake)
+
+    ids = _ids(interp)
+    assert "concept:Ingredient:소듐하이알루로네이트" in ids
+    assert "concept:Ingredient:하이알루로닉애씨드" in ids
+    assert "히알루론" not in interp.unresolved_terms
+
+
+# ---------------------------------------------------------------------------
+# [B2] IngredientConstraint building (성분군 grouping + provenance). Constraints
+# are built AFTER avoided subtraction; only "raw" ones are hard-filter eligible.
+# ---------------------------------------------------------------------------
+
+
+_HYA_S = "concept:Ingredient:소듐하이알루로네이트"
+_HYA_A = "concept:Ingredient:하이알루로닉애씨드"
+
+
+def test_constraint_raw_provenance_from_query_surface(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The marquee query mentions 히알루론 verbatim → ONE family constraint,
+    provenance="raw" (hard-filter eligible), grouping the whole 성분군 (all alias
+    surfaces + every catalog-existing INCI of the family)."""
+    monkeypatch.delenv("GRAPHRAPPING_QUERY_LLM", raising=False)
+    interp = understand_query("히알루론 든거 뭐 좋은거 없나", _hyaluron_products())
+
+    assert interp.llm_used is False
+    assert len(interp.ingredient_constraints) == 1
+    c = interp.ingredient_constraints[0]
+    assert c.provenance == "raw"
+    assert c.label == "히알루론"  # the 관용어 the user typed
+    assert set(c.inci_concept_ids) == {_HYA_S, _HYA_A}  # whole catalog family (OR)
+    # name_surfaces span the family's alias keys (관용어 + 오타 변형).
+    assert {"히알루론산", "히알루론", "히아루론산"} <= set(c.name_surfaces)
+
+
+def test_constraint_family_grouping_is_one_constraint(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Two surfaces of the SAME family in one query (히알루론산 + 히알루론) collapse to a
+    single constraint (they share the identical catalog INCI set)."""
+    monkeypatch.delenv("GRAPHRAPPING_QUERY_LLM", raising=False)
+    interp = understand_query("히알루론산 히알루론 크림", _hyaluron_products())
+    assert len(interp.ingredient_constraints) == 1
+    assert set(interp.ingredient_constraints[0].inci_concept_ids) == {_HYA_S, _HYA_A}
+
+
+def test_constraint_llm_only_ingredient_is_llm_provenance() -> None:
+    """The LLM adopts 히알루론 (ingredients_wanted) but the RAW query has no such
+    surface → provenance="llm" (soft boost only, NOT hard-filter eligible). This is
+    the existing recall-expansion behaviour, now classified as llm."""
+    fake = FakeLLMClient(_fake_json(ingredients_wanted=["히알루론"]))
+    interp = understand_query("보습 크림 추천", _hyaluron_products(), llm=fake)
+
+    assert interp.llm_used is True
+    assert "concept:Ingredient:소듐하이알루로네이트" in _ids(interp)  # still resolved (recall)
+    assert len(interp.ingredient_constraints) == 1
+    assert interp.ingredient_constraints[0].provenance == "llm"
+
+
+def test_constraint_avoided_family_produces_no_constraint(monkeypatch: pytest.MonkeyPatch) -> None:
+    """기피 우선: an avoided family is subtracted from the positive concepts BEFORE
+    constraint building, so a "히알루론 없는" query records the family as avoided and
+    builds NO wanted constraint for it."""
+    monkeypatch.delenv("GRAPHRAPPING_QUERY_LLM", raising=False)
+    interp = understand_query("히알루론 없는 크림", _hyaluron_products())
+    assert interp.avoided_ingredient_concept_ids  # family recorded as avoided
+    assert interp.ingredient_constraints == []  # and NOT as a wanted constraint
+
+
+def test_constraint_bare_ingredient_singleton_is_raw(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A bare INCI typed verbatim (레티놀, not an alias key mapping into this catalog)
+    becomes a singleton constraint, provenance="raw" (the surface is in the query)."""
+    monkeypatch.delenv("GRAPHRAPPING_QUERY_LLM", raising=False)
+    products = _products()  # carries concept:Ingredient:레티놀
+    interp = understand_query("레티놀 세럼 궁금해요", products)
+    retinol = [c for c in interp.ingredient_constraints
+               if c.inci_concept_ids == ["concept:Ingredient:레티놀"]]
+    assert len(retinol) == 1
+    assert retinol[0].provenance == "raw"
+    assert retinol[0].label == "레티놀"
+
+
+def test_constraint_direct_inci_name_surfaces_include_typed_and_suffix(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """[F3] A directly-typed INCI (레티놀) grouped into the 비타민A alias family must
+    keep 레티놀 in name_surfaces (the typed surface + INCI suffix) — otherwise a
+    name-only "레티놀 나이트 크림" (no structured ingredient) would be missed because
+    name_surfaces held only the alias keys (비타민A/비타민에이) the user never typed."""
+    monkeypatch.delenv("GRAPHRAPPING_QUERY_LLM", raising=False)
+    products = _products()  # carries concept:Ingredient:레티놀 (→ 비타민A alias family)
+    interp = understand_query("레티놀 든거", products)
+    retinol = [c for c in interp.ingredient_constraints
+               if "concept:Ingredient:레티놀" in c.inci_concept_ids]
+    assert len(retinol) == 1
+    assert retinol[0].label == "레티놀"  # user's typed surface, not an alias key
+    assert "레티놀" in retinol[0].name_surfaces  # F3: typed surface / INCI suffix present
+    # The name-fallback surface actually matches a structure-less product by name.
+    from src.rec.ingredient_constraint import match_ingredient_constraint
+    name_only = {"product_id": "P", "ingredient_ids": [], "ingredient_concept_ids": [],
+                 "representative_product_name": "레티놀 나이트 크림"}
+    assert match_ingredient_constraint(name_only, retinol[0]) == "name"
 
 
 # ---------------------------------------------------------------------------

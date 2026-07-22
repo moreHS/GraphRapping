@@ -25,6 +25,7 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
+from src.rec.ingredient_constraint import IngredientConstraint
 from src.rec.product_similarity import SimilarProductSignal
 from src.rec.query_understanding import QueryInterpretation
 from src.rec.search import MatchedConcept
@@ -248,10 +249,13 @@ def test_search_endpoint_carries_related_products(monkeypatch: pytest.MonkeyPatc
     assert resp.status_code == 200
     payload = resp.json()
 
-    # The only new top-level key is related_products (existing schema intact).
+    # /api/search is unified onto the anonymous /api/ask payload (plan §B2 v3):
+    # the interpretation/ingredient_filter/relaxed/category_group/preset_used keys
+    # replace the former search-native resolved/resolved_concepts/result_count,
+    # while `message` (no-concept rule) is preserved.
     assert set(payload) == {
-        "query", "resolved", "resolved_concepts", "result_count",
-        "results", "message", "related_products",
+        "query", "interpretation", "resolved_mode", "relaxed", "category_group",
+        "preset_used", "message", "ingredient_filter", "results", "related_products",
     }
     assert {r["product_id"] for r in payload["results"]} == {"P1", "P2"}
     # existing search result-item shape unchanged.
@@ -396,3 +400,54 @@ def test_ask_search_branch_related_respects_query_negation(
     related_ids = [e["product_id"] for e in payload["related_products"]]
     assert "NB_RET" not in related_ids
     assert related_ids == ["NB"]
+
+
+def test_ask_recommend_branch_related_requires_wanted_ingredient(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """[B2] With an ACTIVE wanted-ingredient filter, a related neighbour must pass
+    the same matcher: a cross-category NON-carrier is dropped even when it is the
+    strongest ungated neighbour, while a carrier in another tab still surfaces."""
+    _HYA = "concept:Ingredient:소듐하이알루로네이트"
+    state = DemoState(loaded=True)
+    state.serving_products = [
+        _product("P_anchor", brand="헤라", category="수분크림", ingredients=[_HYA]),
+        _product("NB_HAS", brand="릴리", category="립스틱", ingredients=[_HYA]),  # carrier, makeup tab
+        _product("NB_NO", brand="릴리", category="립스틱"),                        # non-carrier
+    ]
+    state.serving_users = [{
+        "user_id": "U1",
+        "scoped_preference_ids": [
+            {"edge_type": "PREFERS_BRAND", "id": "concept:Brand:헤라", "weight": 1.0,
+             "scope_group": None, "source_sections": ["chat.brand"]},
+        ],
+    }]
+    # NB_NO is the STRONGEST neighbour — without the matcher filter it would top
+    # the related list; the require_ids gate drops it and keeps the carrier NB_HAS.
+    state.similar_ungated = {"P_anchor": [_sig("NB_NO", 30.0), _sig("NB_HAS", 20.0)]}
+
+    interp = QueryInterpretation(
+        query="히알루론 수분크림",
+        intent="search",
+        resolved_concepts=[
+            MatchedConcept("category", "concept:Category:skincare", "크림", "스킨케어"),
+            MatchedConcept("ingredient", _HYA, "히알루론", "히알루론"),
+        ],
+        avoided_ingredient_concept_ids=[],
+        unresolved_terms=[],
+        llm_used=True,
+        ingredient_constraints=[
+            IngredientConstraint("히알루론", [_HYA], ["히알루론"], "raw"),
+        ],
+    )
+    monkeypatch.setattr(server, "understand_query", lambda _q, _p: interp)
+
+    client = _client(monkeypatch, state)
+    payload = client.post("/api/ask", json={"user_id": "U1", "query": "히알루론 수분크림"}).json()
+    assert payload["resolved_mode"] == "recommend"
+    assert payload["ingredient_filter"]["applied"] is True
+    # 1차 universe is the skincare tab gated to the hyaluron carrier.
+    assert {r["product_id"] for r in payload["results"]} == {"P_anchor"}
+    related_ids = [e["product_id"] for e in payload["related_products"]]
+    assert related_ids == ["NB_HAS"]  # carrier surfaces
+    assert "NB_NO" not in related_ids  # non-carrier dropped despite the higher score

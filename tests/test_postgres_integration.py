@@ -459,8 +459,11 @@ async def test_search_endpoint_db_mode_over_real_serving_store(
 
     payload = await server.search_get(query="설화수 나이아신아마이드", top_k=10)
 
-    assert payload["resolved"] is True
-    assert payload["result_count"] == 1
+    # /api/search is unified onto the anonymous /api/ask payload (Phase 6 B2 v3):
+    # resolved/result_count are gone; message==None ⇔ resolved, len(results) counts.
+    assert payload["resolved_mode"] == "search"
+    assert payload["message"] is None
+    assert len(payload["results"]) == 1
     result = payload["results"][0]
     assert result["product_id"] == product_id
     # overlap_concepts is the shared field name (mirrors /api/recommend); the

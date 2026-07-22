@@ -59,7 +59,6 @@ Known limitations:
 from __future__ import annotations
 
 import logging
-import re
 import threading
 import time
 from collections import OrderedDict
@@ -70,8 +69,17 @@ from typing import Any
 from src.common.config_loader import load_concern_dict, load_goal_alias_map
 from src.common.text_normalize import normalize_text
 from src.rec.category_groups import RECOMMEND_CATEGORY_LABELS
+from src.rec.ingredient_constraint import IngredientConstraint
 from src.rec.llm_client import LLMClient, build_llm_client
-from src.rec.search import MatchedConcept, resolve_query_concepts
+from src.rec.negation import NEGATION_FREE_RE as _NEGATION_FREE_RE
+from src.rec.negation import NEGATION_KO_RE as _NEGATION_KO_RE
+from src.rec.negation import negated_surfaces as _negated_surfaces
+from src.rec.search import (
+    MatchedConcept,
+    _concept_suffix,
+    _ingredient_alias_dict,
+    resolve_query_concepts,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -94,21 +102,11 @@ _POSITIVE_FIELDS = (
 )
 
 # Conservative ingredient-negation detectors, applied to the RAW query on both the
-# LLM and dictionary paths. Deliberately narrow: a single preceding word (a run of
-# hangul/alnum — no particle stripping) followed by one fixed negation marker. It
-# does not attempt to parse arbitrary syntax; markers the regex misses are left to
-# the LLM.
-#
-# Two patterns because the loanword "free" marker is dangerous without a separator:
-# many brand/compound names simply end in 프리 (이니스프리 = Innisfree), so requiring
-# a space/hyphen before 프리/free avoids that whole false-positive class. Korean
-# grammatical markers (없는/없이/빼고/제외(한)) legitimately attach with or without a
-# space ("레티놀 없는" / "레티놀없는"), so they allow an optional space. ``제외한?``
-# matches "제외" or "제외한"; ``free`` is case-insensitive ("retinol-free").
-_NEGATION_KO_RE = re.compile(r"([0-9A-Za-z가-힣]+?)\s*(없는|없이|빼고|제외한?)")
-_NEGATION_FREE_RE = re.compile(
-    r"([0-9A-Za-z가-힣]+?)[\s-]+(프리|free)", re.IGNORECASE
-)
+# LLM and dictionary paths. The two compiled patterns now live in
+# ``src.rec.negation`` (shared, verbatim) so the ingredient-alias layer in
+# ``src.rec.search`` applies the SAME negation semantics without a circular import;
+# they are imported above under their original private names, so every use site in
+# this module is unchanged.
 
 # [F2] Conservative request/filler stems for the dictionary-fallback
 # unresolved-surfacing path. A whitespace token containing one of these is
@@ -204,6 +202,12 @@ class QueryInterpretation:
     # concepts. Default [] so the anonymous/blank/fallback paths carry the field
     # without ever implying a profile join happened.
     profile_refs: list[str] = field(default_factory=list)
+    # [B2] Wanted-ingredient families (성분군) resolved from the query, built AFTER
+    # avoided subtraction. Each is one IngredientConstraint (INCI variants + name
+    # surfaces + provenance); only ``provenance == "raw"`` ones are hard-filter
+    # eligible (server B2 wiring). Default [] so every non-ingredient path carries
+    # the field without implying an ingredient filter.
+    ingredient_constraints: list[IngredientConstraint] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -215,6 +219,7 @@ class QueryInterpretation:
             "llm_used": self.llm_used,
             "warnings": list(self.warnings),
             "profile_refs": list(self.profile_refs),
+            "ingredient_constraints": [c.to_dict() for c in self.ingredient_constraints],
         }
 
 
@@ -518,6 +523,163 @@ def _unreflected_terms(
     return terms, [warning]
 
 
+def _drop_alias_reflected_unresolved(
+    unresolved: list[str],
+    resolved: list[MatchedConcept],
+) -> list[str]:
+    """[B1] Remove unresolved terms already reflected by an adopted INGREDIENT
+    concept's surface, so a colloquial ingredient name cannot appear as both a
+    resolved concept AND an unresolved chip (the "'히알루론'이 성분으로 잡혔는데 미해석
+    칩에도 뜨는" contradiction).
+
+    The ingredient alias layer (``resolve_query_concepts``) adopts a concept with
+    ``matched_text``/``label`` = the 관용어 surface. A term is dropped when its
+    normalized form equals, or is contained by, some adopted ingredient surface —
+    the two conditions the plan specifies ("정규화 일치 또는 그 surface가 term을
+    부분 포함"). Deterministic and order-preserving. On both paths the fallback's
+    ``_unreflected_terms`` already excludes reflected surfaces, so this is a no-op
+    there and only bites the LLM path (where the model may re-declare a surface it
+    also resolved); applying it on both keeps the two paths symmetric.
+    """
+    surfaces = [
+        norm
+        for norm in (
+            normalize_text(c.matched_text)
+            for c in resolved
+            if c.concept_type == "ingredient"
+        )
+        if len(norm) >= 2
+    ]
+    if not surfaces:
+        return unresolved
+    kept: list[str] = []
+    for term in unresolved:
+        norm = normalize_text(term)
+        if norm and any(norm == s or norm in s for s in surfaces):
+            continue
+        kept.append(term)
+    return kept
+
+
+def _build_ingredient_constraints(
+    query: str,
+    products: list[dict[str, Any]],
+    resolved_concepts: list[MatchedConcept],
+) -> list[IngredientConstraint]:
+    """Group the (post-avoided) resolved INGREDIENT concepts into 성분군 families and
+    build one ``IngredientConstraint`` per family (plan §4).
+
+    Grouping (plan): alias keys sharing an identical catalog-existing INCI set are
+    ONE family (히알루론산/히알루론/히아루론산 → the same catalog INCI). A resolved
+    ingredient concept joins the family whose INCI set contains it; concepts in no
+    alias family become singleton constraints (their own INCI surface). A family's
+    ``inci_concept_ids`` is the WHOLE catalog-existing INCI set of the family
+    (same-family INCI variants = OR), regardless of which subset this query
+    resolved.
+
+    provenance ("raw"|"llm"): "raw" iff a family alias surface OR one of its INCI
+    surfaces is literally present in the normalized RAW query outside a negation
+    span (the hard-filter eligibility rule — codex 2nd review); otherwise "llm"
+    (the LLM adopted it as ``ingredients_wanted`` with no raw surface → soft boost
+    only, no hard gate). ``resolved_concepts`` is already avoided-subtracted, so a
+    fully-avoided family produces no ingredient concept here and thus no
+    constraint (기피 우선).
+    """
+    resolved_ing = [c for c in resolved_concepts if c.concept_type == "ingredient"]
+    if not resolved_ing:
+        return []
+    resolved_ids = {c.concept_id for c in resolved_ing}
+
+    catalog_ids = {
+        str(cid)
+        for product in products
+        for cid in (product.get("ingredient_concept_ids") or [])
+    }
+    norm_query = normalize_text(query)
+    negated = _negated_surfaces(query)
+
+    def _has_raw_surface(surfaces: list[str]) -> bool:
+        for surface in surfaces:
+            surface_norm = normalize_text(str(surface))
+            if len(surface_norm) < 2 or surface_norm not in norm_query:
+                continue
+            if any(surface_norm in neg for neg in negated):
+                continue  # inside a negation span → not a positive raw mention
+            return True
+        return False
+
+    # Alias families: group alias keys by their catalog-existing INCI concept-id set.
+    families: dict[frozenset[str], list[str]] = {}
+    for alias_key, tokens in _ingredient_alias_dict().items():
+        signature = frozenset(
+            f"concept:Ingredient:{normalize_text(str(token))}"
+            for token in (tokens or [])
+        ) & catalog_ids
+        if not signature:
+            continue  # this alias maps to nothing in the current catalog
+        families.setdefault(signature, []).append(str(alias_key))
+
+    # matched surface per concept id (label + INCI-surface provenance source).
+    surface_by_id: dict[str, str] = {}
+    for concept in resolved_ing:
+        surface_by_id.setdefault(concept.concept_id, concept.matched_text)
+
+    constraints: list[IngredientConstraint] = []
+    used: set[str] = set()
+
+    for signature in sorted(families, key=lambda sig: sorted(sig)):
+        hit = signature & resolved_ids
+        if not hit:
+            continue
+        surfaces = sorted(set(families[signature]))
+        inci_ids = sorted(signature)
+        inci_surfaces = [_concept_suffix(cid) for cid in inci_ids]
+        # Surfaces the user actually typed for this family (matched_text of its
+        # resolved concepts — an alias key like "히알루론", or the INCI itself like
+        # "레티놀" when typed directly). inci_ids is sorted → deterministic.
+        typed = [surface_by_id[cid] for cid in inci_ids if cid in hit and surface_by_id.get(cid)]
+        # label: the surface the user typed; else the first alias surface, so a
+        # user who typed the INCI is never relabelled to an alias key they did not use.
+        label = typed[0] if typed else surfaces[0]
+        # name_surfaces (codex F3): family alias keys + the typed surfaces + the
+        # INCI suffixes, so a directly-typed INCI ("레티놀", grouped into the 비타민A
+        # family) can still name-match a product ("레티놀 나이트 크림") that carries no
+        # structured ingredient and whose alias keys (비타민A) the user never used.
+        name_surfaces = sorted(set(surfaces + typed + inci_surfaces))
+        provenance = "raw" if _has_raw_surface(surfaces + inci_surfaces) else "llm"
+        constraints.append(
+            IngredientConstraint(
+                label=label,
+                inci_concept_ids=inci_ids,
+                name_surfaces=name_surfaces,
+                provenance=provenance,
+            )
+        )
+        used |= signature
+
+    # Singleton constraints for resolved ingredients in no alias family (e.g. a
+    # bare INCI typed verbatim, whose own alias entry maps only outside the catalog).
+    for concept in resolved_ing:
+        if concept.concept_id in used:
+            continue
+        used.add(concept.concept_id)
+        suffix = _concept_suffix(concept.concept_id)
+        surface = concept.matched_text or suffix
+        # name_surfaces (codex F3): the typed surface AND the INCI suffix, deduped.
+        name_surfaces = sorted({surface, suffix})
+        provenance = "raw" if _has_raw_surface([surface, suffix]) else "llm"
+        constraints.append(
+            IngredientConstraint(
+                label=surface,
+                inci_concept_ids=[concept.concept_id],
+                name_surfaces=name_surfaces,
+                provenance=provenance,
+            )
+        )
+
+    return constraints
+
+
 def _fallback(query: str, products: list[dict[str, Any]]) -> QueryInterpretation:
     """Dictionary-only interpretation (identical return shape to the LLM path).
 
@@ -547,6 +709,12 @@ def _fallback(query: str, products: list[dict[str, Any]]) -> QueryInterpretation
     unresolved = unresolved + extra_terms
     warnings = warnings + extra_warnings
 
+    # [B1] Drop any unresolved term already reflected by an adopted ingredient
+    # alias surface (chip-contradiction guard). No-op on this path in practice
+    # (``_unreflected_terms`` already excludes reflected surfaces); kept for
+    # symmetry with the LLM path.
+    unresolved = _drop_alias_reflected_unresolved(unresolved, positive)
+
     return QueryInterpretation(
         query=query,
         intent="search",
@@ -558,6 +726,8 @@ def _fallback(query: str, products: list[dict[str, Any]]) -> QueryInterpretation
         # [F4-c''] Degraded-mode profile-ref detection (LLM off). Lower recall
         # than the schema-driven LLM path; never guesses values, only classes.
         profile_refs=_fallback_profile_refs(query),
+        # [B2] Ingredient families built from the post-avoided positive concepts.
+        ingredient_constraints=_build_ingredient_constraints(query, products, positive),
     )
 
 
@@ -635,16 +805,26 @@ def _interpret_with_llm(
     for cid in avoided_ids:
         concept_map.pop(("ingredient", cid), None)
 
+    resolved_concepts = list(concept_map.values())
+    # [B1] Drop any unresolved term already reflected by an adopted ingredient
+    # alias surface, so the LLM re-declaring a surface it also resolved (e.g.
+    # "히알루론") does not leave it in both resolved_concepts and unresolved_terms.
+    unresolved = _drop_alias_reflected_unresolved(unresolved, resolved_concepts)
+
     return QueryInterpretation(
         query=query,
         intent=_normalize_intent(raw.get("intent")),
-        resolved_concepts=list(concept_map.values()),
+        resolved_concepts=resolved_concepts,
         avoided_ingredient_concept_ids=avoided_ids,
         unresolved_terms=unresolved,
         llm_used=True,
         warnings=warnings,
         # [F4-c''] Enum-gated profile-ref class names (never the user's values).
         profile_refs=_gate_profile_refs(raw.get("profile_refs")),
+        # [B2] Ingredient families from the post-avoided resolved concepts. A
+        # family whose surface is absent from the RAW query (LLM-only recall
+        # expansion via ingredients_wanted) is provenance="llm" → soft boost only.
+        ingredient_constraints=_build_ingredient_constraints(query, products, resolved_concepts),
     )
 
 

@@ -1101,10 +1101,28 @@ function renderAskInterpretation(data) {
 
   // Resolved-concept labels are reused for both the chips and the F4-a summary line.
   const resolvedLabels = resolved.map(c => (c.label && String(c.label).trim()) || conceptIdSegment(c.concept_id));
-  const chips = resolved.map((c, i) => {
-    const color = askConceptColor(c.concept_type);
-    return `<span class="chip ask-chip" style="background:${color}26;color:${color};border-color:${color}66" title="${displayText(c.concept_id)}">${displayText(resolvedLabels[i])}</span>`;
-  }).concat(avoided.map(id => (
+  // Dedupe visible chips by (concept_type, display label): one ingredient family
+  // can resolve to several INCI-variant concepts that all carry the same 관용어
+  // label (e.g. 히알루론 → 4 INCI ids), and a category can arrive as both a literal
+  // and a group concept sharing a label — one chip per concept repeats visually
+  // identical chips. Same label under a DIFFERENT type is kept (distinct info).
+  // resolvedLabels itself is left whole so the summary line's own dedupe (below)
+  // is unaffected.
+  const seenChipKeys = new Set();
+  const chips = resolved
+    .map((c, i) => ({ concept: c, label: resolvedLabels[i] }))
+    .filter(({ concept, label }) => {
+      // \u0000 (NUL) sentinel separates the concept_type from the label so no
+      // (type, label) pair can collide with another regardless of label content.
+      const key = concept.concept_type + '\u0000' + label;
+      if (seenChipKeys.has(key)) return false;
+      seenChipKeys.add(key);
+      return true;
+    })
+    .map(({ concept, label }) => {
+      const color = askConceptColor(concept.concept_type);
+      return `<span class="chip ask-chip" style="background:${color}26;color:${color};border-color:${color}66" title="${displayText(concept.concept_id)}">${displayText(label)}</span>`;
+    }).concat(avoided.map(id => (
     `<span class="chip ask-chip ask-chip-avoid" title="${displayText(id)}">🚫 ${displayText(conceptIdSegment(id))}</span>`
   ))).concat(unresolved.map(term => (
     `<span class="chip ask-chip ask-chip-unresolved" title="아직 사전에 없는 표현이에요">${displayText(term)}</span>`
@@ -1144,6 +1162,26 @@ function renderAskInterpretation(data) {
   const banner = data.relaxed ? '<div class="ask-banner ask-banner-info">조건에 꼭 맞는 상품이 적어 관련도순으로 보여드려요</div>' : '';
   const warningBanners = warnings.map(w => `<div class="ask-banner ask-banner-warn">${displayText(w)}</div>`).join('');
 
+  // [B3] Ingredient hard-filter surfacing. The ingredient_filter block is always
+  // present; empty labels means this was not an ingredient query (or an LLM-only
+  // recall expansion the server keeps soft) so nothing renders. When a raw family
+  // actually constrained the results the server reports applied=true (emphasized
+  // line + 함유 상품 count); when no product carried the family it reports
+  // relaxed=true (warning line, server-owned reason). Per the server invariant
+  // (applied = labels present AND not relaxed) exactly one of applied/relaxed is
+  // true whenever labels exist, so these two outputs are mutually exclusive.
+  const ingredientFilter = data.ingredient_filter || {};
+  const ingredientLabels = Array.isArray(ingredientFilter.labels) ? ingredientFilter.labels : [];
+  let ingredientAppliedRow = '';
+  let ingredientRelaxBanner = '';
+  if (ingredientLabels.length) {
+    if (ingredientFilter.applied) {
+      ingredientAppliedRow = `<div class="ask-interpretation-row"><span class="ask-interpretation-label">🧪 성분 필터</span><span class="chip rel" title="이 성분을 함유한 상품만 노출됩니다">${escapeHtml(ingredientLabels.join(', '))} — 함유 상품 ${fmtCount(ingredientFilter.matched_products)}개</span></div>`;
+    } else if (ingredientFilter.relaxed && ingredientFilter.reason) {
+      ingredientRelaxBanner = `<div class="ask-banner ask-banner-warn">⚠️ ${displayText(ingredientFilter.reason)}</div>`;
+    }
+  }
+
   const queryRow = (chips.length || badge)
     ? `<div class="ask-interpretation-row"><span class="ask-interpretation-label">질의 해석</span>${badge}${chips.join('')}</div>`
     : '';
@@ -1151,15 +1189,18 @@ function renderAskInterpretation(data) {
     ? `<div class="ask-interpretation-row ask-profile-row"><span class="ask-interpretation-label">내 프로필 반영</span>${profileChips.join('')}</div>`
     : '';
 
-  if (!queryRow && !profileRow && !banner && !warningBanners && !summary) {
+  if (!queryRow && !profileRow && !banner && !warningBanners && !summary
+      && !ingredientAppliedRow && !ingredientRelaxBanner) {
     el.innerHTML = '';
     return;
   }
   el.innerHTML = `
     ${warningBanners}
+    ${ingredientRelaxBanner}
     ${banner}
     ${summary}
     ${queryRow}
+    ${ingredientAppliedRow}
     ${profileRow}
   `;
 }

@@ -19,6 +19,7 @@ from typing import Any
 
 import pytest
 
+from src.rec.ingredient_constraint import IngredientConstraint
 from src.rec.search import resolve_query_concepts, search_products
 from src.web import server
 from src.web.state import DemoState
@@ -105,6 +106,23 @@ def test_resolve_ingredient_axis_falls_back_to_concept_suffix_when_labels_misali
     concepts = resolve_query_concepts("레티놀 성분 궁금해요", products)
     ingredients = {c.concept_id for c in concepts if c.concept_type == "ingredient"}
     assert ingredients == {"concept:Ingredient:레티놀"}
+
+
+def test_resolve_bare_ingredient_negation_span_not_adopted():
+    """[F7] A bare INCI surface sitting inside a negation span is refused positive
+    adoption at RESOLUTION level (matching the alias layer), so "레티놀 없는 크림"
+    resolves no positive retinol — no reliance on a downstream subtraction step."""
+    products = [
+        _product("P1", ingredient_ids=["레티놀"], ingredient_concept_ids=["concept:Ingredient:레티놀"])
+    ]
+    negated = {c.concept_id for c in resolve_query_concepts("레티놀 없는 크림", products)
+               if c.concept_type == "ingredient"}
+    assert negated == set()
+    # Sanity: WITHOUT a negation marker the bare axis DOES adopt it (proves the
+    # guard, not a missing mapping, is what suppresses the negated case).
+    positive = {c.concept_id for c in resolve_query_concepts("레티놀 든 크림", products)
+                if c.concept_type == "ingredient"}
+    assert positive == {"concept:Ingredient:레티놀"}
 
 
 def test_resolve_multiple_axes_in_one_query():
@@ -276,11 +294,13 @@ async def test_search_get_demo_mode(monkeypatch: pytest.MonkeyPatch) -> None:
 
     payload = await server.search_get(query="헤라 쿠션", top_k=10)
 
-    assert payload["resolved"] is True
-    assert payload["message"] is None
-    assert payload["result_count"] == 1
+    # /api/search is unified onto the anonymous /api/ask shape (plan §B2 v3).
+    assert payload["resolved_mode"] == "search"
+    assert payload["message"] is None  # resolved → no no-concept guidance
+    assert len(payload["results"]) == 1
     assert payload["results"][0]["product_id"] == "P1"
     assert payload["results"][0]["product"]["product_id"] == "P1"
+    assert payload["ingredient_filter"]["applied"] is False  # no ingredient in query
 
 
 @pytest.mark.asyncio
@@ -293,7 +313,7 @@ async def test_search_post_demo_mode_no_concept_resolved(monkeypatch: pytest.Mon
 
     payload = await server.search(server.SearchRequest(query="zzzz_no_such_concept_zzzz", top_k=10))
 
-    assert payload["resolved"] is False
+    assert payload["resolved_mode"] == "search"
     assert payload["results"] == []
     assert payload["message"]  # explicit guidance, not a silent empty result
 
@@ -343,8 +363,8 @@ async def test_search_post_db_mode_independent_of_demo_state(monkeypatch: pytest
 
     payload = await server.search(server.SearchRequest(query="헤라 쿠션", top_k=5))
 
-    assert payload["resolved"] is True
-    assert payload["result_count"] == 1
+    assert payload["resolved_mode"] == "search"
+    assert len(payload["results"]) == 1
     assert payload["results"][0]["product_id"] == "P1"
     assert "brand:concept:Brand:헤라" in payload["results"][0]["matched_concepts"]
 
@@ -357,7 +377,7 @@ async def test_search_get_db_mode_evidence_family_present(monkeypatch: pytest.Mo
 
     payload = await server.search_get(query="쿠션 제품", top_k=5)
 
-    assert payload["result_count"] == 1
+    assert len(payload["results"]) == 1
     eligibility = payload["results"][0]["eligibility"]
     assert "PRODUCT_MASTER_TRUTH" in eligibility["evidence_families"]
 
@@ -370,10 +390,10 @@ async def test_search_top_k_clamped(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(server, "_serving_store", _FakeStore(products))
 
     payload = await server.search(server.SearchRequest(query="헤라 쿠션", top_k=0))
-    assert payload["result_count"] >= 1  # clamped to >=1, not an empty slice
+    assert len(payload["results"]) >= 1  # clamped to >=1, not an empty slice
 
     payload_big = await server.search(server.SearchRequest(query="헤라 쿠션", top_k=10_000))
-    assert payload_big["result_count"] == 5
+    assert len(payload_big["results"]) == 5
 
 
 # ---------------------------------------------------------------------------
@@ -493,12 +513,11 @@ async def test_search_empty_query_post_and_get_consistent(monkeypatch: pytest.Mo
     post_payload = await server.search(server.SearchRequest(query=""))
 
     for payload in (get_payload, post_payload):
-        assert payload["resolved"] is False
+        assert payload["resolved_mode"] == "search"
         assert payload["results"] == []
         assert payload["message"]  # explicit guidance, not a silent empty result
-    # Same shape on both verbs (no POST-only 422 for a blank query).
-    assert get_payload["resolved"] == post_payload["resolved"]
-    assert (get_payload["message"] is None) == (post_payload["message"] is None)
+    # Same payload on both verbs (no POST-only 422 for a blank query).
+    assert get_payload == post_payload
 
 
 # ---------------------------------------------------------------------------
@@ -553,3 +572,77 @@ def test_search_avoided_default_none_and_empty_do_not_change_results():
     assert {r.product_id for r in baseline.results} == {"P_clean", "P_retinol"}
     assert with_none.to_dict() == baseline.to_dict()
     assert with_empty.to_dict() == baseline.to_dict()
+
+
+# ---------------------------------------------------------------------------
+# Wanted-ingredient hard gate (Phase 6 B2: `ingredient_constraints` keyword).
+# A product must satisfy every family (AND) via the shared matcher (structured ∪
+# product-name). A name-only carrier earns a `product_name:<관용어>` overlap so it
+# survives the "overlap ≥ 1" gate and is classified PRODUCT_MASTER_TRUTH.
+# ---------------------------------------------------------------------------
+
+
+_HYA_S = "concept:Ingredient:소듐하이알루로네이트"
+_HYA_A = "concept:Ingredient:하이알루로닉애씨드"
+
+
+def _hya_constraint() -> IngredientConstraint:
+    return IngredientConstraint(
+        label="히알루론",
+        inci_concept_ids=[_HYA_S, _HYA_A],
+        name_surfaces=["히알루론산", "히알루론", "히아루론산"],
+        provenance="raw",
+    )
+
+
+def _hya_universe() -> list[dict[str, Any]]:
+    # All match the "보습" goal query; only their ingredient/name evidence differs.
+    return [
+        _product("P_struct", main_benefit_concept_ids=["concept:Goal:보습"],
+                 ingredient_concept_ids=[_HYA_S, _HYA_A],
+                 representative_product_name="어떤 수분크림"),
+        _product("P_name", main_benefit_concept_ids=["concept:Goal:보습"],
+                 representative_product_name="그린티히알루론산 로션"),
+        _product("P_free", main_benefit_concept_ids=["concept:Goal:보습"],
+                 representative_product_name="히알루론프리 크림"),
+        _product("P_none", main_benefit_concept_ids=["concept:Goal:보습"],
+                 ingredient_concept_ids=["concept:Ingredient:정제수"],
+                 representative_product_name="정제수 토너"),
+    ]
+
+
+def test_search_ingredient_constraint_hard_gate_keeps_only_carriers():
+    outcome = search_products("보습 크림", _hya_universe(), ingredient_constraints=[_hya_constraint()])
+    ids = {r.product_id for r in outcome.results}
+    assert ids == {"P_struct", "P_name"}  # free-of + non-carrier excluded
+    assert outcome.resolved is True
+
+
+def test_search_ingredient_constraint_name_only_gets_product_name_axis():
+    """A name-only carrier survives (overlap ≥ 1 via product_name) and is
+    classified PRODUCT_MASTER_TRUTH (the product name is catalog master truth)."""
+    outcome = search_products("보습 크림", _hya_universe(), ingredient_constraints=[_hya_constraint()])
+    name_result = next(r for r in outcome.results if r.product_id == "P_name")
+    assert "product_name:히알루론" in name_result.matched_concepts
+    assert "PRODUCT_MASTER_TRUTH" in name_result.eligibility.evidence_families
+
+
+def test_search_ingredient_constraint_and_across_families():
+    retinol = IngredientConstraint(
+        label="레티놀", inci_concept_ids=["concept:Ingredient:레티놀"],
+        name_surfaces=["레티놀"], provenance="raw",
+    )
+    both = _product("P_both", main_benefit_concept_ids=["concept:Goal:보습"],
+                    ingredient_concept_ids=[_HYA_S, "concept:Ingredient:레티놀"])
+    only_hya = _product("P_hya", main_benefit_concept_ids=["concept:Goal:보습"],
+                        ingredient_concept_ids=[_HYA_S])
+    outcome = search_products("보습", [both, only_hya],
+                              ingredient_constraints=[_hya_constraint(), retinol])
+    assert {r.product_id for r in outcome.results} == {"P_both"}  # AND across families
+
+
+def test_search_ingredient_constraint_default_none_byte_identical():
+    products = _hya_universe()
+    baseline = search_products("보습 크림", products)
+    with_none = search_products("보습 크림", products, ingredient_constraints=None)
+    assert with_none.to_dict() == baseline.to_dict()

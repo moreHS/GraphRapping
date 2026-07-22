@@ -498,7 +498,7 @@ family 의 현행 분류·의미론과, **신규 family 를 추가할 때 반드
 
 | Evidence family | overlap concept 타입 (frozenset) | 의미 |
 |---|---|---|
-| `PRODUCT_MASTER_TRUTH` | `brand, category, catalog_keyword, ingredient, goal_master` | 카탈로그 진실과 유저 명시 선호의 일치 |
+| `PRODUCT_MASTER_TRUTH` | `brand, category, catalog_keyword, ingredient, goal_master, product_name` | 카탈로그 진실과 유저 명시 선호의 일치. `product_name`(Phase 6 B2, 2026-07-22): 질의 성분군(관용어)이 상품의 `representative_product_name`에 실재(overlap concept `product_name:<관용어>`) — 상품명은 카탈로그 마스터 원천이므로 이름-only 성분 함유 상품도 자격(구조화 성분 concept 없이 이름 폴백으로 통과한 상품이 "overlap ≥1"/evidence gate 를 통과). 성분 하드필터의 name 축과 짝. |
 | `REVIEW_GRAPH_RELATION` | `keyword, bee_attr, semantic_keyword, semantic_bee_attr, context, concern, concern_bridge, tool, coused` | 리뷰 그래프 유래(promoted) 신호와의 일치 |
 | `REVIEW_GRAPH_WEAK_RELATION` | `weak_semantic_keyword, weak_semantic_bee_attr` | 위의 약한(간접 semantic) 변형 |
 | `PURCHASE_BEHAVIOR` | `owned_family, repurchased_family, repurchase_brand, repurchase_category, recent_purchase_brand` | 구매 확정 행동과의 일치 |
@@ -576,3 +576,4 @@ family 의 현행 분류·의미론과, **신규 family 를 추가할 때 반드
 | 2026-06-15 | Source-grounded contract | `serving_product_profile` 에 source identity/review stats 를 추가하고 `review_count_*` 를 graph support count 로 명확화 |
 | 2026-07-13 | Phase 7 E0 | §13 "Recommendation evidence-family 확장 계약" 추가 — 현행 자격 의미론(OR)과 신규 family 추가 조건(단독 자격/가중·shrinkage/기대셋·계약 테스트/명명/provenance) 성문화 |
 | 2026-07-16 | Phase 8 P8-3a | §13.2 boost-only 행에 `similar` 확정 편입(`PRODUCT_SIMILARITY_AFFINITY`, retrieval 집계 제외 명기) · §13.3(3) boost-only 는 `known_families` 제외 예외 명문화 · §13.4 도입 현황 표로 갱신(COMPARISON/COLLABORATIVE_AFFINITY/COMENTION/PRODUCT_SIMILARITY_AFFINITY 도입 완료) |
+| 2026-07-22 | Phase 6 B2 | §13.2 `PRODUCT_MASTER_TRUTH` 에 `product_name` overlap 축 추가 — 성분 하드필터의 이름 폴백(관용어가 `representative_product_name`에 실재)으로 통과한 이름-only 상품을 자격화. 성분 함유 하드필터 배선(로그인/익명 `/api/ask` + `/api/search` 통일)의 일부 |

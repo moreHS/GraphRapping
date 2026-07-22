@@ -51,6 +51,11 @@ from src.rec.category_groups import (
     RECOMMEND_CATEGORY_LABELS,
     classify_product_category_group,
 )
+from src.rec.ingredient_constraint import (
+    IngredientConstraint,
+    match_ingredient_constraint,
+)
+from src.rec.negation import negated_surfaces
 from src.rec.recommendation_evidence_index import (
     CandidateEligibility,
     build_candidate_eligibility,
@@ -148,6 +153,16 @@ def _keyword_surface_dict() -> dict[str, Any]:
     return load_yaml("keyword_surface_map.yaml")
 
 
+@lru_cache(maxsize=1)
+def _ingredient_alias_dict() -> dict[str, Any]:
+    """Colloquial ingredient name (관용어) → catalog INCI surface tokens
+    (configs/ingredient_alias_map.yaml). Seeded from recommend-agent's
+    INGREDIENT_DICT intersected with the catalog's MAIN_INGREDIENT tokens; see the
+    file header for provenance + augmentation rules. Consumed by the ingredient
+    alias layer in ``resolve_query_concepts``."""
+    return load_yaml("ingredient_alias_map.yaml")
+
+
 def resolve_query_concepts(
     query_text: str,
     products: list[dict[str, Any]],
@@ -166,7 +181,11 @@ def resolve_query_concepts(
       surface dictionary for catalog truth, so the catalog itself is the
       vocabulary. The raw ``ingredient_ids`` master array is not used for the
       ingredient axis because it is not positionally aligned with
-      ``ingredient_concept_ids`` (see the ingredient-loop comment below).
+      ``ingredient_concept_ids`` (see the ingredient-loop comment below). On top
+      of the bare axis, an ingredient ALIAS layer (Phase 6 B1) maps colloquial
+      names (관용어, e.g. 히알루론) to catalog INCI concept ids via
+      ``ingredient_alias_map.yaml``, still gated to catalog-existing ids and
+      skipped inside a negation span (see the alias-layer comment below).
     - category (group): the same tab keyword vocabulary as
       ``src/rec/category_groups.py`` (RECOMMEND_CATEGORY_DEFS), so a query can
       resolve to a whole category group the way the demo UI tabs do, even
@@ -218,6 +237,14 @@ def resolve_query_concepts(
                     str(entry.get("label_ko", "")),
                 )
 
+    # Negated surfaces (RAW query) — shared by the bare ingredient axis (F7) and
+    # the alias layer below. An ingredient surface sitting inside a negated word
+    # (없는/없이/빼고/제외(한)/프리/free) is refused positive adoption at RESOLUTION
+    # level, so "레티놀 없는 크림" never resolves 레티놀 as a wanted ingredient (no
+    # reliance on a downstream subtraction step, and every caller — incl. the
+    # anonymous /api/search path — is protected).
+    negated = negated_surfaces(query_text or "")
+
     for product in products:
         brand_label = product.get("brand_name") or product.get("brand_id")
         if brand_label:
@@ -253,8 +280,68 @@ def resolve_query_concepts(
                 continue
             label = _concept_suffix(cid_str)
             label_norm = normalize_text(label)
-            if len(label_norm) >= _MIN_SURFACE_LEN and label_norm in norm_query:
-                _add("ingredient", cid_str, label, label)
+            if len(label_norm) < _MIN_SURFACE_LEN or label_norm not in norm_query:
+                continue
+            # F7: same negation-span guard as the alias layer — a bare INCI surface
+            # inside a negated word ("레티놀 없는 크림") is not adopted as positive.
+            if any(label_norm in neg for neg in negated):
+                continue
+            _add("ingredient", cid_str, label, label)
+
+    # Ingredient alias layer (Phase 6 B1): colloquial ingredient names (관용어, e.g.
+    # 히알루론) → catalog INCI concept ids. The bare ingredient axis above only fires
+    # when an INCI's OWN normalized surface appears verbatim in the query; this
+    # layer bridges 관용어→INCI via configs/ingredient_alias_map.yaml, building
+    # ``concept:Ingredient:<normalize_text(INCI)>`` and adopting ONLY ids that exist
+    # on the currently-loaded catalog (same catalog-existence gate the rest of
+    # resolution uses — no forged ids). matched_text/label carry the 관용어 (user
+    # language) so the resolved chip reads in the user's own words; MatchedConcept's
+    # (type, concept_id) dedupe means a concept the bare axis already found is not
+    # duplicated.
+    #
+    # Negation-span guard: adoption is tested on the NORMALIZED query, but negation
+    # is tested on the RAW query (markers are surface-adjacent). An alias surface
+    # sitting inside a negated word (없는/없이/빼고/제외(한)/프리/free) is not adopted,
+    # so "레티놀 없는 크림" / "히알루론 빼고" never pull the negated ingredient in through
+    # the alias map. This is a resolution-level defence, so every caller is safe —
+    # including the anonymous /api/search path that does not run the LLM negation
+    # step. (``negated`` is computed once above, shared with the bare axis.)
+    alias_hits: list[tuple[str, Any]] = []
+    for alias_surface, inci_tokens in _ingredient_alias_dict().items():
+        surface_norm = normalize_text(str(alias_surface))
+        if len(surface_norm) < _MIN_SURFACE_LEN or surface_norm not in norm_query:
+            continue
+        if any(surface_norm in neg for neg in negated):
+            continue
+        alias_hits.append((str(alias_surface), inci_tokens or []))
+
+    # F1 longest-match: when one matched alias key is a substring of another
+    # (비타민 ⊂ 비타민A, 히알루론 ⊂ 히알루론산), drop the shorter — otherwise
+    # "비타민A 든거" would fire BOTH 비타민(→비타민C 계열) and 비타민A(→레티놀), binding
+    # two different families as an AND. For same-INCI nested pairs (히알루론산 group)
+    # either survivor yields the identical concept ids. Compared on normalized keys.
+    if len(alias_hits) > 1:
+        matched_norms = [normalize_text(surface) for surface, _ in alias_hits]
+        alias_hits = [
+            (surface, tokens)
+            for surface, tokens in alias_hits
+            if not any(
+                normalize_text(surface) != other and normalize_text(surface) in other
+                for other in matched_norms
+            )
+        ]
+
+    if alias_hits:
+        catalog_ingredient_ids = {
+            str(cid)
+            for product in products
+            for cid in (product.get("ingredient_concept_ids") or [])
+        }
+        for surface, inci_tokens in alias_hits:
+            for inci in inci_tokens:
+                concept_id = f"concept:Ingredient:{normalize_text(str(inci))}"
+                if concept_id in catalog_ingredient_ids:
+                    _add("ingredient", concept_id, surface, surface)
 
     for group, keyword in _matching_category_groups(norm_query):
         _add(
@@ -383,6 +470,7 @@ def search_products(
     *,
     max_results: int = 20,
     avoided_ingredient_concept_ids: list[str] | None = None,
+    ingredient_constraints: list[IngredientConstraint] | None = None,
 ) -> SearchOutcome:
     """Concept-based product search (evidence-first; no full-text fallback).
 
@@ -400,12 +488,21 @@ def search_products(
     ranked. Mirrors the recommendation candidate generator's avoided-ingredient
     hard filter so search and recommend honour a negated ingredient identically.
     Defaults to ``None`` so existing callers are unaffected.
+
+    ``ingredient_constraints`` — optional wanted-ingredient hard gate (Phase 6
+    B2): a product must satisfy EVERY family (AND) via the shared matcher
+    (structured ∪ name). A product satisfying a family only by its
+    ``representative_product_name`` gets an extra ``product_name:<관용어>`` overlap
+    axis so it clears the "overlap ≥ 1" / evidence gate (classified
+    PRODUCT_MASTER_TRUTH). Defaults to ``None`` (no gate) so existing callers are
+    byte-identical. Callers pass only ``provenance == "raw"`` constraints.
     """
     resolved = resolve_query_concepts(query_text, products)
     if not resolved:
         return SearchOutcome(query=query_text, resolved_concepts=[], results=[])
 
     avoided = {str(cid) for cid in (avoided_ingredient_concept_ids or []) if cid}
+    constraints = list(ingredient_constraints or [])
 
     items: list[SearchResultItem] = []
     for product in products:
@@ -414,7 +511,23 @@ def search_products(
         # excluded before ranking, not merely down-ranked.
         if avoided and {str(v) for v in (product.get("ingredient_concept_ids") or [])} & avoided:
             continue
+
+        # Wanted-ingredient hard gate (AND across families). A product failing any
+        # family is excluded before ranking; name-only carriers earn a
+        # product_name overlap axis so they survive the "overlap ≥ 1" gate below.
+        name_labels: list[str] = []
+        if constraints:
+            axes = [match_ingredient_constraint(product, c) for c in constraints]
+            if any(axis is None for axis in axes):
+                continue
+            seen_label: set[str] = set()
+            for constraint, axis in zip(constraints, axes):
+                if axis == "name" and constraint.label not in seen_label:
+                    seen_label.add(constraint.label)
+                    name_labels.append(constraint.label)
+
         overlap = _product_overlap(product, resolved)
+        overlap.extend(f"product_name:{label}" for label in name_labels)
         if not overlap:
             continue
         items.append(

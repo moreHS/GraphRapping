@@ -16,6 +16,12 @@ MASTER_TRUTH_TYPES = frozenset({
     "catalog_keyword",
     "ingredient",
     "goal_master",
+    # Phase 6 B2: a query ingredient family matched a product's
+    # representative_product_name (the product-name axis; overlap concept
+    # ``product_name:<관용어>``). The product name is catalog master truth, so a
+    # name-only ingredient carrier is evidence-qualified (not dropped by the
+    # "overlap ≥ 1" / evidence gate). See db_consumer_contract.md §13.2.
+    "product_name",
 })
 # ACTIVE_IN_CATEGORY is intentionally excluded. It is profile context/affinity,
 # not explicit preference or product master truth strong enough to qualify a
