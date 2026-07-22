@@ -115,6 +115,7 @@
   }
   function hideTooltip() { if (tooltipEl) tooltipEl.style.display = 'none'; }
   function showTooltipFor(evt) {
+    if (evt.target.hasClass && evt.target.hasClass('gv-dim')) { hideTooltip(); return; }
     const text = formatSharedAxes(evt.target.data('sharedAxes'));
     if (!text) { hideTooltip(); return; }
     const tip = ensureTooltip();
@@ -156,8 +157,39 @@
     return `[${NODE_TYPE_LABELS[type] || type || '노드'}] ${label}`;
   }
   function showNodeTooltipFor(evt) {
+    if (evt.target.hasClass && evt.target.hasClass('gv-dim')) { hideTooltip(); return; }
     const tip = ensureTooltip();
     tip.textContent = formatNodeTooltip(evt.target);
+    tip.style.display = 'block';
+    const oe = evt.originalEvent;
+    if (oe && typeof oe.clientX === 'number') {
+      tip.style.left = (oe.clientX + 12) + 'px';
+      tip.style.top = (oe.clientY + 12) + 'px';
+    }
+  }
+  // Full-view edge tooltip: the SHARES_ATTRIBUTE-only tooltip above needs
+  // shared_axes, which the full-graph payload omits (response size), and the
+  // other edge families never had a tooltip. This one covers every family —
+  // relation label + both endpoints (shared_axes/score still shown if present).
+  function showFullEdgeTooltipFor(evt) {
+    if (evt.target.hasClass && evt.target.hasClass('gv-dim')) { hideTooltip(); return; }
+    const e = evt.target;
+    const rel = e.data('label') || '';
+    const src = e.source(), tgt = e.target();
+    const srcLabel = src.data('fullLabel') || src.data('label') || src.data('id') || '';
+    const tgtLabel = tgt.data('fullLabel') || tgt.data('label') || tgt.data('id') || '';
+    // SHARES_ATTRIBUTE is undirected (↔); directed families use →.
+    const arrow = rel === 'SHARES_ATTRIBUTE' ? '↔' : '→';
+    let text = `[관계] ${rel}\n${srcLabel} ${arrow} ${tgtLabel}`;
+    const axes = formatSharedAxes(e.data('sharedAxes'));
+    const score = e.data('score');
+    if (axes) {
+      text += '\n' + ((typeof score === 'number') ? `${axes}  ·  score ${score.toFixed(2)}` : axes);
+    } else if (typeof score === 'number') {
+      text += `\nscore ${score.toFixed(2)}`;
+    }
+    const tip = ensureTooltip();
+    tip.textContent = text;
     tip.style.display = 'block';
     const oe = evt.originalEvent;
     if (oe && typeof oe.clientX === 'number') {
@@ -221,7 +253,9 @@
     { selector: 'edge', style: { 'text-opacity': 0 } },
     { selector: 'edge.gv-labeled', style: { 'text-opacity': 1 } },
     { selector: 'edge.gv-hl', style: { 'text-opacity': 1 } },
-    { selector: '.gv-dim', style: { 'opacity': 0.1, 'text-opacity': 0 } },
+    // 'events: no' makes dimmed elements pass hovers/taps through to whatever is
+    // beneath — an active edge if present, else the background -> clearFocus (intended).
+    { selector: '.gv-dim', style: { 'opacity': 0.1, 'text-opacity': 0, 'events': 'no' } },
     { selector: 'node.gv-hl', style: { 'border-width': 2, 'border-color': '#f8fafc' } },
   ];
   const EDGE_LABEL_ZOOM = 1.6;   // reveal edge labels past this zoom
@@ -331,10 +365,20 @@
     // similarity edge (no tooltip infra existed before). Scoped to
     // SHARES_ATTRIBUTE edges, so directed edges are unaffected.
     const SIM_SELECTOR = 'edge[label = "SHARES_ATTRIBUTE"]';
-    cy.on('mouseover', SIM_SELECTOR, showTooltipFor);
-    cy.on('mousemove', SIM_SELECTOR, showTooltipFor);
-    cy.on('mouseout', SIM_SELECTOR, hideTooltip);
-    cy.on('tap', SIM_SELECTOR, showTooltipFor);
+    // full view: generic edge tooltip (payload omits shared_axes, so the
+    // SHARES_ATTRIBUTE-only tooltip would stay empty); other views keep the
+    // SHARES_ATTRIBUTE-only tooltip so per-product/rec subgraphs are unchanged.
+    if (full) {
+      cy.on('mouseover', 'edge', showFullEdgeTooltipFor);
+      cy.on('mousemove', 'edge', showFullEdgeTooltipFor);
+      cy.on('mouseout', 'edge', hideTooltip);
+      cy.on('tap', 'edge', showFullEdgeTooltipFor);
+    } else {
+      cy.on('mouseover', SIM_SELECTOR, showTooltipFor);
+      cy.on('mousemove', SIM_SELECTOR, showTooltipFor);
+      cy.on('mouseout', SIM_SELECTOR, hideTooltip);
+      cy.on('tap', SIM_SELECTOR, showTooltipFor);
+    }
     // Node hover/tap tooltip — every view, separate selector from the edge one.
     cy.on('mouseover', 'node', showNodeTooltipFor);
     cy.on('mousemove', 'node', showNodeTooltipFor);
