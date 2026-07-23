@@ -225,6 +225,45 @@ def test_negation_free_marker_requires_separator() -> None:
     assert normalize_text("레티놀") in negated_surfaces("레티놀 프리")  # separated → counts
 
 
+def test_negation_업는_typo_marker() -> None:
+    """[2026-07-23] '업는' (frequent misspelling of '없는') is recognised as a
+    negation marker, so a typo'd negation is not silently lost."""
+    assert "알콜" in negated_surfaces("알콜업는 크림")
+    assert negated_surfaces("레티놀 업는 세럼") == {"레티놀"}
+    # A non-ingredient word the marker happens to attach to is harmless — it just
+    # resolves to no ingredient downstream (the dict gate drops it).
+    assert "수" in negated_surfaces("수업는 날")
+
+
+# ---------------------------------------------------------------------------
+# [2026-07-23] Alcohol family — 알콜/알코올/에탄올 → 변성알코올 (volatile solvent
+# only). Fatty alcohols (세틸/스테아릴/…) are emulsifiers/emollients, deliberately
+# NOT swept in by "알콜 없는".
+# ---------------------------------------------------------------------------
+
+
+def test_alias_alcohol_maps_denatured_solvent_only() -> None:
+    product = _product("P", ingredients=[
+        "concept:Ingredient:변성알코올", "concept:Ingredient:세틸알코올",
+    ])
+    for key in ("알콜", "알코올", "에탄올"):
+        assert _ingredient_ids(f"{key} 든거", [product]) == {"concept:Ingredient:변성알코올"}, key
+
+
+def test_alias_alcohol_fatty_only_product_no_match() -> None:
+    """A product carrying only a fatty alcohol (세틸알코올) is not swept in by the
+    alcohol alias — only 변성알코올 carriers are."""
+    product = _product("P", ingredients=["concept:Ingredient:세틸알코올"])
+    assert _ingredient_ids("알콜 든거", [product]) == set()
+
+
+def test_alias_alcohol_negation_span_not_adopted_typo() -> None:
+    """"알콜업는" (typo negation): the alcohol alias sits inside the negated span, so
+    it is NOT adopted as a positive/wanted ingredient (resolution-level guard)."""
+    product = _product("P", ingredients=["concept:Ingredient:변성알코올"])
+    assert _ingredient_ids("알콜업는 스킨케어", [product]) == set()
+
+
 # ---------------------------------------------------------------------------
 # Alias map file integrity (configs/ingredient_alias_map.yaml)
 # ---------------------------------------------------------------------------

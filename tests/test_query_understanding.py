@@ -815,6 +815,66 @@ def test_constraint_direct_inci_name_surfaces_include_typed_and_suffix(
     assert match_ingredient_constraint(name_only, retinol[0]) == "name"
 
 
+def _alcohol_products() -> list[dict[str, Any]]:
+    """Catalog carrying the volatile solvent (변성알코올) + a fatty alcohol (세틸알코올,
+    deliberately NOT swept in by the alcohol alias)."""
+    return [
+        _product("P_denat", category_name="스킨케어",
+                 category_concept_ids=["concept:Category:스킨케어"],
+                 ingredient_concept_ids=["concept:Ingredient:변성알코올"]),
+        _product("P_fatty", category_name="스킨케어",
+                 category_concept_ids=["concept:Category:스킨케어"],
+                 ingredient_concept_ids=["concept:Ingredient:세틸알코올"]),
+    ]
+
+
+def test_alcohol_negation_resolves_denatured_only_both_spellings(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """[2026-07-23] "알콜없는 스킨케어" AND its typo "알콜업는 스킨케어" both resolve the
+    volatile-solvent family (변성알코올) as AVOIDED — not fatty alcohols — with no
+    positive/wanted ingredient and no dangling 알콜/알코올 chip. Live dictionary
+    fallback (no LLM), exercising the YAML alias + the 업는 typo marker together."""
+    monkeypatch.delenv("GRAPHRAPPING_QUERY_LLM", raising=False)
+    products = _alcohol_products()
+    for query in ("알콜없는 스킨케어", "알콜업는 스킨케어"):
+        interp = understand_query(query, products)
+        assert interp.llm_used is False, query
+        # denatured solvent only (fatty 세틸알코올 NOT included) ...
+        assert interp.avoided_ingredient_concept_ids == ["concept:Ingredient:변성알코올"], query
+        # ... not flipped to a positive/wanted ingredient (no hard-filter) ...
+        assert not any(c.concept_type == "ingredient" for c in interp.resolved_concepts), query
+        assert interp.ingredient_constraints == [], query
+        # ... and no dangling 알콜/알코올 unresolved chip.
+        assert not any("알콜" in t or "알코올" in t for t in interp.unresolved_terms), query
+
+
+def test_llm_typo_negation_blob_dropped_from_unresolved() -> None:
+    """[2026-07-23] The LLM emits the WHOLE typo token '알콜업는' as unresolved, but
+    the raw-query negation already resolved '알콜' → 변성알코올 (AVOIDED). The blob must
+    not linger as a "미해석" chip (an already-applied avoidance is not an unmapped
+    expression); the avoidance itself is preserved."""
+    products = _alcohol_products()
+    fake = FakeLLMClient(_fake_json(unresolved_terms=["알콜업는"]))
+    interp = understand_query("알콜업는 스킨케어", products, llm=fake)
+
+    assert "concept:Ingredient:변성알코올" in interp.avoided_ingredient_concept_ids
+    # '알콜' ⊂ '알콜업는' and '알콜' resolved to an avoided id → the blob is dropped.
+    assert not any("알콜" in t for t in interp.unresolved_terms)
+
+
+def test_llm_unmapped_negation_blob_kept_in_unresolved() -> None:
+    """Over-deletion guard: a negation of an UNMAPPED ingredient (제라늄 — not in the
+    catalog/alias) did NOT resolve to an avoided id, so its surface is never a drop
+    key and the honest unmapped chip stays (no over-deletion)."""
+    products = _alcohol_products()
+    fake = FakeLLMClient(_fake_json(unresolved_terms=["제라늄업는"]))
+    interp = understand_query("제라늄업는 크림", products, llm=fake)
+
+    assert interp.avoided_ingredient_concept_ids == []  # 제라늄 not resolvable
+    assert any("제라늄" in t for t in interp.unresolved_terms)  # honestly retained
+
+
 # ---------------------------------------------------------------------------
 # Real provider smoke test (only runs when a provider env is configured)
 # ---------------------------------------------------------------------------

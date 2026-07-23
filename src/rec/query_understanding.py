@@ -408,24 +408,31 @@ def _build_system_prompt() -> str:
 def _negated_ingredients(
     query: str,
     products: list[dict[str, Any]],
-) -> tuple[list[str], list[str], list[str]]:
+) -> tuple[list[str], list[str], list[str], list[str]]:
     """Detect conservative ingredient negation in the RAW query and validate each
     negated term through the SAME gate the rest of the pipeline uses
     (``resolve_query_concepts``, ingredient axis only).
 
     Path-common preprocessing: runs on both the LLM and the dictionary-fallback
     paths so a negation is never silently lost. Returns
-    ``(avoided_ingredient_ids, unresolved_terms, warnings)``:
+    ``(avoided_ingredient_ids, unresolved_terms, warnings, avoided_surfaces)``:
 
     - ``avoided_ingredient_ids``: catalog-validated ingredient concept ids to avoid.
     - ``unresolved_terms``: negated terms that did NOT resolve to a catalog ingredient.
     - ``warnings``: one user-facing message per unresolved negated term, so a
       negation the dictionary cannot map is surfaced instead of failing silently.
+    - ``avoided_surfaces``: normalized negated WORDS (group 1) that DID resolve to a
+      catalog ingredient. Fed to ``_drop_alias_reflected_unresolved`` so a merged
+      typo blob the LLM emits ("알콜업는", which CONTAINS the resolved '알콜') is
+      dropped from the unresolved chips — an already-applied avoidance is not an
+      "unmapped" expression. Only RESOLVED surfaces are returned, so a genuinely
+      unmapped negation ("제라늄업는") is never used as a drop key.
     """
     avoided: list[str] = []
     seen_ids: set[str] = set()
     unresolved: list[str] = []
     warnings: list[str] = []
+    avoided_surfaces: list[str] = []
     seen_terms: set[str] = set()
     matches = [*_NEGATION_KO_RE.finditer(query), *_NEGATION_FREE_RE.finditer(query)]
     for match in matches:
@@ -447,11 +454,12 @@ def _negated_ingredients(
                 f"'{term} {match.group(2)}'의 부정 표현을 성분으로 해석하지 못했습니다"
             )
             continue
+        avoided_surfaces.append(norm)  # a negation surface that resolved to an avoid
         for cid in ingredient_ids:
             if cid not in seen_ids:
                 seen_ids.add(cid)
                 avoided.append(cid)
-    return avoided, unresolved, warnings
+    return avoided, unresolved, warnings, avoided_surfaces
 
 
 def _negation_consumed_surfaces(query: str) -> list[str]:
@@ -526,22 +534,32 @@ def _unreflected_terms(
 def _drop_alias_reflected_unresolved(
     unresolved: list[str],
     resolved: list[MatchedConcept],
+    avoided_surfaces: list[str] | None = None,
 ) -> list[str]:
     """[B1] Remove unresolved terms already reflected by an adopted INGREDIENT
-    concept's surface, so a colloquial ingredient name cannot appear as both a
-    resolved concept AND an unresolved chip (the "'히알루론'이 성분으로 잡혔는데 미해석
-    칩에도 뜨는" contradiction).
+    concept's surface OR by an avoided-resolved negation surface, so an ingredient
+    expression cannot appear as both handled (resolved/avoided) AND an unmapped chip
+    (the "'히알루론'이 성분으로 잡혔는데 미해석 칩에도 뜨는" contradiction — and its avoided
+    twin, "'알콜업는' already applied as AVOID but still shown as unmapped").
 
-    The ingredient alias layer (``resolve_query_concepts``) adopts a concept with
-    ``matched_text``/``label`` = the 관용어 surface. A term is dropped when its
-    normalized form equals, or is contained by, some adopted ingredient surface —
-    the two conditions the plan specifies ("정규화 일치 또는 그 surface가 term을
-    부분 포함"). Deterministic and order-preserving. On both paths the fallback's
-    ``_unreflected_terms`` already excludes reflected surfaces, so this is a no-op
-    there and only bites the LLM path (where the model may re-declare a surface it
-    also resolved); applying it on both keeps the two paths symmetric.
+    Two match directions (both deterministic, order-preserving):
+
+    - adopted POSITIVE surface (``resolved`` ingredient matched_text): drop a term
+      that equals, or is contained by, the surface ("정규화 일치 또는 그 surface가 term을
+      부분 포함") — the LLM re-declaring a shorter colloquial name (히알루론) the alias
+      layer already resolved.
+    - avoided-resolved NEGATION surface (``avoided_surfaces``): drop a term that
+      equals, or CONTAINS, the surface — the LLM emitting the whole merged typo blob
+      that carries the resolved surface ('알콜' ⊂ '알콜업는'). Only surfaces that
+      actually resolved to an avoided id are passed, so a genuinely unmapped negation
+      ("제라늄업는", 제라늄 not a catalog ingredient) is NOT dropped and stays honest.
+
+    On the fallback path ``_unreflected_terms`` already excludes reflected/negation-
+    consumed surfaces, so this is largely a no-op there; it mainly bites the LLM path
+    (where the model may re-declare/emit a surface it also resolved or avoided).
+    Applying it on both keeps the two paths symmetric.
     """
-    surfaces = [
+    positive = [
         norm
         for norm in (
             normalize_text(c.matched_text)
@@ -550,12 +568,24 @@ def _drop_alias_reflected_unresolved(
         )
         if len(norm) >= 2
     ]
-    if not surfaces:
+    avoided = [
+        norm
+        for norm in (normalize_text(s) for s in (avoided_surfaces or []))
+        if len(norm) >= 2
+    ]
+    if not positive and not avoided:
         return unresolved
     kept: list[str] = []
     for term in unresolved:
         norm = normalize_text(term)
-        if norm and any(norm == s or norm in s for s in surfaces):
+        if not norm:
+            kept.append(term)
+            continue
+        # adopted positive surface reflects the term (term == surface or term ⊂ surface)
+        if any(norm == s or norm in s for s in positive):
+            continue
+        # avoided-resolved surface reflects the term (term == surface or surface ⊂ term)
+        if any(norm == s or s in norm for s in avoided):
             continue
         kept.append(term)
     return kept
@@ -689,7 +719,7 @@ def _fallback(query: str, products: list[dict[str, Any]]) -> QueryInterpretation
     read the negation on its own, so ``_negated_ingredients`` supplies it.
     """
     resolved = resolve_query_concepts(query, products)
-    avoided_ids, unresolved, warnings = _negated_ingredients(query, products)
+    avoided_ids, unresolved, warnings, avoided_surfaces = _negated_ingredients(query, products)
     # An avoided ingredient must not also surface as a positive concept: the
     # substring gate resolves "레티놀" positively even inside "레티놀 없는".
     avoided_set = {("ingredient", cid) for cid in avoided_ids}
@@ -710,10 +740,10 @@ def _fallback(query: str, products: list[dict[str, Any]]) -> QueryInterpretation
     warnings = warnings + extra_warnings
 
     # [B1] Drop any unresolved term already reflected by an adopted ingredient
-    # alias surface (chip-contradiction guard). No-op on this path in practice
-    # (``_unreflected_terms`` already excludes reflected surfaces); kept for
-    # symmetry with the LLM path.
-    unresolved = _drop_alias_reflected_unresolved(unresolved, positive)
+    # alias surface OR an avoided-resolved negation surface (chip-contradiction
+    # guard). Largely a no-op on this path (``_unreflected_terms`` already excludes
+    # reflected/negation-consumed surfaces); kept for symmetry with the LLM path.
+    unresolved = _drop_alias_reflected_unresolved(unresolved, positive, avoided_surfaces)
 
     return QueryInterpretation(
         query=query,
@@ -783,7 +813,7 @@ def _interpret_with_llm(
 
     # Path-common negation preprocessing: union the raw query's own "X 없는/프리/…"
     # markers with the LLM's ingredients_avoided (duplicate ids are harmless).
-    neg_avoided, neg_unresolved, warnings = _negated_ingredients(query, products)
+    neg_avoided, neg_unresolved, warnings, neg_avoided_surfaces = _negated_ingredients(query, products)
     for cid in neg_avoided:
         if cid not in seen_avoided:
             seen_avoided.add(cid)
@@ -806,10 +836,13 @@ def _interpret_with_llm(
         concept_map.pop(("ingredient", cid), None)
 
     resolved_concepts = list(concept_map.values())
-    # [B1] Drop any unresolved term already reflected by an adopted ingredient
-    # alias surface, so the LLM re-declaring a surface it also resolved (e.g.
-    # "히알루론") does not leave it in both resolved_concepts and unresolved_terms.
-    unresolved = _drop_alias_reflected_unresolved(unresolved, resolved_concepts)
+    # [B1] Drop any unresolved term reflected by an adopted ingredient alias surface
+    # (LLM re-declaring "히알루론") OR by an avoided-resolved negation surface (LLM
+    # emitting the whole typo blob "알콜업는" that contains the avoided '알콜') — a
+    # handled expression must not also linger as an unmapped chip.
+    unresolved = _drop_alias_reflected_unresolved(
+        unresolved, resolved_concepts, neg_avoided_surfaces
+    )
 
     return QueryInterpretation(
         query=query,
