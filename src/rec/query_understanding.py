@@ -596,29 +596,33 @@ def _build_ingredient_constraints(
     products: list[dict[str, Any]],
     resolved_concepts: list[MatchedConcept],
 ) -> list[IngredientConstraint]:
-    """Group the (post-avoided) resolved INGREDIENT concepts into 성분군 families and
-    build one ``IngredientConstraint`` per family (plan §4).
+    """Group the (post-avoided) resolved INGREDIENT concepts into 성분군 constraints,
+    ONE per user EXPRESSION (the concept's ``matched_text``), and build an
+    ``IngredientConstraint`` for each.
 
-    Grouping (plan): alias keys sharing an identical catalog-existing INCI set are
-    ONE family (히알루론산/히알루론/히아루론산 → the same catalog INCI). A resolved
-    ingredient concept joins the family whose INCI set contains it; concepts in no
-    alias family become singleton constraints (their own INCI surface). A family's
-    ``inci_concept_ids`` is the WHOLE catalog-existing INCI set of the family
-    (same-family INCI variants = OR), regardless of which subset this query
-    resolved.
+    Grouping key = the surface the user actually typed (``matched_text``): an alias
+    hit carries the 관용어 ("히알루론"), a bare hit the INCI suffix ("레티놀"), a Tier 3
+    reverse-containment hit the colloquial expression ("콜라겐"). Every concept that
+    resolved from the SAME expression is ONE constraint whose ``inci_concept_ids``
+    are OR'd — so "콜라겐" (→ 솔루블콜라겐 + 하이드롤라이즈드콜라겐) or "히알루론" (→ the
+    alias family's catalog INCI) is a single OR-constraint, never per-id AND
+    singletons (codex — the '콜라겐' AND bug). Alias families are consulted ONLY to
+    ENRICH ``name_surfaces`` with the family's sibling colloquial keys when the
+    expression itself is one of those keys (so "히알루론" still name-matches via
+    "히알루론산" etc.); a family never re-splits an expression.
 
-    provenance ("raw"|"llm"): "raw" iff a family alias surface OR one of its INCI
-    surfaces is literally present in the normalized RAW query outside a negation
-    span (the hard-filter eligibility rule — codex 2nd review); otherwise "llm"
-    (the LLM adopted it as ``ingredients_wanted`` with no raw surface → soft boost
-    only, no hard gate). ``resolved_concepts`` is already avoided-subtracted, so a
-    fully-avoided family produces no ingredient concept here and thus no
-    constraint (기피 우선).
+    ``name_surfaces`` = the expression + the resolved INCI suffixes + (when the
+    expression is an alias-family key) that family's sibling keys.
+
+    provenance ("raw"|"llm"): "raw" iff the expression OR one of its INCI surfaces
+    is literally present in the normalized RAW query outside a negation span (the
+    hard-filter eligibility rule); otherwise "llm" (LLM-adopted with no raw
+    surface → soft boost only). ``resolved_concepts`` is already avoided-subtracted,
+    so a fully-avoided expression yields no concept here and thus no constraint.
     """
     resolved_ing = [c for c in resolved_concepts if c.concept_type == "ingredient"]
     if not resolved_ing:
         return []
-    resolved_ids = {c.concept_id for c in resolved_ing}
 
     catalog_ids = {
         str(cid)
@@ -638,71 +642,69 @@ def _build_ingredient_constraints(
             return True
         return False
 
-    # Alias families: group alias keys by their catalog-existing INCI concept-id set.
+    # Alias families (catalog-existing INCI signature → its colloquial keys), used
+    # ONLY for name_surface enrichment: normalized alias key → (signature, keys).
     families: dict[frozenset[str], list[str]] = {}
     for alias_key, tokens in _ingredient_alias_dict().items():
         signature = frozenset(
             f"concept:Ingredient:{normalize_text(str(token))}"
             for token in (tokens or [])
         ) & catalog_ids
-        if not signature:
-            continue  # this alias maps to nothing in the current catalog
-        families.setdefault(signature, []).append(str(alias_key))
+        if signature:
+            families.setdefault(signature, []).append(str(alias_key))
+    family_by_surface: dict[str, tuple[frozenset[str], list[str]]] = {}
+    for signature, surfaces in families.items():
+        siblings = sorted(set(surfaces))
+        for surface in siblings:
+            family_by_surface[normalize_text(surface)] = (signature, siblings)
 
-    # matched surface per concept id (label + INCI-surface provenance source).
-    surface_by_id: dict[str, str] = {}
+    # Group resolved ingredient concepts by the user's expression (matched_text),
+    # preserving first-appearance order for determinism.
+    order: list[str] = []
+    groups: dict[str, dict[str, Any]] = {}
     for concept in resolved_ing:
-        surface_by_id.setdefault(concept.concept_id, concept.matched_text)
+        surface = concept.matched_text or _concept_suffix(concept.concept_id)
+        key = normalize_text(surface)
+        if not key:
+            continue
+        group = groups.get(key)
+        if group is None:
+            group = {"label": surface, "cids": []}
+            groups[key] = group
+            order.append(key)
+        if concept.concept_id not in group["cids"]:
+            group["cids"].append(concept.concept_id)
 
     constraints: list[IngredientConstraint] = []
-    used: set[str] = set()
-
-    for signature in sorted(families, key=lambda sig: sorted(sig)):
-        hit = signature & resolved_ids
-        if not hit:
-            continue
-        surfaces = sorted(set(families[signature]))
-        inci_ids = sorted(signature)
+    for key in order:
+        group = groups[key]
+        label = group["label"]
+        resolved_cids = group["cids"]
+        # When the expression IS an alias-family key (and its family overlaps the
+        # resolved INCI), fill inci_concept_ids with the FULL family catalog
+        # signature — NOT just the (type,id)-dedupe-survived ids (codex F2). The
+        # dedupe pins a shared INCI to whichever expression named it first, so
+        # "히알루론 소듐하이알루로네이트" would otherwise split into {하이알루로닉}·{소듐}
+        # AND-constraints that falsely reject a 소듐-only product; the full-signature
+        # fill makes the family constraint an OR over every sibling INCI. Also
+        # enriches name_surfaces with the family's sibling colloquial keys (so
+        # "히알루론" keeps "히알루론산"/"히아루론산"). A Tier 3 / bare expression ("콜라겐",
+        # "레티놀") is not a family key → keeps its resolved ids.
+        family = family_by_surface.get(key)
+        if family is not None and (family[0] & set(resolved_cids)):
+            inci_ids = sorted(family[0])
+            extra_surfaces = set(family[1])
+        else:
+            inci_ids = sorted(resolved_cids)
+            extra_surfaces = set()
         inci_surfaces = [_concept_suffix(cid) for cid in inci_ids]
-        # Surfaces the user actually typed for this family (matched_text of its
-        # resolved concepts — an alias key like "히알루론", or the INCI itself like
-        # "레티놀" when typed directly). inci_ids is sorted → deterministic.
-        typed = [surface_by_id[cid] for cid in inci_ids if cid in hit and surface_by_id.get(cid)]
-        # label: the surface the user typed; else the first alias surface, so a
-        # user who typed the INCI is never relabelled to an alias key they did not use.
-        label = typed[0] if typed else surfaces[0]
-        # name_surfaces (codex F3): family alias keys + the typed surfaces + the
-        # INCI suffixes, so a directly-typed INCI ("레티놀", grouped into the 비타민A
-        # family) can still name-match a product ("레티놀 나이트 크림") that carries no
-        # structured ingredient and whose alias keys (비타민A) the user never used.
-        name_surfaces = sorted(set(surfaces + typed + inci_surfaces))
-        provenance = "raw" if _has_raw_surface(surfaces + inci_surfaces) else "llm"
+        name_surfaces = {label, *inci_surfaces} | extra_surfaces
+        provenance = "raw" if _has_raw_surface([label, *inci_surfaces]) else "llm"
         constraints.append(
             IngredientConstraint(
                 label=label,
                 inci_concept_ids=inci_ids,
-                name_surfaces=name_surfaces,
-                provenance=provenance,
-            )
-        )
-        used |= signature
-
-    # Singleton constraints for resolved ingredients in no alias family (e.g. a
-    # bare INCI typed verbatim, whose own alias entry maps only outside the catalog).
-    for concept in resolved_ing:
-        if concept.concept_id in used:
-            continue
-        used.add(concept.concept_id)
-        suffix = _concept_suffix(concept.concept_id)
-        surface = concept.matched_text or suffix
-        # name_surfaces (codex F3): the typed surface AND the INCI suffix, deduped.
-        name_surfaces = sorted({surface, suffix})
-        provenance = "raw" if _has_raw_surface([surface, suffix]) else "llm"
-        constraints.append(
-            IngredientConstraint(
-                label=surface,
-                inci_concept_ids=[concept.concept_id],
-                name_surfaces=name_surfaces,
+                name_surfaces=sorted(name_surfaces),
                 provenance=provenance,
             )
         )

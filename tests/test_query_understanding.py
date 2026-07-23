@@ -876,6 +876,107 @@ def test_llm_unmapped_negation_blob_kept_in_unresolved() -> None:
 
 
 # ---------------------------------------------------------------------------
+# [2026-07-23] Tier 3 reverse-containment → constraint building. A colloquial
+# expression ('콜라겐') that resolves MULTIPLE INCI must be ONE OR-constraint (not
+# per-id AND singletons), and its avoided twin ("콜라겐 없는") avoids all of them.
+# ---------------------------------------------------------------------------
+
+
+_COLLAGEN_SOL = "concept:Ingredient:솔루블콜라겐"
+_COLLAGEN_HYD = "concept:Ingredient:하이드롤라이즈드콜라겐"
+
+
+def _collagen_products() -> list[dict[str, Any]]:
+    return [
+        _product("P_col", category_name="크림", category_concept_ids=["concept:Category:크림"],
+                 ingredient_concept_ids=[_COLLAGEN_SOL, _COLLAGEN_HYD]),
+    ]
+
+
+def test_constraint_reverse_tier_is_single_or_constraint(monkeypatch: pytest.MonkeyPatch) -> None:
+    """'콜라겐' (single-word, dict fallback) resolves BOTH catalog collagen INCI via
+    Tier 3 → exactly ONE constraint whose inci are OR'd, so a product carrying only
+    ONE of them passes (an AND of two singletons would have failed it — the bug)."""
+    monkeypatch.delenv("GRAPHRAPPING_QUERY_LLM", raising=False)
+    from src.rec.ingredient_constraint import match_ingredient_constraint
+    interp = understand_query("콜라겐", _collagen_products())
+
+    assert len(interp.ingredient_constraints) == 1
+    c = interp.ingredient_constraints[0]
+    assert c.label == "콜라겐"
+    assert set(c.inci_concept_ids) == {_COLLAGEN_SOL, _COLLAGEN_HYD}
+    # OR semantics: a 솔루블콜라겐-ONLY product satisfies the single constraint.
+    only_sol = {"product_id": "X", "ingredient_ids": [], "ingredient_concept_ids": [_COLLAGEN_SOL],
+                "representative_product_name": ""}
+    assert match_ingredient_constraint(only_sol, c) == "ingredient"
+
+
+def test_avoided_reverse_tier_collagen_family(monkeypatch: pytest.MonkeyPatch) -> None:
+    """기피 auto-benefit: "콜라겐 없는 크림" avoids BOTH collagen INCI (the negation term
+    '콜라겐' flows through the same Tier 3 resolution) with no positive concept."""
+    monkeypatch.delenv("GRAPHRAPPING_QUERY_LLM", raising=False)
+    interp = understand_query("콜라겐 없는 크림", _collagen_products())
+    assert set(interp.avoided_ingredient_concept_ids) == {_COLLAGEN_SOL, _COLLAGEN_HYD}
+    assert not any(c.concept_type == "ingredient" for c in interp.resolved_concepts)
+
+
+def test_constraint_direct_inci_singleton_regression(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Regression: a directly-typed INCI ('레티놀', matched_text unique) is still ONE
+    singleton constraint — the matched_text grouping did not change this case."""
+    monkeypatch.delenv("GRAPHRAPPING_QUERY_LLM", raising=False)
+    interp = understand_query("레티놀 든거", _products())  # _products() carries 레티놀
+    retinol = [c for c in interp.ingredient_constraints
+               if "concept:Ingredient:레티놀" in c.inci_concept_ids]
+    assert len(retinol) == 1
+    assert retinol[0].inci_concept_ids == ["concept:Ingredient:레티놀"]
+    assert retinol[0].label == "레티놀"
+
+
+def test_constraint_family_plus_specific_inci_no_false_and_rejection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """[F2 codex repro] "히알루론 소듐하이알루로네이트" names BOTH the family (히알루론)
+    and a specific member. The (type,id) dedupe pins the shared 소듐 to the bare
+    expression's group, so the 히알루론 constraint must be filled with the FULL family
+    catalog signature (OR) — otherwise a 소듐-only product is falsely rejected by an
+    AND of {소듐}·{하이알루로닉}."""
+    monkeypatch.delenv("GRAPHRAPPING_QUERY_LLM", raising=False)
+    from src.rec.ingredient_constraint import product_passes_constraints
+
+    sod = "concept:Ingredient:소듐하이알루로네이트"
+    acid = "concept:Ingredient:하이알루로닉애씨드"
+    products = [
+        _product("SOD", ingredient_concept_ids=[sod]),
+        _product("ACID", ingredient_concept_ids=[acid]),
+    ]
+    interp = understand_query("히알루론 소듐하이알루로네이트", products)
+    cons = interp.ingredient_constraints
+    # The family (히알루론) constraint carries BOTH catalog siblings as an OR.
+    fam = [c for c in cons if c.label == "히알루론"]
+    assert fam and set(fam[0].inci_concept_ids) == {sod, acid}
+    # A 소듐-only product satisfies EVERY constraint (no false AND rejection).
+    sod_only = _product("X", ingredient_concept_ids=[sod])
+    assert product_passes_constraints(sod_only, cons) is True
+
+
+def test_reverse_tier_llm_wanted_provenance_rule() -> None:
+    """The LLM adopts '콜라겐' as ingredients_wanted; provenance follows the raw-surface
+    rule — "raw" when the expression is in the query, "llm" when only the LLM adds it."""
+    products = _collagen_products()
+    raw_hit = understand_query(
+        "콜라겐 크림 추천", products, llm=FakeLLMClient(_fake_json(ingredients_wanted=["콜라겐"])))
+    llm_only = understand_query(
+        "보습 크림 추천", products, llm=FakeLLMClient(_fake_json(ingredients_wanted=["콜라겐"])))
+
+    raw_c = [c for c in raw_hit.ingredient_constraints if c.label == "콜라겐"]
+    llm_c = [c for c in llm_only.ingredient_constraints if c.label == "콜라겐"]
+    assert len(raw_c) == 1 and raw_c[0].provenance == "raw"  # '콜라겐' present in query
+    assert len(llm_c) == 1 and llm_c[0].provenance == "llm"  # only the LLM supplied it
+    # Both are single OR-constraints regardless of provenance.
+    assert set(raw_c[0].inci_concept_ids) == {_COLLAGEN_SOL, _COLLAGEN_HYD}
+
+
+# ---------------------------------------------------------------------------
 # Real provider smoke test (only runs when a provider env is configured)
 # ---------------------------------------------------------------------------
 

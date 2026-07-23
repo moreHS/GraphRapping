@@ -67,6 +67,15 @@ from src.rec.semantic_compatibility import normalize_signal_id
 # already applied to keyword promotion in src/mart/build_serving_views.py).
 _MIN_SURFACE_LEN = 2
 
+# Tier 3 (reverse-containment) cardinality cap: if a colloquial expression is a
+# substring of MORE than this many distinct catalog INCI, it is too generic to be
+# a specific ingredient intent (오일 → 39 tokens) and adopts NOTHING (surfaced as
+# an unresolved chip instead). Specific families stay under it (콜라겐 2 /
+# 세라마이드 1 / 펩타이드 8), so the cap admits real ingredient names and rejects
+# category-like words. 10 = a conservative ceiling above the observed specific
+# families and well below the 오일 (39) over-general case.
+_REVERSE_MATCH_CAP = 10
+
 
 @dataclass(frozen=True)
 class MatchedConcept:
@@ -307,10 +316,19 @@ def resolve_query_concepts(
     # including the anonymous /api/search path that does not run the LLM negation
     # step. (``negated`` is computed once above, shared with the bare axis.)
     alias_hits: list[tuple[str, Any]] = []
+    # F1 (codex): dictionary COVERAGE of the expression — True when any alias key is
+    # a substring of the query, independent of the catalog-existence gate and of
+    # negation. This gates Tier 3 below: a curated expression (알코올) must suppress
+    # the reverse-containment fallback even when its curated target (변성알코올) is
+    # ABSENT from the current catalog — otherwise Tier 3 would wrongly sweep in the
+    # fatty alcohols the curation deliberately excludes. Adoption still passes
+    # through the catalog gate; only Tier 3 suppression keys off coverage.
+    alias_covered = False
     for alias_surface, inci_tokens in _ingredient_alias_dict().items():
         surface_norm = normalize_text(str(alias_surface))
         if len(surface_norm) < _MIN_SURFACE_LEN or surface_norm not in norm_query:
             continue
+        alias_covered = True
         if any(surface_norm in neg for neg in negated):
             continue
         alias_hits.append((str(alias_surface), inci_tokens or []))
@@ -342,6 +360,47 @@ def resolve_query_concepts(
                 concept_id = f"concept:Ingredient:{normalize_text(str(inci))}"
                 if concept_id in catalog_ingredient_ids:
                     _add("ingredient", concept_id, surface, surface)
+
+    # Ingredient Tier 3 (reverse containment): the dictionary handles names string
+    # matching can't bridge (히알루론↔하이알루로네이트) and curation (알코올=변성알코올 only);
+    # THIS tier normalizes a colloquial expression that string-CONTAINS INTO a catalog
+    # INCI ('콜라겐' ⊂ '솔루블콜라겐') WITHOUT needing a dictionary entry — so an LLM-
+    # extracted ingredient (or a single-word query) is not silently dropped just
+    # because it lacks an alias key. Fires ONLY when the bare axis (①) resolved NO
+    # ingredient AND the expression is NOT dictionary-covered (``alias_covered``,
+    # F1) — so a curated expression always defers to the dictionary (알코올 →
+    # 변성알코올 alone; Tier 3 never adds the fatty alcohols on top, even when the
+    # curated target is missing from the catalog). Self-limiting: a term only
+    # contains-INTO a single spaceless INCI token when it is a short isolated
+    # expression (an LLM slot item, a negation group1, a single-word query); a full
+    # multi-word query is a substring of no catalog token ("알콜업는 스킨케어" ⊄ any),
+    # so no path flag is needed.
+    if not alias_covered and not any(ctype == "ingredient" for ctype, _cid in found):
+        if len(norm_query) >= _MIN_SURFACE_LEN and not any(norm_query in neg for neg in negated):
+            # F4: scan distinct catalog INCI suffixes, stopping as soon as the count
+            # exceeds the cap (an over-general expression like 오일 → 39 INCI adopts
+            # nothing and stays honestly unresolved). No full materialize/sort in the
+            # reject case. NOTE (45k scale): replace this per-call linear scan with a
+            # suffix index rebuilt alongside the serving-store refresh; unnecessary at
+            # demo scale.
+            catalog_concept_ids = {
+                str(cid)
+                for product in products
+                for cid in (product.get("ingredient_concept_ids") or [])
+            }
+            reverse_ids: list[str] = []
+            over_cap = False
+            for cid in catalog_concept_ids:
+                suffix = normalize_text(_concept_suffix(cid))
+                if suffix != norm_query and norm_query in suffix:
+                    reverse_ids.append(cid)
+                    if len(reverse_ids) > _REVERSE_MATCH_CAP:
+                        over_cap = True
+                        break
+            if reverse_ids and not over_cap:
+                # sorted → deterministic adoption (set iteration order is arbitrary).
+                for cid in sorted(reverse_ids):
+                    _add("ingredient", cid, norm_query, norm_query)
 
     for group, keyword in _matching_category_groups(norm_query):
         _add(
@@ -495,14 +554,32 @@ def search_products(
     ``representative_product_name`` gets an extra ``product_name:<관용어>`` overlap
     axis so it clears the "overlap ≥ 1" / evidence gate (classified
     PRODUCT_MASTER_TRUTH). Defaults to ``None`` (no gate) so existing callers are
-    byte-identical. Callers pass only ``provenance == "raw"`` constraints.
+    byte-identical. Callers pass only ``provenance == "raw"`` constraints. When
+    constraints are present the empty-resolution short-circuit is skipped and the
+    families' INCI are synthesized as ingredient concepts (F3, codex), so an
+    ingredient-only query the LLM isolated but the multi-word text can't re-resolve
+    ("콜라겐 추천해줘") still ranks carriers and reports ``resolved``.
     """
     resolved = resolve_query_concepts(query_text, products)
+    constraints = list(ingredient_constraints or [])
+
+    # F3: synthesize the constraint families' INCI as ingredient concepts so a
+    # STRUCTURED carrier earns an ``ingredient:<concept_id>`` overlap via
+    # ``_product_overlap`` (name carriers earn ``product_name:<label>`` below), even
+    # when the full-query re-resolution above found nothing. The AND hard gate still
+    # runs per product, so a synthesized concept never admits a non-carrier.
+    if constraints:
+        seen = {(c.concept_type, c.concept_id) for c in resolved}
+        for constraint in constraints:
+            for cid in constraint.inci_concept_ids:
+                if ("ingredient", cid) not in seen:
+                    seen.add(("ingredient", cid))
+                    resolved.append(MatchedConcept("ingredient", cid, constraint.label, constraint.label))
+
     if not resolved:
         return SearchOutcome(query=query_text, resolved_concepts=[], results=[])
 
     avoided = {str(cid) for cid in (avoided_ingredient_concept_ids or []) if cid}
-    constraints = list(ingredient_constraints or [])
 
     items: list[SearchResultItem] = []
     for product in products:

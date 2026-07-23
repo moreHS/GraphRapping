@@ -125,6 +125,79 @@ def test_resolve_bare_ingredient_negation_span_not_adopted():
     assert positive == {"concept:Ingredient:레티놀"}
 
 
+# ---------------------------------------------------------------------------
+# Ingredient Tier 3 (reverse containment): a colloquial expression that string-
+# CONTAINS INTO catalog INCI ('콜라겐' ⊂ '솔루블콜라겐') resolves WITHOUT a dictionary
+# entry — but only when the bare axis + alias layer found no ingredient (curation
+# wins), a cardinality cap rejects over-general words (오일), and a full multi-word
+# query never fires (self-limiting).
+# ---------------------------------------------------------------------------
+
+
+def _ing_ids(query: str, products: list[dict[str, Any]]) -> set[str]:
+    return {c.concept_id for c in resolve_query_concepts(query, products) if c.concept_type == "ingredient"}
+
+
+def test_reverse_tier_colloquial_resolves_containing_inci():
+    from src.rec.search import _REVERSE_MATCH_CAP  # noqa: F401 (import proves symbol)
+    products = [_product("P", ingredient_concept_ids=[
+        "concept:Ingredient:솔루블콜라겐", "concept:Ingredient:하이드롤라이즈드콜라겐",
+    ])]
+    concepts = [c for c in resolve_query_concepts("콜라겐", products) if c.concept_type == "ingredient"]
+    assert {c.concept_id for c in concepts} == {
+        "concept:Ingredient:솔루블콜라겐", "concept:Ingredient:하이드롤라이즈드콜라겐",
+    }
+    assert all(c.matched_text == "콜라겐" and c.label == "콜라겐" for c in concepts)  # user's expression
+
+
+def test_reverse_tier_single_containing_inci():
+    products = [_product("P", ingredient_concept_ids=["concept:Ingredient:세라마이드엔피"])]
+    assert _ing_ids("세라마이드", products) == {"concept:Ingredient:세라마이드엔피"}
+
+
+def test_reverse_tier_cap_rejects_overgeneral_expression():
+    from src.rec.search import _REVERSE_MATCH_CAP
+    cids = [f"concept:Ingredient:테스트{i}" for i in range(_REVERSE_MATCH_CAP + 1)]
+    products = [_product("P", ingredient_concept_ids=cids)]
+    # cap+1 distinct INCI contain "테스트" → too general → adopt nothing (unresolved).
+    assert _ing_ids("테스트", products) == set()
+
+
+def test_reverse_tier_within_cap_adopts_all():
+    from src.rec.search import _REVERSE_MATCH_CAP
+    cids = [f"concept:Ingredient:테스트{i}" for i in range(_REVERSE_MATCH_CAP)]
+    products = [_product("P", ingredient_concept_ids=cids)]
+    assert _ing_ids("테스트", products) == set(cids)  # exactly cap → still adopts
+
+
+def test_reverse_tier_skipped_when_alias_curated():
+    """Curation priority: '알코올' resolves 변성알코올 via the alias layer, so Tier 3
+    never fires and does NOT add the fatty alcohols it string-contains-into."""
+    products = [_product("P", ingredient_concept_ids=[
+        "concept:Ingredient:변성알코올", "concept:Ingredient:세틸알코올",
+    ])]
+    assert _ing_ids("알코올 든거", products) == {"concept:Ingredient:변성알코올"}
+
+
+def test_reverse_tier_full_query_does_not_fire():
+    """Self-limiting: a full multi-word query is a substring of no single catalog
+    token, so Tier 3 never fires on it (positive multi-word resolution relies on the
+    LLM isolating the ingredient slot)."""
+    products = [_product("P", ingredient_concept_ids=["concept:Ingredient:솔루블콜라겐"])]
+    assert _ing_ids("콜라겐 든 크림", products) == set()
+
+
+def test_reverse_tier_suppressed_by_dictionary_coverage_even_if_target_absent():
+    """[F1 codex] Curation priority keys off DICTIONARY COVERAGE, not adoption
+    success: '알코올' is a curated alias key, so Tier 3 is suppressed even when the
+    curated target (변성알코올) is ABSENT from the catalog — the fatty alcohols the
+    expression string-contains-into are NOT swept in, they stay unresolved."""
+    products = [_product("F", ingredient_concept_ids=[
+        "concept:Ingredient:세틸알코올", "concept:Ingredient:미리스틸알코올",
+    ])]
+    assert _ing_ids("알코올 든거", products) == set()  # curation covers 알코올 → no Tier 3
+
+
 def test_resolve_multiple_axes_in_one_query():
     """The fable_doc §4.2 completion example: '보습 잘 되는 스킨케어' resolves
     a goal, a keyword, and a category group simultaneously."""
@@ -646,3 +719,31 @@ def test_search_ingredient_constraint_default_none_byte_identical():
     baseline = search_products("보습 크림", products)
     with_none = search_products("보습 크림", products, ingredient_constraints=None)
     assert with_none.to_dict() == baseline.to_dict()
+
+
+def test_search_honors_constraints_when_query_reresolves_empty():
+    """[F3 codex] "콜라겐 추천해줘" (no category / known concept — the LLM isolated the
+    ingredient) still ranks carriers: constraints skip the empty-resolution short-
+    circuit, structured carriers earn an ``ingredient:`` overlap (PRODUCT_MASTER_TRUTH),
+    and the outcome reports resolved. Non-carriers are still AND-gated out."""
+    SOL, HYD = "concept:Ingredient:솔루블콜라겐", "concept:Ingredient:하이드롤라이즈드콜라겐"
+    products = [
+        _product("C1", ingredient_concept_ids=[SOL]),
+        _product("C2", ingredient_concept_ids=[HYD]),
+        _product("N", ingredient_concept_ids=["concept:Ingredient:정제수"]),
+    ]
+    con = IngredientConstraint("콜라겐", [SOL, HYD], ["콜라겐"], "raw")
+    outcome = search_products("콜라겐 추천해줘", products, ingredient_constraints=[con])
+
+    assert outcome.resolved is True  # constraint presence → resolved
+    assert {r.product_id for r in outcome.results} == {"C1", "C2"}  # N (non-carrier) gated out
+    c1 = next(r for r in outcome.results if r.product_id == "C1")
+    assert f"ingredient:{SOL}" in c1.matched_concepts
+    assert "PRODUCT_MASTER_TRUTH" in c1.eligibility.evidence_families
+
+
+def test_search_no_constraint_empty_resolution_still_short_circuits():
+    """The F3 skip is constraint-gated: WITHOUT constraints an unresolvable query
+    keeps the empty/unresolved outcome (no blanket removal of the short-circuit)."""
+    outcome = search_products("zzzz_no_such_concept_zzzz", [_product("P")])
+    assert outcome.resolved is False and outcome.results == []
