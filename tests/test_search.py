@@ -20,7 +20,7 @@ from typing import Any
 import pytest
 
 from src.rec.ingredient_constraint import IngredientConstraint
-from src.rec.search import resolve_query_concepts, search_products
+from src.rec.search import MatchedConcept, resolve_query_concepts, search_products
 from src.web import server
 from src.web.state import DemoState
 
@@ -747,3 +747,199 @@ def test_search_no_constraint_empty_resolution_still_short_circuits():
     keeps the empty/unresolved outcome (no blanket removal of the short-circuit)."""
     outcome = search_products("zzzz_no_such_concept_zzzz", [_product("P")])
     assert outcome.resolved is False and outcome.results == []
+
+
+# ---------------------------------------------------------------------------
+# Search-absorption A1: product-name axis (resolve a specific product_id from
+# representative_product_name), _product_overlap product axis, and search_products
+# pins/exclusions.
+# ---------------------------------------------------------------------------
+
+
+def _named(pid: str, rep_name: str, **overrides: Any) -> dict[str, Any]:
+    """A product carrying a representative_product_name (the A1 product axis)."""
+    return _product(pid, representative_product_name=rep_name, **overrides)
+
+
+def _prod_ids(query: str, products: list[dict[str, Any]]) -> set[str]:
+    return {c.concept_id for c in resolve_query_concepts(query, products) if c.concept_type == "product"}
+
+
+def test_resolve_product_axis_forward_full_name_in_query():
+    """Forward: the FULL product name appearing in the query resolves that product
+    (concept_id = product_id, label = representative_product_name)."""
+    products = [_named("50165", "설화수 윤조에센스"), _named("50166", "설화수 윤조에센스 미스트")]
+    concepts = [c for c in resolve_query_concepts("설화수 윤조에센스 어때", products)
+                if c.concept_type == "product"]
+    # The essence's full name is a substring of the query; the mist's is not.
+    assert {c.concept_id for c in concepts} == {"50165"}
+    assert concepts[0].label == "설화수 윤조에센스"  # label is the product name
+
+
+def test_resolve_product_axis_reverse_isolated_term_in_name():
+    """Reverse (isolated expression, the LLM ``product_names`` slot path): a single
+    expression that is a substring of product names resolves them — mirrors Tier 3.
+    Here '윤조에센스' sits inside BOTH the essence and its mist variant."""
+    products = [_named("50165", "설화수 윤조에센스"), _named("50166", "설화수 윤조에센스 미스트")]
+    assert _prod_ids("윤조에센스", products) == {"50165", "50166"}
+
+
+def test_resolve_product_axis_reverse_self_limiting_multiword_query():
+    """Self-limiting: a multi-word query with filler is a substring of no product
+    name, so reverse does not fire on the raw multi-word query (the LLM slot term,
+    resolved in isolation, is the recall path — see the reverse test above)."""
+    products = [_named("50165", "윤조에센스")]
+    # forward also cannot fire (the name is not fully in this query verbatim).
+    assert _prod_ids("좋은 에센스 아무거나 추천", products) == set()
+
+
+def test_resolve_product_axis_reverse_cap_rejects_generic_word():
+    from src.rec.search import _PRODUCT_NAME_MATCH_CAP
+    # Use a non-category token ("테스트"); a bare category tab word is suppressed by
+    # F8 regardless of the cap (see test_resolve_product_axis_group_keyword_suppressed).
+    over = [_named(f"C{i}", f"테스트{i}") for i in range(_PRODUCT_NAME_MATCH_CAP + 1)]
+    assert _prod_ids("테스트", over) == set()  # cap+1 distinct names → too generic
+    within = [_named(f"C{i}", f"테스트{i}") for i in range(_PRODUCT_NAME_MATCH_CAP)]
+    assert _prod_ids("테스트", within) == {f"C{i}" for i in range(_PRODUCT_NAME_MATCH_CAP)}
+
+
+def test_resolve_product_axis_group_keyword_suppressed():
+    """[F8] A bare category-group tab keyword ("스킨케어") is a browse intent, so it
+    must NOT reverse-pin a product whose name contains it ("스킨케어 세트")."""
+    products = [_named("S1", "데일리 스킨케어 세트")]
+    assert _prod_ids("스킨케어", products) == set()  # group keyword → suppressed
+    # A specific (non-tab) expression inside the name still resolves.
+    assert _prod_ids("데일리 스킨케어 세트", products) == {"S1"}  # forward, precise
+
+
+def test_resolve_product_axis_negation_span_not_adopted():
+    """A negated product name ("윤조에센스 빼고") is not positively adopted as a
+    product concept (the excluded-product subtraction in query_understanding is the
+    robust twin; this is the resolution-level guard)."""
+    products = [_named("50165", "설화수 윤조에센스")]
+    assert _prod_ids("설화수 윤조에센스 빼고 다른거", products) == set()
+    # Sanity: without the negation marker the essence IS resolved (proves the guard).
+    assert _prod_ids("설화수 윤조에센스 어때", products) == {"50165"}
+
+
+def test_resolve_product_axis_absent_name_is_noop():
+    """A product with no representative_product_name never resolves a product
+    concept (the default _product fixture is unaffected — byte-identity guard)."""
+    assert _prod_ids("설화수 윤조에센스", [_product("P1")]) == set()
+
+
+def test_product_overlap_matches_only_own_id():
+    """_product_overlap emits ``product:<pid>`` ONLY for the product whose own id
+    equals the resolved product concept — a different product gets nothing."""
+    from src.rec.search import _product_overlap
+    concept = MatchedConcept("product", "50165", "설화수 윤조에센스", "설화수 윤조에센스")
+    own = _named("50165", "설화수 윤조에센스")
+    other = _named("50166", "설화수 윤조에센스 미스트")
+    assert _product_overlap(own, [concept]) == ["product:50165"]
+    assert _product_overlap(other, [concept]) == []
+
+
+def test_product_overlap_is_master_truth():
+    """The ``product:<pid>`` overlap classifies as PRODUCT_MASTER_TRUTH (evidence-
+    qualified) — a named product clears the gate with no other overlap."""
+    from src.rec.recommendation_evidence_index import build_candidate_eligibility
+    elig = build_candidate_eligibility(["product:50165"])
+    assert elig.eligible is True
+    assert "PRODUCT_MASTER_TRUTH" in elig.evidence_families
+
+
+# --- search_products pins/exclusions ---
+
+
+def _pin_universe() -> list[dict[str, Any]]:
+    # P_pin matches the query ONLY by being the named product (no other overlap);
+    # P_rich matches on brand+goal so it out-scores the pin on raw relevance.
+    return [
+        _named("P_pin", "설화수 윤조에센스"),
+        _named("P_rich", "리치 에센스",
+               brand_name="설화수", brand_concept_ids=["concept:Brand:설화수"],
+               main_benefit_concept_ids=["concept:Goal:보습"]),
+    ]
+
+
+def test_search_pin_leads_block_despite_lower_relevance():
+    """A pin leads the results even when a non-pin scores higher on raw overlap:
+    the leading pin block is assembled before the max_results cut."""
+    outcome = search_products(
+        "설화수 윤조에센스 보습",
+        _pin_universe(),
+        query_product_ids={"P_pin"},
+    )
+    ids = [r.product_id for r in outcome.results]
+    assert ids[0] == "P_pin"  # pinned, leads the block
+    assert "P_rich" in ids
+    pin = outcome.results[0]
+    assert "product:P_pin" in pin.matched_concepts
+    assert "PRODUCT_MASTER_TRUTH" in pin.eligibility.evidence_families
+
+
+def test_search_pin_synthesized_when_query_cannot_reresolve():
+    """[LLM-slot parity] A pin the raw multi-word query cannot re-resolve is still
+    synthesized (labelled from its name) → ranked + reported resolved. Mirrors the
+    F3 ingredient-constraint synthesis."""
+    products = [_named("P_pin", "윤조에센스")]
+    outcome = search_products(
+        "좋은거 아무거나 추천해줘",  # resolves nothing on its own
+        products,
+        query_product_ids={"P_pin"},
+    )
+    assert outcome.resolved is True
+    assert [r.product_id for r in outcome.results] == ["P_pin"]
+    assert "product:P_pin" in outcome.results[0].matched_concepts
+
+
+def test_search_excluded_product_removed_from_results():
+    """An excluded product id is removed entirely, even when it matches on brand."""
+    products = [
+        _named("P_keep", "리치 에센스", brand_name="설화수",
+               brand_concept_ids=["concept:Brand:설화수"]),
+        _named("P_drop", "설화수 윤조에센스", brand_name="설화수",
+               brand_concept_ids=["concept:Brand:설화수"]),
+    ]
+    outcome = search_products("설화수 에센스", products, excluded_product_ids={"P_drop"})
+    ids = {r.product_id for r in outcome.results}
+    assert ids == {"P_keep"}  # the excluded product is gone from brand results
+
+
+def test_search_exclusion_wins_over_pin():
+    """A product both pinned and excluded is excluded (exclusion wins)."""
+    products = [_named("P", "설화수 윤조에센스", brand_name="설화수",
+                       brand_concept_ids=["concept:Brand:설화수"])]
+    outcome = search_products(
+        "설화수 에센스", products,
+        query_product_ids={"P"}, excluded_product_ids={"P"},
+    )
+    assert outcome.results == []
+
+
+def test_search_pins_default_none_byte_identical():
+    products = _pin_universe()
+    baseline = search_products("설화수 보습", products)
+    with_none = search_products("설화수 보습", products,
+                                query_product_ids=None, excluded_product_ids=None)
+    assert with_none.to_dict() == baseline.to_dict()
+
+
+def test_search_caller_authoritative_suppresses_reresolved_product():
+    """[F1] When the caller passes the A1 params (not None), the internal
+    re-resolution's product concepts are restricted to the pin set — a product the
+    caller's (guarded) interpretation dropped is NOT re-introduced by the raw text."""
+    products = [
+        _named("P", "설화수 윤조에센스", brand_name="설화수",
+               brand_concept_ids=["concept:Brand:설화수"]),
+    ]
+    # Authoritative EMPTY pin set (params passed) → no product: overlap, though the
+    # product still matches on brand.
+    auth = search_products("설화수 윤조에센스", products,
+                           query_product_ids=set(), excluded_product_ids=set())
+    res = next(r for r in auth.results if r.product_id == "P")
+    assert "product:P" not in res.matched_concepts
+    # Legacy autonomous (both None) DOES adopt the forward-matched product.
+    legacy = search_products("설화수 윤조에센스", products)
+    res2 = next(r for r in legacy.results if r.product_id == "P")
+    assert "product:P" in res2.matched_concepts

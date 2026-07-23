@@ -39,7 +39,7 @@ from src.rec.scoped_preferences import (
     iter_scoped_preferences,
 )
 from src.rec.scorer import Scorer
-from src.rec.reranker import rerank
+from src.rec.reranker import rerank, RerankedProduct
 from src.rec.explainer import explain, ExplanationService
 from src.rec.search import search_products
 # `_product_overlap` is imported read-only: it is the exact predicate search uses
@@ -665,6 +665,76 @@ def _similar_signal_field(sig: Any, key: str) -> Any:
     return getattr(sig, key, None)
 
 
+def _rerank_with_pins(
+    scored: list[tuple[Any, Any]],
+    *,
+    pins: set[str],
+    product_map: dict[str, dict[str, Any]],
+    diversity_weight: float,
+    top_k: int,
+    mode: RecommendationMode,
+) -> tuple[list[RerankedProduct], list[str]]:
+    """A1 pin-aware rerank. Returns ``(reranked, topk_cut_pin_ids)``.
+
+    The diversity reranker has a ``top_k*2`` window + a ``top_k`` cut that can drop
+    a low-scoring pin, so the pin block is held OUT of the reranker and assembled as
+    a leading block (score-desc within the block — ``scored`` is pre-sorted); the
+    non-pinned candidates rerank into the remaining ``top_k - |pins|`` slots. When
+    the pins alone fill/exceed ``top_k`` the response-size contract (top_k) wins:
+    the reranker is skipped and the lowest-scored pins beyond ``top_k`` are CUT and
+    reported in ``topk_cut_pin_ids`` (F6, reason="top_k" in the caller's trace).
+    ``final_rank`` is reassigned across the assembled list (single owner — no
+    post-serialize sort), so the downstream ``rank = final_rank + 1`` is contiguous
+    with no dupes. Duplicate product_ids in ``scored`` are collapsed to their first
+    occurrence (F9). ``top_k <= 0`` yields no results (F11 — no negative slicing).
+    Empty pins → the exact prior ``rerank`` call (byte-identical)."""
+    if not pins:
+        return rerank(
+            [s for _, s in scored], product_profiles=product_map,
+            diversity_weight=diversity_weight, top_k=top_k, mode=mode,
+        ), []
+    # F9: collapse duplicate product_ids (keep first occurrence, preserving order).
+    seen_ids: set[str] = set()
+    deduped: list[tuple[Any, Any]] = []
+    for c, s in scored:
+        if c.product_id not in seen_ids:
+            seen_ids.add(c.product_id)
+            deduped.append((c, s))
+    scored = deduped
+
+    keep = max(0, top_k)  # F11: negative/0 top_k → no negative slicing
+    pinned_scored = [(c, s) for c, s in scored if c.product_id in pins]
+    rest_scored = [(c, s) for c, s in scored if c.product_id not in pins]
+    n_pins = len(pinned_scored)
+    topk_cut: list[str] = []
+    if n_pins >= keep:
+        rest_reranked: list[RerankedProduct] = []
+        pinned_used = pinned_scored[:keep]
+        topk_cut = [c.product_id for c, _s in pinned_scored[keep:]]  # F6
+    else:
+        rest_reranked = rerank(
+            [s for _, s in rest_scored], product_profiles=product_map,
+            diversity_weight=diversity_weight, top_k=keep - n_pins, mode=mode,
+        )
+        pinned_used = pinned_scored
+    assembled: list[RerankedProduct] = [
+        RerankedProduct(
+            product_id=sp.product_id,
+            original_rank=idx,
+            final_rank=idx,
+            final_score=round(sp.final_score, 4),
+            rank_score=round(sp.final_score, 4),  # pin block has no diversity adjustment
+            diversity_bonus=0.0,
+            contribution_log=sp.feature_contributions,
+        )
+        for idx, (_c, sp) in enumerate(pinned_used)
+    ]
+    assembled.extend(rest_reranked)
+    for i, r in enumerate(assembled):
+        r.final_rank = i
+    return assembled, topk_cut
+
+
 async def _run_scored_pipeline(
     *,
     store: ServingStore,
@@ -676,9 +746,15 @@ async def _run_scored_pipeline(
     diversity_weight: float,
     top_k: int,
     ingredient_name_labels: dict[str, list[str]] | None = None,
-) -> tuple[list[dict[str, Any]], int]:
+    query_product_ids: set[str] | None = None,
+    excluded_product_ids: set[str] | None = None,
+) -> tuple[list[dict[str, Any]], int, list[str]]:
     """Shared recommend pipeline: prefilter -> candidates -> score -> rerank ->
     explain -> per-path snippets -> result dicts.
+
+    Returns ``(results, candidate_count, topk_cut_pin_ids)`` — the last is the pins
+    the response-size (top_k) cut dropped (A1 F6; ``[]`` on the no-pin recommend
+    path).
 
     Extracted verbatim from the /api/recommend handler so /api/ask's query-scoped
     recommend mode reuses the identical candidate/score/explain/snippet path. The
@@ -689,7 +765,15 @@ async def _run_scored_pipeline(
     ``ingredient_name_labels`` (Phase 6 B2) is forwarded to the candidate generator
     so a name-only wanted-ingredient carrier earns a ``product_name:<관용어>``
     overlap axis (evidence-qualified, PRODUCT_MASTER_TRUTH). None (default; the
-    /api/recommend caller) keeps the pipeline byte-identical."""
+    /api/recommend caller) keeps the pipeline byte-identical.
+
+    ``query_product_ids`` / ``excluded_product_ids`` (search-absorption A1) are
+    forwarded to the candidate generator (pins earn a ``product:<pid>`` master-truth
+    overlap + survive the retrieval cut; excluded products are hard-filtered). Pins
+    are additionally re-unioned into the prefiltered set (so a SQL prefilter can
+    never drop a named product) and drive the pin-aware rerank assembly below. None
+    (default; the /api/recommend caller) keeps the pipeline byte-identical."""
+    pins = query_product_ids or set()
     prefiltered_product_ids = candidate_universe_ids
     if _candidate_prefilter_enabled():
         # Optional store capability (duck-typed like provenance.prefetch): the
@@ -700,6 +784,16 @@ async def _run_scored_pipeline(
                 user_profile=user_profile,
                 candidate_universe=candidate_universe_ids,
             )
+
+    # A1: re-union pins into the prefiltered set so a SQL prefilter (or any
+    # narrowing above) can never drop a named product. The caller already verified
+    # pins pass the hard gates (category/ingredient/avoided/excluded), so this only
+    # re-adds a survivor the prefilter may have dropped — order-preserving append.
+    if pins:
+        present = set(prefiltered_product_ids)
+        prefiltered_product_ids = list(prefiltered_product_ids) + [
+            pid for pid in candidate_universe_ids if pid in pins and pid not in present
+        ]
 
     # Phase 8 G4: assemble the similar-boost index from the store's ungated
     # similarity sidecar × the user's owned products. Optional store capability
@@ -747,6 +841,8 @@ async def _run_scored_pipeline(
         max_candidates=50,
         similar_boost=similar_boost,
         ingredient_name_labels=ingredient_name_labels,
+        query_product_ids=query_product_ids,
+        excluded_product_ids=excluded_product_ids,
     )
 
     scored = []
@@ -758,8 +854,10 @@ async def _run_scored_pipeline(
 
     scored.sort(key=lambda x: x[1].final_score, reverse=True)
 
-    reranked = rerank([s for _, s in scored], product_profiles=product_map,
-                      diversity_weight=diversity_weight, top_k=top_k, mode=mode)
+    reranked, topk_cut_pins = _rerank_with_pins(
+        scored, pins=pins, product_map=product_map,
+        diversity_weight=diversity_weight, top_k=top_k, mode=mode,
+    )
     summary_by_product = await fetch_sidecar_summaries([r.product_id for r in reranked])
 
     # Pre-pass: pair each reranked product with its candidate/score/explanation.
@@ -835,7 +933,7 @@ async def _run_scored_pipeline(
             "hooks": {"discovery": hooks.discovery, "consideration": hooks.consideration, "conversion": hooks.conversion},
         })
 
-    return results, len(candidates)
+    return results, len(candidates), topk_cut_pins
 
 
 @app.post("/api/recommend")
@@ -912,7 +1010,7 @@ async def recommend(req: RecommendRequest):
         scorer.load_config()
     weights = scorer.weights
 
-    results, candidate_count = await _run_scored_pipeline(
+    results, candidate_count, _topk_cut = await _run_scored_pipeline(
         store=store,
         user_profile=user,
         product_map=product_map,
@@ -1531,11 +1629,17 @@ def _narrow_candidate_universe(
     Ingredient concepts are EXCLUDED from this OR-reduction (Phase 6 B2): the
     wanted-ingredient hard gate already narrowed the universe upstream, so counting
     ingredient here would double-apply it (raw families) or let an LLM-only family
-    hard-narrow the universe (llm families are soft-boost only)."""
+    hard-narrow the universe (llm families are soft-boost only).
+
+    Product concepts (A1) are EXCLUDED too: a pin overlaps only its own product, so
+    including it would collapse the soft-narrowed universe to just the pin(s) when a
+    product is the query's only non-category/ingredient concept — losing the
+    surrounding personalized recommendations. Pin inclusion is handled by the
+    caller's universe-union + the pin-block assembly, not by soft narrowing."""
     narrowing: list[MatchedConcept] = [
         c
         for c in interp.resolved_concepts
-        if c.concept_type not in ("category", "ingredient")
+        if c.concept_type not in ("category", "ingredient", "product")
     ]
     if not narrowing:
         return list(category_universe_ids), False
@@ -1646,6 +1750,27 @@ async def _anonymous_ask_payload(
     avoided_ids = interp.avoided_ingredient_concept_ids
     query_avoided = {str(cid) for cid in (avoided_ids or []) if cid}
     max_results = _clamp_search_top_k(top_k)
+    # A1: product pins + exclusions (exclusion wins over pin).
+    excluded_product_ids = {str(pid) for pid in interp.excluded_product_ids if pid}
+    raw_pins = {
+        c.concept_id for c in interp.resolved_concepts if c.concept_type == "product"
+    } - excluded_product_ids
+    products_by_id = {str(p.get("product_id") or ""): p for p in products}
+    # F4: the category gate is a hard filter over PINS (parity with login). With an
+    # explicit group, a pin classifying to a different group is dropped (reason
+    # "category"); general search results are NOT category-gated here (legacy — a
+    # separate decision). None-group leaves every pin eligible.
+    pin_category_dropped: list[dict[str, str]] = []
+    if category_group != "all":
+        query_product_ids: set[str] = set()
+        for pid in raw_pins:
+            product = products_by_id.get(pid)
+            if product is not None and classify_product_category_group(product) == category_group:
+                query_product_ids.add(pid)
+            else:
+                pin_category_dropped.append({"id": pid, "reason": "category"})
+    else:
+        query_product_ids = set(raw_pins)
 
     def _carries_avoided(product: dict[str, Any]) -> bool:
         return bool(query_avoided) and bool(
@@ -1664,11 +1789,13 @@ async def _anonymous_ask_payload(
         else:
             universe = products
         # F5: matched = carriers in the (category) universe AFTER removing avoided
-        # carriers, so applied/relaxed reflect what search_products actually
-        # returns — never applied=true with 0 results.
+        # AND negated-product carriers, so applied/relaxed reflect what
+        # search_products actually returns — never applied=true with 0 results.
         matched_products = [
             p for p in universe
-            if not _carries_avoided(p) and product_passes_constraints(p, raw_constraints)
+            if not _carries_avoided(p)
+            and str(p.get("product_id") or "") not in excluded_product_ids
+            and product_passes_constraints(p, raw_constraints)
         ]
         ingredient_relaxed = not matched_products
         outcome = search_products(
@@ -1679,6 +1806,10 @@ async def _anonymous_ask_payload(
             # Relax the ingredient condition ONLY (category + avoided still apply)
             # when nothing carries the family — broaden honestly rather than [].
             ingredient_constraints=None if ingredient_relaxed else raw_constraints,
+            # F1: pass the sets (not None) so search_products treats the guarded
+            # interpretation as authoritative over internal product re-resolution.
+            query_product_ids=query_product_ids,
+            excluded_product_ids=excluded_product_ids,
         )
         ingredient_filter = _ingredient_filter_meta(
             [c.label for c in raw_constraints],
@@ -1692,6 +1823,8 @@ async def _anonymous_ask_payload(
             products,
             max_results=max_results,
             avoided_ingredient_concept_ids=avoided_ids,
+            query_product_ids=query_product_ids,
+            excluded_product_ids=excluded_product_ids,
         )
         ingredient_filter = _ingredient_filter_meta([], 0, False, None)
 
@@ -1710,6 +1843,7 @@ async def _anonymous_ask_payload(
         exclude_ids.update(
             str(p.get("product_id")) for p in products if _carries_avoided(p)
         )
+    exclude_ids |= excluded_product_ids  # A1: a negated product is excluded from related too
     require_ids: set[str] | None = None
     if raw_constraints and not ingredient_relaxed:
         require_ids = {
@@ -1717,8 +1851,25 @@ async def _anonymous_ask_payload(
             for p in products
             if p.get("product_id") and product_passes_constraints(p, raw_constraints)
         }
+    # A1: anchor related on the pinned products first, then the remaining results.
+    # ``pinned_applied`` follows the result order (search_products already assembled
+    # pins as a leading, relevance-ordered block) → deterministic (F10-consistent).
+    result_id_set = set(search_result_pids)
+    pinned_applied = [pid for pid in search_result_pids if pid in query_product_ids]
+    # Pin trace (F12): the excluded reason is recorded here (excluded products were
+    # never in query_product_ids, so they are added explicitly), plus category-gated
+    # pins (F4), plus any remaining pin that did not reach the results.
+    pinned_dropped = [{"id": pid, "reason": "excluded_product"} for pid in sorted(excluded_product_ids)]
+    pinned_dropped += pin_category_dropped
+    pinned_dropped += [
+        {"id": pid, "reason": "filtered"}
+        for pid in sorted(query_product_ids)
+        if pid not in result_id_set
+    ]
+    pinned_applied_set = set(pinned_applied)
+    anchor_order = pinned_applied + [p for p in search_result_pids if p not in pinned_applied_set]
     related = await _related_products(
-        search_result_pids[:5],
+        anchor_order[:5],
         store=store,
         exclude_ids=exclude_ids,
         anchor_names=_related_anchor_names(search_results),
@@ -1734,6 +1885,10 @@ async def _anonymous_ask_payload(
         "preset_used": None,
         "message": None if outcome.resolved else _SEARCH_NO_CONCEPT_MESSAGE,
         "ingredient_filter": ingredient_filter,
+        # [A1] Pin trace (same shape as the recommend branch): named products
+        # pinned into the results, and any pin removed (excluded / filtered).
+        "pinned_product_ids": pinned_applied,
+        "pinned_dropped": pinned_dropped,
         "results": search_results,
         "related_products": related,
     }
@@ -1791,6 +1946,9 @@ async def ask(req: AskRequest):
     # Avoided-ingredient carriers (query-injected AVOIDS_INGREDIENT + stored prefs)
     # computed once — reused by both the ingredient gate (F5) and related below.
     avoided_pids = _avoided_ingredient_product_ids(user_scoped, product_map)
+    # A1: products the query negated by name — computed here (before the gate) so
+    # the ingredient relax count excludes them (F5), reused by the pin trace below.
+    excluded_product_ids = {str(pid) for pid in interp.excluded_product_ids if pid}
 
     # Ingredient HARD gate (raw-provenance families only), applied INSIDE the
     # category universe, BEFORE soft narrowing (plan §B2 order). A product passes
@@ -1802,13 +1960,14 @@ async def ask(req: AskRequest):
     ingredient_matched_count = 0
     ingredient_name_labels: dict[str, list[str]] = {}
     if raw_constraints:
-        # F5: exclude avoided carriers from the gate universe BEFORE counting, so
-        # matched/relaxed reflect the true candidate set — never applied=true while
-        # every carrier is dropped by the avoided filter (→ 0 results).
+        # F5: exclude avoided AND negated-product carriers from the gate universe
+        # BEFORE counting, so matched/relaxed reflect the true candidate set — never
+        # applied=true while every carrier is dropped by avoided/excluded (→ 0 results).
         gated_ids = [
             pid
             for pid in category_universe_ids
             if pid not in avoided_pids
+            and pid not in excluded_product_ids
             and product_passes_constraints(product_map[pid], raw_constraints)
         ]
         ingredient_matched_count = len(gated_ids)
@@ -1827,9 +1986,52 @@ async def ask(req: AskRequest):
     else:
         ingredient_universe_ids = category_universe_ids
 
+    # --- A1: product pins + exclusions ---
+    # Pins are the query's resolved product concepts (the brand-contradiction guard
+    # already dropped brand-mismatched products upstream). Exclusions are products
+    # the query negated by name. A pin hit by a HARD gate — excluded / outside the
+    # category universe / avoided-ingredient carrier / failing an ACTIVE ingredient
+    # gate — is recorded in the trace instead of pinned (hard filters beat pins);
+    # the survivors are unioned into the candidate universe below so soft narrowing
+    # cannot drop them.
+    query_product_ids = {
+        c.concept_id for c in interp.resolved_concepts if c.concept_type == "product"
+    }
+    # ``excluded_product_ids`` computed above (before the ingredient gate, F5).
+    pinned_dropped: list[dict[str, str]] = []
+    # F12: record the excluded reason in the trace BEFORE removing exclusions from
+    # the pin set — otherwise the "excluded_product" reason is unreachable.
+    for pid in sorted(excluded_product_ids):
+        pinned_dropped.append({"id": pid, "reason": "excluded_product"})
+    query_product_ids -= excluded_product_ids  # exclusion wins over pin
+    category_universe_set = set(category_universe_ids)
+    pinned_survivors: list[str] = []
+    for pid in sorted(query_product_ids):
+        if pid not in product_map:
+            pinned_dropped.append({"id": pid, "reason": "unknown_product"})
+        elif pid not in category_universe_set:
+            pinned_dropped.append({"id": pid, "reason": "category_mismatch"})
+        elif pid in avoided_pids:
+            pinned_dropped.append({"id": pid, "reason": "avoided_ingredient"})
+        elif (
+            raw_constraints
+            and not ingredient_relaxed
+            and not product_passes_constraints(product_map[pid], raw_constraints)
+        ):
+            pinned_dropped.append({"id": pid, "reason": "ingredient_gate"})
+        else:
+            pinned_survivors.append(pid)
+
     candidate_universe_ids, soft_relaxed = _narrow_candidate_universe(
         interp, product_map, ingredient_universe_ids,
     )
+    # A1: union pin survivors so soft narrowing never drops a named product (order-
+    # preserving append; pins already passed every hard gate above).
+    if pinned_survivors:
+        seen_universe = set(candidate_universe_ids)
+        candidate_universe_ids = list(candidate_universe_ids) + [
+            pid for pid in pinned_survivors if pid not in seen_universe
+        ]
     # Top-level relaxed = soft-narrow relax ∨ ingredient relax (plan §B2); the
     # ingredient-specific reason rides in ``ingredient_filter`` below.
     relaxed = soft_relaxed or ingredient_relaxed
@@ -1842,7 +2044,7 @@ async def ask(req: AskRequest):
     mode_map = {"strict": RecommendationMode.STRICT, "explore": RecommendationMode.EXPLORE, "compare": RecommendationMode.COMPARE}
     mode = mode_map.get(effective_mode, RecommendationMode.EXPLORE)
 
-    results, candidate_count = await _run_scored_pipeline(
+    results, candidate_count, topk_cut_pins = await _run_scored_pipeline(
         store=store,
         user_profile=user_scoped,
         product_map=product_map,
@@ -1852,7 +2054,25 @@ async def ask(req: AskRequest):
         diversity_weight=effective_diversity_weight,
         top_k=req.top_k,
         ingredient_name_labels=ingredient_name_labels or None,
+        query_product_ids=set(pinned_survivors) or None,
+        excluded_product_ids=excluded_product_ids or None,
     )
+
+    # A1 pin trace. ``pinned_applied`` follows the RESULT order (F10 — the pin block
+    # already leads in score order), so both the meta and the related-anchor window
+    # below are pin-score-ordered. A survivor cut by the response-size (top_k) limit
+    # is recorded reason="top_k" (F6); any other missing survivor (e.g. ownership
+    # suppression in STRICT, or the evidence gate) is "filtered".
+    result_id_set = {str(r["product_id"]) for r in results if r.get("product_id")}
+    result_order = [str(r["product_id"]) for r in results if r.get("product_id")]
+    survivor_set = set(pinned_survivors)
+    pinned_applied = [pid for pid in result_order if pid in survivor_set]
+    topk_cut_set = set(topk_cut_pins)
+    for pid in topk_cut_pins:
+        pinned_dropped.append({"id": pid, "reason": "top_k"})
+    for pid in pinned_survivors:
+        if pid not in result_id_set and pid not in topk_cut_set:
+            pinned_dropped.append({"id": pid, "reason": "filtered"})
 
     # user_edge rewrite: candidate_generator cannot distinguish an injected query
     # concept from a genuine stored preference, so relabel the query-injected
@@ -1878,6 +2098,7 @@ async def ask(req: AskRequest):
     exclude_ids = set(result_pids)
     exclude_ids |= extract_owned_product_ids(user_scoped)
     exclude_ids |= avoided_pids  # computed once above (reused from the gate)
+    exclude_ids |= excluded_product_ids  # A1: a negated product is excluded from related too
     # Phase 6 B2: when the wanted-ingredient gate is ACTIVE (raw families, not
     # relaxed), related neighbours must pass the same matcher — a non-containing
     # product must not re-surface beneath a filtered 1차 list.
@@ -1888,8 +2109,12 @@ async def ask(req: AskRequest):
             for pid in product_map
             if product_passes_constraints(product_map[pid], raw_constraints)
         }
+    # A1: anchor the related-products expansion on the pinned products FIRST (a
+    # named product is the strongest relatedness seed), then the remaining results.
+    pinned_applied_set = set(pinned_applied)
+    anchor_order = pinned_applied + [p for p in result_pids if p not in pinned_applied_set]
     related = await _related_products(
-        result_pids[:5],
+        anchor_order[:5],
         store=store,
         exclude_ids=exclude_ids,
         anchor_names=_related_anchor_names(results),
@@ -1922,6 +2147,11 @@ async def ask(req: AskRequest):
         # the anonymous shape + result id/score identity are unchanged). Class names
         # ride in interpretation.profile_refs; the joined concepts/labels are here.
         "applied_profile_refs": applied_profile_refs,
+        # [A1] Pin trace: the named products that were pinned into the results, and
+        # any pin dropped by a hard filter (with reason) — the front-end renders the
+        # resolved product chip from interpretation; this meta is the pin audit.
+        "pinned_product_ids": pinned_applied,
+        "pinned_dropped": pinned_dropped,
         "results": results,
         "related_products": related,
     }

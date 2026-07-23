@@ -76,12 +76,26 @@ _MIN_SURFACE_LEN = 2
 # families and well below the 오일 (39) over-general case.
 _REVERSE_MATCH_CAP = 10
 
+# Search-absorption A1 (product axis) reverse-containment cap: an isolated query
+# expression (a single-word query or an LLM ``product_names`` slot term) that is a
+# substring of MORE than this many DISTINCT product representative names is too
+# generic to be a specific product intent (a bare '크림' sits inside hundreds of
+# names) and adopts NOTHING for the product axis. Mirrors ``_REVERSE_MATCH_CAP``:
+# a specific product name (윤조에센스 → the essence + its mist variant) stays well
+# under it, while a category-like word is rejected. Forward matches
+# (rep_name ⊂ query) are precise and NOT capped. See
+# plans/2026-07-23_search_absorption.md §A1.
+_PRODUCT_NAME_MATCH_CAP = 10
+
 
 @dataclass(frozen=True)
 class MatchedConcept:
     """A single concept resolved from the query text."""
 
-    concept_type: str  # brand | category | ingredient | concern | goal | keyword
+    # brand | category | ingredient | concern | goal | keyword | product
+    # (A1: "product" → concept_id is a raw product_id, label is the
+    # representative_product_name; resolved from the product-name axis.)
+    concept_type: str
     concept_id: str
     matched_text: str
     label: str
@@ -254,6 +268,21 @@ def resolve_query_concepts(
     # anonymous /api/search path — is protected).
     negated = negated_surfaces(query_text or "")
 
+    # Search-absorption A1 (product axis) collection. Two directions, both
+    # negation-guarded (a product being negated is not positively adopted; the
+    # excluded-product subtraction in query_understanding is the robust twin):
+    #   forward  — normalize(rep_name) ⊂ norm_query: the FULL catalog product name
+    #              appears in the query ("...설화수 윤조에센스 어때"). Precise; NOT capped.
+    #   reverse  — norm_query ⊂ normalize(rep_name): an isolated query expression
+    #              (single-word query or an LLM ``product_names`` slot term, resolved
+    #              per-term through this same gate) sits inside a product name.
+    #              Tier-3-style self-limiting (a multi-word query is a substring of
+    #              no single name) + ``_PRODUCT_NAME_MATCH_CAP`` (a generic '크림'
+    #              inside many names adopts nothing). Collected here, applied after
+    #              the loop so the reverse cap can see the full count.
+    product_forward: list[tuple[str, str]] = []
+    product_reverse: list[tuple[str, str]] = []
+
     for product in products:
         brand_label = product.get("brand_name") or product.get("brand_id")
         if brand_label:
@@ -261,6 +290,32 @@ def resolve_query_concepts(
             if len(label_norm) >= _MIN_SURFACE_LEN and label_norm in norm_query:
                 for cid in product.get("brand_concept_ids") or []:
                     _add("brand", str(cid), str(brand_label), str(brand_label))
+
+        # Product-name axis (A1): resolve a specific product_id from its
+        # representative_product_name. Forward is the full name in the query;
+        # reverse is an isolated expression inside the name. The negation guard
+        # is bidirectional here (name_norm ⊂ neg OR neg ⊂ name_norm) because a
+        # product name is a multi-token compound while a negated word is a single
+        # token ("윤조에센스" inside the name "설화수윤조에센스"), so a purely
+        # ``name_norm in neg`` test (as the short-INCI ingredient axis uses) would
+        # miss the negated product; the reverse-match twin in
+        # ``query_understanding._negated_products`` still populates the exclusion
+        # set for the general case.
+        rep_name = product.get("representative_product_name")
+        pid = str(product.get("product_id") or "")
+        if pid and rep_name:
+            name_norm = normalize_text(str(rep_name))
+            if len(name_norm) >= _MIN_SURFACE_LEN:
+                if name_norm in norm_query:
+                    if not any(name_norm in neg or neg in name_norm for neg in negated):
+                        product_forward.append((pid, str(rep_name)))
+                elif (
+                    name_norm != norm_query
+                    and len(norm_query) >= _MIN_SURFACE_LEN
+                    and norm_query in name_norm
+                    and not any(norm_query in neg for neg in negated)
+                ):
+                    product_reverse.append((pid, str(rep_name)))
 
         category_label = product.get("category_name") or product.get("category_id")
         if category_label:
@@ -402,6 +457,38 @@ def resolve_query_concepts(
                 for cid in sorted(reverse_ids):
                     _add("ingredient", cid, norm_query, norm_query)
 
+    # Apply the product-name axis (A1). Forward matches are precise → always
+    # adopted. Reverse matches adopt only when the DISTINCT count is within the
+    # cap (an over-general '크림' that sits inside many names stays honestly
+    # unresolved) AND the expression is not itself a brand/category surface: a
+    # brand name is typically a prefix of its products' names ("설화수" ⊂ "설화수
+    # 윤조에센스"), so a bare brand/category term would otherwise reverse-pin every
+    # product of that brand/category — the browse intent wins (mirrors the
+    # ingredient Tier-3 curation-priority suppression). Both sorted for
+    # deterministic adoption order.
+    # NOTE (45k scale): like the ingredient Tier-3 scan above, this is a per-call
+    # linear pass over the catalog; replace with a name-suffix index rebuilt with
+    # the serving-store refresh at scale. Unnecessary at demo scale.
+    for pid, rep_name in sorted(product_forward):
+        _add("product", pid, rep_name, rep_name)
+    # Suppression surfaces: resolved literal brand/category surfaces PLUS the
+    # category-GROUP tab keywords (RECOMMEND_CATEGORY_DEFS). The group concepts
+    # themselves are added AFTER this block, so their keywords must be listed
+    # explicitly here (F8) — otherwise a bare tab word ("스킨케어") would
+    # reverse-pin a "스킨케어 세트" product before the group concept exists.
+    suppression_surfaces = {
+        normalize_text(concept.matched_text)
+        for concept in found.values()
+        if concept.concept_type in ("brand", "category")
+    }
+    suppression_surfaces.update(_category_group_keywords())
+    if (
+        0 < len(product_reverse) <= _PRODUCT_NAME_MATCH_CAP
+        and norm_query not in suppression_surfaces
+    ):
+        for pid, rep_name in sorted(product_reverse):
+            _add("product", pid, rep_name, rep_name)
+
     for group, keyword in _matching_category_groups(norm_query):
         _add(
             "category",
@@ -411,6 +498,22 @@ def resolve_query_concepts(
         )
 
     return list(found.values())
+
+
+@lru_cache(maxsize=1)
+def _category_group_keywords() -> frozenset[str]:
+    """Normalized tab keyword vocabulary of every recommendation category group
+    (RECOMMEND_CATEGORY_DEFS, excluding all/other). Used by the A1 product-axis
+    reverse-suppression (F8): a bare tab word ("스킨케어"/"메이크업") is a browse
+    intent, not a specific-product reference, so it must not reverse-pin products
+    whose names contain it."""
+    return frozenset(
+        normalize_text(str(kw))
+        for item in RECOMMEND_CATEGORY_DEFS
+        if str(item["group"]) not in ("all", "other")
+        for kw in item.get("keywords", ())
+        if normalize_text(str(kw))
+    )
 
 
 def _matching_category_groups(norm_query: str) -> list[tuple[str, str]]:
@@ -477,6 +580,7 @@ def _product_overlap(product: dict[str, Any], resolved: list[MatchedConcept]) ->
     category_ids = {str(v) for v in (product.get("category_concept_ids") or [])}
     ingredient_ids = {str(v) for v in (product.get("ingredient_concept_ids") or [])}
     product_group_concept = f"concept:Category:{classify_product_category_group(product)}"
+    own_product_id = str(product.get("product_id") or "")
 
     concern_ids_norm = {
         resolve_concern_id(cid) for cid in _signal_ids(product.get("top_concern_pos_ids"))
@@ -520,6 +624,13 @@ def _product_overlap(product: dict[str, Any], resolved: list[MatchedConcept]) ->
         elif concept.concept_type == "keyword":
             if normalize_signal_id(concept.concept_id) in keyword_keys:
                 overlap.append(f"keyword:{concept.concept_id}")
+        elif concept.concept_type == "product":
+            # A1 product axis: a resolved product concept overlaps ONLY its own
+            # product (concept_id == the product's raw product_id), yielding a
+            # ``product:<pid>`` master-truth overlap so a query-named product clears
+            # the evidence gate even with no other user-aligned overlap.
+            if concept.concept_id == own_product_id:
+                overlap.append(f"product:{concept.concept_id}")
     return overlap
 
 
@@ -530,6 +641,8 @@ def search_products(
     max_results: int = 20,
     avoided_ingredient_concept_ids: list[str] | None = None,
     ingredient_constraints: list[IngredientConstraint] | None = None,
+    query_product_ids: set[str] | None = None,
+    excluded_product_ids: set[str] | None = None,
 ) -> SearchOutcome:
     """Concept-based product search (evidence-first; no full-text fallback).
 
@@ -559,9 +672,46 @@ def search_products(
     families' INCI are synthesized as ingredient concepts (F3, codex), so an
     ingredient-only query the LLM isolated but the multi-word text can't re-resolve
     ("콜라겐 추천해줘") still ranks carriers and reports ``resolved``.
+
+    ``query_product_ids`` — search-absorption A1 product pins: raw product_ids the
+    query named. Each is synthesized as a ``product`` concept (labelled from its
+    ``representative_product_name``) so an LLM-``product_names``-slot pin the
+    multi-word text cannot re-resolve is still ranked and reports ``resolved``, and
+    the pinned products are assembled as a leading block (score-order within the
+    block) that survives the ``max_results`` cut. ``None`` (default) keeps existing
+    callers byte-identical.
+
+    ``excluded_product_ids`` — search-absorption A1 exclusions (from a negated
+    product name): any product whose raw product_id is in this set is skipped
+    entirely, never ranked (mirrors the avoided-ingredient hard filter), so a
+    negated product is removed from brand/category results too. ``None`` (default)
+    keeps existing callers byte-identical.
+
+    Caller-authority (F1): when EITHER of the two A1 params is passed (i.e. not
+    ``None`` — the server ask/search path always passes them, derived from the
+    brand-guarded interpretation), the caller is authoritative about products, so
+    the internal re-resolution's ``product`` concepts are restricted to the pin set
+    (∩). This prevents a product the interpretation dropped (brand-contradiction
+    guard) or never adopted from being re-introduced by the raw-text re-resolution
+    here. When BOTH are ``None`` (a legacy direct call) internal resolution is
+    autonomous (byte-identical to pre-A1).
     """
     resolved = resolve_query_concepts(query_text, products)
     constraints = list(ingredient_constraints or [])
+    pins = {str(pid) for pid in (query_product_ids or set()) if pid}
+    excluded = {str(pid) for pid in (excluded_product_ids or set()) if pid}
+    pins -= excluded  # an excluded product is never a pin (exclusion wins)
+
+    # F1: caller-authoritative product set. Restrict internally-resolved product
+    # concepts to the pin set so a brand-guard-dropped product cannot re-enter via
+    # the raw re-resolution; the pin synthesis below re-adds any pin the raw text
+    # could not re-resolve. Gated on "caller passed the params" (not None) so legacy
+    # direct callers keep autonomous resolution.
+    if query_product_ids is not None or excluded_product_ids is not None:
+        resolved = [
+            c for c in resolved
+            if c.concept_type != "product" or c.concept_id in pins
+        ]
 
     # F3: synthesize the constraint families' INCI as ingredient concepts so a
     # STRUCTURED carrier earns an ``ingredient:<concept_id>`` overlap via
@@ -576,6 +726,20 @@ def search_products(
                     seen.add(("ingredient", cid))
                     resolved.append(MatchedConcept("ingredient", cid, constraint.label, constraint.label))
 
+    # A1: synthesize a ``product`` concept for every pin the query text could not
+    # re-resolve here (an LLM ``product_names`` slot pin — resolved upstream by the
+    # per-term gate — that the multi-word raw query cannot reverse-match). This both
+    # skips the empty-resolution short-circuit and earns the pin a ``product:<pid>``
+    # overlap via ``_product_overlap``. Excluded pins were already removed above.
+    if pins:
+        resolved_pids = {c.concept_id for c in resolved if c.concept_type == "product"}
+        for product in products:
+            pid = str(product.get("product_id") or "")
+            if pid in pins and pid not in resolved_pids:
+                label = str(product.get("representative_product_name") or pid)
+                resolved.append(MatchedConcept("product", pid, label, label))
+                resolved_pids.add(pid)
+
     if not resolved:
         return SearchOutcome(query=query_text, resolved_concepts=[], results=[])
 
@@ -583,6 +747,12 @@ def search_products(
 
     items: list[SearchResultItem] = []
     for product in products:
+        # A1 negated-product hard filter: an excluded product is removed entirely
+        # (never ranked), so a negated product name is gone from brand/category
+        # results too — checked before any overlap/gate work.
+        if excluded and str(product.get("product_id") or "") in excluded:
+            continue
+
         # Avoided-ingredient hard filter (concept-id join, same id space the
         # ingredient axis resolves): a product carrying an avoided ingredient is
         # excluded before ranking, not merely down-ranked.
@@ -617,9 +787,21 @@ def search_products(
             )
         )
 
-    items.sort(key=lambda item: (-item.relevance_score, item.product_id))
+    # A1: assemble a leading pin block (pinned items first, each in score order)
+    # so a named product survives the ``max_results`` cut regardless of its raw
+    # overlap count; the non-pinned tail keeps the existing relevance ordering.
+    # Default (no pins) is byte-identical to the prior single sort.
+    if pins:
+        pinned_items = [it for it in items if it.product_id in pins]
+        rest_items = [it for it in items if it.product_id not in pins]
+        pinned_items.sort(key=lambda item: (-item.relevance_score, item.product_id))
+        rest_items.sort(key=lambda item: (-item.relevance_score, item.product_id))
+        ordered = pinned_items + rest_items
+    else:
+        items.sort(key=lambda item: (-item.relevance_score, item.product_id))
+        ordered = items
     return SearchOutcome(
         query=query_text,
         resolved_concepts=resolved,
-        results=items[: max(0, max_results)],
+        results=ordered[: max(0, max_results)],
     )

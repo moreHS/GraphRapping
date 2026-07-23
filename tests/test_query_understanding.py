@@ -553,6 +553,7 @@ def test_to_dict_shape() -> None:
         "warnings",
         "profile_refs",
         "ingredient_constraints",
+        "excluded_product_ids",
     }
     assert payload["intent"] == "recommend"
     assert payload["llm_used"] is True
@@ -565,6 +566,9 @@ def test_to_dict_shape() -> None:
     # [B2] ingredient_constraints always present and a list (default []); this
     # query mentions no ingredient family, so it is empty here.
     assert payload["ingredient_constraints"] == []
+    # [A1] excluded_product_ids always present and a list (default []); this query
+    # negates no product name, so it is empty here.
+    assert payload["excluded_product_ids"] == []
 
 
 # ---------------------------------------------------------------------------
@@ -999,3 +1003,175 @@ def test_real_llm_smoke(monkeypatch: pytest.MonkeyPatch) -> None:
     interp = understand_query("지성 피부에 맞는 순한 토너 추천해줘", _products())
     assert isinstance(interp, QueryInterpretation)
     assert interp.query
+
+
+# ---------------------------------------------------------------------------
+# Search-absorption A1: product axis interpretation — excluded_product_ids field,
+# _negated_products, brand-contradiction guard (post-merge), LLM product_names slot.
+# ---------------------------------------------------------------------------
+
+from src.rec.query_understanding import (  # noqa: E402
+    _apply_brand_product_guard,
+    _negated_products,
+)
+from src.rec.search import MatchedConcept  # noqa: E402
+
+
+def _named_products() -> list[dict[str, Any]]:
+    """Two 설화수 essences (name axis) + one 헤라 product (a different brand)."""
+    return [
+        _product("50165", representative_product_name="설화수 윤조에센스",
+                 brand_name="설화수", brand_concept_ids=["concept:Brand:설화수"]),
+        _product("50166", representative_product_name="설화수 윤조에센스 미스트",
+                 brand_name="설화수", brand_concept_ids=["concept:Brand:설화수"]),
+        _product("70001", representative_product_name="헤라 블랙 쿠션",
+                 brand_name="헤라", brand_concept_ids=["concept:Brand:헤라"]),
+    ]
+
+
+def test_negated_products_resolves_excluded_ids():
+    """_negated_products resolves the negated surface (in isolation) via the product
+    axis — '윤조에센스 빼고' excludes BOTH the essence and its mist variant."""
+    excluded, consumed = _negated_products("설화수 윤조에센스 빼고 다른 에센스", _named_products())
+    assert set(excluded) == {"50165", "50166"}
+    assert "윤조에센스" in consumed  # group-1 surface reported for F7
+
+
+def test_negated_products_empty_without_marker():
+    excluded, consumed = _negated_products("설화수 윤조에센스 어때", _named_products())
+    assert excluded == [] and consumed == set()
+
+
+def test_negated_products_span_multiword_name():
+    """[F2b] Span-based: '헤라 블랙 쿠션 빼고' excludes the product even though the
+    regex captures only the single token '쿠션'."""
+    products = _named_products()
+    products.append(_product("70002", representative_product_name="헤라 블랙 쿠션",
+                             brand_name="헤라", brand_concept_ids=["concept:Brand:헤라"]))
+    excluded, _consumed = _negated_products("헤라 블랙 쿠션 빼고 다른거", products)
+    assert "70002" in excluded
+
+
+def test_negated_products_malgo_marker():
+    """[F2a] '말고' is now a recognised negation marker."""
+    excluded, _consumed = _negated_products("설화수 윤조에센스 말고", _named_products())
+    assert set(excluded) == {"50165", "50166"}
+
+
+def test_fallback_excluded_products_populated_and_subtracted():
+    """The dictionary fallback populates excluded_product_ids AND keeps the negated
+    products out of the positive concepts (subtraction + resolution guard)."""
+    interp = understand_query("설화수 윤조에센스 빼고 추천", _named_products(), llm=None)
+    assert interp.llm_used is False
+    assert set(interp.excluded_product_ids) == {"50165", "50166"}
+    product_ids = {c.concept_id for c in interp.resolved_concepts if c.concept_type == "product"}
+    assert product_ids == set()  # negated products are not positive
+
+
+def test_fallback_forward_pin_resolved_positive():
+    """A named product (no negation) is a positive product concept in the fallback."""
+    interp = understand_query("설화수 윤조에센스 어때", _named_products(), llm=None)
+    product_ids = {c.concept_id for c in interp.resolved_concepts if c.concept_type == "product"}
+    assert "50165" in product_ids
+    assert interp.excluded_product_ids == []
+
+
+def test_brand_guard_drops_mismatched_product():
+    """Post-merge brand guard: when a brand concept is present, a product of a
+    DIFFERENT brand is dropped; a matching-brand product is kept."""
+    products = _named_products()
+    resolved = [
+        MatchedConcept("brand", "concept:Brand:설화수", "설화수", "설화수"),
+        MatchedConcept("product", "50165", "설화수 윤조에센스", "설화수 윤조에센스"),  # 설화수 → keep
+        MatchedConcept("product", "70001", "헤라 블랙 쿠션", "헤라 블랙 쿠션"),        # 헤라 → drop
+    ]
+    kept = _apply_brand_product_guard(resolved, products)
+    kept_products = {c.concept_id for c in kept if c.concept_type == "product"}
+    assert kept_products == {"50165"}  # 헤라 product removed as brand-contradictory
+    # The brand concept itself is untouched.
+    assert any(c.concept_type == "brand" for c in kept)
+
+
+def test_brand_guard_noop_without_brand_in_query():
+    """No brand concept in the query → guard is a pure no-op (product kept)."""
+    products = _named_products()
+    resolved = [MatchedConcept("product", "70001", "헤라 블랙 쿠션", "헤라 블랙 쿠션")]
+    assert _apply_brand_product_guard(resolved, products) == resolved
+
+
+def test_llm_product_names_slot_resolves_product_concept():
+    """The LLM ``product_names`` slot rides the existing per-term gate (already in
+    _POSITIVE_FIELDS): '윤조에센스' is validated through resolve_query_concepts and
+    adopted as a product concept — confirming the automatic-benefit path."""
+    fake = FakeLLMClient(_fake_json(product_names=["윤조에센스"]))
+    interp = understand_query("에센스 추천해줘", _named_products(), llm=fake)
+    product_ids = {c.concept_id for c in interp.resolved_concepts if c.concept_type == "product"}
+    # '윤조에센스' reverse-matches both the essence and the mist variant by name.
+    assert product_ids == {"50165", "50166"}
+
+
+def test_llm_brand_guard_applied_after_merge():
+    """Brand guard runs AFTER the raw+LLM merge: the LLM emits a product of a
+    different brand (whose NAME does not carry its brand, so the brand is not
+    co-resolved) while the query resolves brand 설화수 → the product is dropped."""
+    products = _named_products()
+    # A 헤라 product whose NAME omits the brand token, so resolving its name yields
+    # ONLY the product concept (not brand 헤라) — isolating the guard.
+    products.append(_product("70002", representative_product_name="블랙 쿠션 21호",
+                             brand_name="헤라", brand_concept_ids=["concept:Brand:헤라"]))
+    fake = FakeLLMClient(_fake_json(brands=["설화수"], product_names=["블랙 쿠션 21호"]))
+    interp = understand_query("설화수 제품", products, llm=fake)
+    product_ids = {c.concept_id for c in interp.resolved_concepts if c.concept_type == "product"}
+    assert product_ids == set()  # 헤라 product contradicts the resolved 설화수 brand
+    # The resolved brand concept survives (only the product was dropped).
+    assert any(c.concept_type == "brand" for c in interp.resolved_concepts)
+
+
+def test_llm_brand_slot_does_not_pin_all_brand_products():
+    """[regression] A bare brand term ('설화수') resolved through the per-term gate
+    must NOT reverse-pin every 설화수-prefixed product by name — the brand browse
+    intent wins over the product axis."""
+    fake = FakeLLMClient(_fake_json(brands=["설화수"]))
+    interp = understand_query("설화수 신제품", _named_products(), llm=fake)
+    product_ids = {c.concept_id for c in interp.resolved_concepts if c.concept_type == "product"}
+    assert product_ids == set()  # brand resolved, but no per-product pins
+    assert any(c.concept_type == "brand" for c in interp.resolved_concepts)
+
+
+def test_llm_ingredients_wanted_slot_does_not_pin_product():
+    """[F3] ingredients_wanted resolves ONLY the ingredient axis — a product NAMED
+    after the ingredient ("콜라겐 크림") is not pinned as a product."""
+    products = [
+        _product("C1", representative_product_name="콜라겐 크림",
+                 ingredient_concept_ids=["concept:Ingredient:솔루블콜라겐"]),
+    ]
+    fake = FakeLLMClient(_fake_json(ingredients_wanted=["콜라겐"]))
+    interp = understand_query("콜라겐 추천", products, llm=fake)
+    types = {c.concept_type for c in interp.resolved_concepts}
+    product_ids = {c.concept_id for c in interp.resolved_concepts if c.concept_type == "product"}
+    assert "ingredient" in types  # 콜라겐 adopted on the ingredient axis
+    assert product_ids == set()  # NOT pinned as a product (F3 type filter)
+
+
+def test_llm_product_names_slot_does_not_inject_brand():
+    """[F3] product_names resolves ONLY the product axis — a brand the term also
+    matches ("설화수" ⊂ "설화수 윤조에센스") is NOT injected from this slot, so it
+    cannot neutralise the brand-contradiction guard."""
+    fake = FakeLLMClient(_fake_json(product_names=["설화수 윤조에센스"]))
+    interp = understand_query("에센스", _named_products(), llm=fake)  # floor has no brand
+    brands = {c.concept_id for c in interp.resolved_concepts if c.concept_type == "brand"}
+    product_ids = {c.concept_id for c in interp.resolved_concepts if c.concept_type == "product"}
+    assert "50165" in product_ids  # product adopted
+    assert brands == set()  # brand not leaked from the product_names slot
+
+
+def test_product_negation_does_not_emit_ingredient_warning():
+    """[F7] A negation resolved on the PRODUCT axis ("헤라 블랙 쿠션 빼고") is not also
+    flagged as a failed INGREDIENT negation — no spurious '쿠션' warning/chip."""
+    products = _named_products()
+    products.append(_product("70002", representative_product_name="헤라 블랙 쿠션",
+                             brand_name="헤라", brand_concept_ids=["concept:Brand:헤라"]))
+    interp = understand_query("헤라 블랙 쿠션 빼고 추천", products, llm=None)
+    assert "70002" in interp.excluded_product_ids
+    assert not any("쿠션" in w for w in interp.warnings)
+    assert "쿠션" not in interp.unresolved_terms

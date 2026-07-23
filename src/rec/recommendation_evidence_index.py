@@ -22,6 +22,15 @@ MASTER_TRUTH_TYPES = frozenset({
     # name-only ingredient carrier is evidence-qualified (not dropped by the
     # "overlap ≥ 1" / evidence gate). See db_consumer_contract.md §13.2.
     "product_name",
+    # Search-absorption A1: a query resolved to a SPECIFIC product by its
+    # representative_product_name (the product axis; overlap concept
+    # ``product:<product_id>``, emitted by search._product_overlap /
+    # candidate_generator for a query-指목/pinned product). The product identity
+    # is catalog master truth, so a named product clears the evidence gate even
+    # when it carries no other user-aligned overlap. Distinct from
+    # ``product_name`` (an ingredient-family carrier matched by name); this is the
+    # product itself being named. See plans/2026-07-23_search_absorption.md §A1.
+    "product",
 })
 # ACTIVE_IN_CATEGORY is intentionally excluded. It is profile context/affinity,
 # not explicit preference or product master truth strong enough to qualify a

@@ -120,6 +120,8 @@ def generate_candidates(
     require_evidence: bool = True,
     similar_boost: dict[str, list[tuple[str, float]]] | None = None,
     ingredient_name_labels: dict[str, list[str]] | None = None,
+    query_product_ids: set[str] | None = None,
+    excluded_product_ids: set[str] | None = None,
 ) -> list[CandidateProduct]:
     """Generate recommendation candidates.
 
@@ -142,7 +144,24 @@ def generate_candidates(
             (PRODUCT_MASTER_TRUTH) and survives the ``require_evidence`` gate. None
             (default) keeps the default recommend path byte-identical; the scorer
             assigns product_name no weight, so scores are unchanged either way.
+        query_product_ids: Search-absorption A1 pins — raw product_ids the query
+            named. Each pinned candidate earns a ``product:<pid>`` overlap concept
+            (PRODUCT_MASTER_TRUTH) so it clears the ``require_evidence`` gate with no
+            other user-aligned overlap, and pinned candidates are held back from the
+            ``max_candidates`` retrieval cut (separated then re-joined) so a named
+            product is never dropped by truncation. Hard filters still win: a pin
+            hit by an avoided-ingredient / category / excluded / ownership filter is
+            dropped like any candidate (no pin bypass). None (default) → the default
+            path is byte-identical. The scorer assigns ``product`` no weight, so
+            scores are unchanged.
+        excluded_product_ids: Search-absorption A1 exclusions — raw product_ids the
+            query negated by name. A candidate whose product_id is in this set is
+            hard-filtered (``EXCLUDED_PRODUCT``) before any overlap work, so a
+            negated product is removed even when it matches on brand/category. None
+            (default) → the default path is byte-identical.
     """
+    pins = query_product_ids or set()
+    excluded_pids = excluded_product_ids or set()
     # Extract user signals for filtering
     avoided_ingredients = _extract_ids(user_profile.get("avoided_ingredient_ids", []))
     repurchase_brand_ids = _extract_ids(user_profile.get("repurchase_brand_ids", []))
@@ -221,6 +240,15 @@ def generate_candidates(
             candidate.candidate_bucket = "SAME_FAMILY_OTHER_VARIANT"
 
         # --- Hard filters (zero-out) ---
+
+        # 0. Excluded product (A1: query negated this product by name). Highest
+        # priority — a negated product is removed even if it matches brand/category
+        # and even if it is otherwise a pin (exclusion wins over pin).
+        if excluded_pids and pid in excluded_pids:
+            candidate.hard_filtered = True
+            candidate.filter_reason = "EXCLUDED_PRODUCT"
+            candidates.append(candidate)
+            continue
 
         # 1. Ingredient conflict (raw IDs + concept IDs, matching SQL prefilter)
         product_ingredients = set(product.get("ingredient_concept_ids") or [])
@@ -469,6 +497,15 @@ def generate_candidates(
             for label in ingredient_name_labels.get(pid, ()):
                 overlap.append(f"product_name:{label}")
 
+        # Search-absorption A1: a query-pinned product earns a ``product:<pid>``
+        # master-truth overlap BEFORE evidence classification, so a named product
+        # clears the require_evidence gate even with no other user-aligned overlap.
+        # Appended after the excluded hard filter (an excluded product never reaches
+        # here). The scorer weights ``product`` at 0, so scores are unchanged; the
+        # pin's rank comes from the pipeline's leading-block assembly, not a boost.
+        if pins and pid in pins:
+            overlap.append(f"product:{pid}")
+
         candidate.overlap_concepts = overlap
         # Retrieval aggregate — 4종 공통: boost-only는 retrieval 절단 순위를 사지
         # 못한다. ALL boost-only types (comparison/collab/comention/similar,
@@ -501,7 +538,15 @@ def generate_candidates(
     # Already-owned products sort to the bottom (still returned but deprioritized)
     valid.sort(key=lambda c: (not c.already_owned, c.overlap_score), reverse=True)
 
-    return valid[:max_candidates]
+    if not pins:
+        return valid[:max_candidates]
+    # A1: hold pinned candidates back from the retrieval cut so a named product is
+    # never dropped by truncation (it already survived every hard filter to reach
+    # ``valid``). Pins keep their sorted position; the non-pinned tail is truncated
+    # to ``max_candidates``. The default path (no pins) returns above, byte-identical.
+    pinned = [c for c in valid if c.product_id in pins]
+    non_pinned = [c for c in valid if c.product_id not in pins]
+    return pinned + non_pinned[:max_candidates]
 
 
 def generate_candidates_prefiltered(
@@ -514,6 +559,8 @@ def generate_candidates_prefiltered(
     require_evidence: bool = True,
     similar_boost: dict[str, list[tuple[str, float]]] | None = None,
     ingredient_name_labels: dict[str, list[str]] | None = None,
+    query_product_ids: set[str] | None = None,
+    excluded_product_ids: set[str] | None = None,
 ) -> list[CandidateProduct]:
     """Generate candidates from a pre-filtered set of product IDs.
 
@@ -527,6 +574,11 @@ def generate_candidates_prefiltered(
 
     ``ingredient_name_labels`` (Phase 6 B2) is forwarded unchanged (keyed on
     candidate pids); None (default) keeps the default path byte-identical.
+
+    ``query_product_ids`` / ``excluded_product_ids`` (search-absorption A1) are
+    forwarded unchanged (keyed on candidate pids); the caller must include any pin
+    in ``prefiltered_product_ids`` (server unions pins into the universe). None
+    (default) keeps the default path byte-identical.
     """
     product_profiles = [
         product_profiles_by_id[pid]
@@ -541,6 +593,8 @@ def generate_candidates_prefiltered(
         require_evidence=require_evidence,
         similar_boost=similar_boost,
         ingredient_name_labels=ingredient_name_labels,
+        query_product_ids=query_product_ids,
+        excluded_product_ids=excluded_product_ids,
     )
 
 

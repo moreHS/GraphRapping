@@ -45,6 +45,10 @@
      `top_k` 절단(reranker.py:52)도 지목 상품을 버릴 수 있음 — **핀 블록은
      리랭커 입력에서 제외**하고 리랭커는 비핀 후보만 `top_k − |핀|` 슬롯으로
      실행, 조립 = [핀 블록] + [리랭크 결과]. 핀이 top_k 이상이면 리랭커 스킵.
+   - **핀 > top_k 절단 정책**(구현 리뷰 F6 확정): 응답 크기 계약(top_k)이
+     우선 — 핀 블록도 top_k에서 절단하되 점수순 결정적, 잘린 핀은
+     `pinned_dropped`(reason="top_k")로 투명 기록. "전체 핀 블록 무조건
+     유지"가 아님을 명시(v3 문구의 모호함 해소).
 4. **검색(익명) 경로**: `_product_overlap`에 product 축 + 동일 선두 블록 조립.
 5. **related 연동**: 지목 상품이 있으면 G5 앵커를 지목 상품 우선으로.
 6. 미실존 상품명 → 기존 unresolved 칩(정직).
@@ -196,3 +200,33 @@ byte-identity.
 해소 불가 — 배제 해소에 표현⊂라벨 포함 매칭을 그룹 폴백보다 선행 ③ raw-floor
 성분군 강도 미정 — 슬롯 분류 선행, 미분류 raw만 required 기본(명시 preferred
 불침범). 3건 반영으로 계획 확정(v3) — 각 배치 구현 시 codex 코드 리뷰가 재검증.
+
+## A1 완료 보고 (2026-07-23, Opus 구현+수정 라운드·Fable 검수·codex 리뷰)
+
+**구현**: 9파일 +1,180/−39 (신규 tests/test_search_absorption_a1.py 16건 포함,
+전체 A1 테스트 ~52건). product 해석 축(정/역방향+cap 10+부정 가드+브랜드·
+카테고리·그룹 표면 억제) · `excluded_product_ids`(`_negated_products` — 스팬
+기반 다어절 해소, 최장 일치) · 병합-후 브랜드 모순 가드 · dormant 스레딩
+(query/excluded product ids → `_run_scored_pipeline`→candidate_generator) ·
+`product`=MASTER_TRUTH 등재 · 50-컷/프리필터/리랭커 절단 생존
+(`_rerank_with_pins` — 핀 블록 리랭커 밖, top_k 절단은 점수순+
+pinned_dropped(reason=top_k) 투명 기록) · 하드필터>핀(사유 trace) · 검색/
+related 연동(핀 앵커 우선·배제 전파) · 응답 메타 pinned_product_ids/
+pinned_dropped.
+
+**codex 구현 리뷰 REQUEST CHANGES(P1 6·P2 6) → 전부 수정**: 익명 재해석의
+가드 우회 차단(호출자 interp 권위) · **negation 공유 어휘에 '말고' 추가**
+(성분 경로 동반 개선 — "레티놀 말고" 기피 동작) + 다어절 상품명 스팬 부정
+("헤라 블랙 쿠션 빼고") · **LLM 슬롯별 개념 타입 제한**(_SLOT_CONCEPT_TYPES —
+성분 슬롯 '콜라겐'이 "콜라겐 크림" 상품을 핀하던 교차 오염 제거) · 익명 핀의
+카테고리 게이트 · relax 카운트 배제 선차감 · 핀 top_k 절단 정책 확정 ·
+상품 부정의 성분 경고 중복 제거 · 그룹 키워드 역방향 억제 · dedupe ·
+related 앵커 점수순 · top_k≤0 가드 · 배제 trace 도달성.
+
+**게이트**: pytest **1605 passed / 50 skipped**(+50), ruff/mypy 클린, 무질의
+byte-identity·랭킹 스냅샷 diff 0. **라이브(8123)**: "설화수 윤조에센스 어때"
+로그인·익명 top1~3=윤조에센스 계열 핀(기존 top1 맨본윤에센스 교정) ·
+"윤조에센스 말고" 배제 누출 0 · "콜라겐 든 크림" 상품 핀 오염 없음 ·
+"레티놀 말고" 성분 기피 · 알콜업는/히알루론/콜라겐 회귀 무변.
+**후속 기록**: 익명 일반 검색의 전면 카테고리 게이팅(레거시 동작 변경이라
+이번 스코프 아웃 — 별도 결정 필요).

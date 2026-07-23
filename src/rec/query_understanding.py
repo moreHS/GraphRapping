@@ -101,6 +101,21 @@ _POSITIVE_FIELDS = (
     "goals",
 )
 
+# [A1 F3] LLM positive slot → the concept type(s) that slot is authorised to
+# adopt. A term is validated through ``resolve_query_concepts`` and only the
+# resolved concepts of the slot's allowed type(s) are kept, so a slot cannot leak
+# a cross-type concept (e.g. ``ingredients_wanted`` pinning a product, or
+# ``product_names`` injecting a brand that would neutralise the brand guard).
+_SLOT_CONCEPT_TYPES: dict[str, frozenset[str]] = {
+    "categories": frozenset({"category"}),
+    "brands": frozenset({"brand"}),
+    "product_names": frozenset({"product"}),
+    "desired_attributes": frozenset({"keyword"}),
+    "ingredients_wanted": frozenset({"ingredient"}),
+    "concerns": frozenset({"concern"}),
+    "goals": frozenset({"goal"}),
+}
+
 # Conservative ingredient-negation detectors, applied to the RAW query on both the
 # LLM and dictionary paths. The two compiled patterns now live in
 # ``src.rec.negation`` (shared, verbatim) so the ingredient-alias layer in
@@ -208,6 +223,12 @@ class QueryInterpretation:
     # eligible (server B2 wiring). Default [] so every non-ingredient path carries
     # the field without implying an ingredient filter.
     ingredient_constraints: list[IngredientConstraint] = field(default_factory=list)
+    # [A1] Product ids the query NEGATED by name ("윤조에센스 빼고"): the negated
+    # surface resolved to specific products via the product axis, so those products
+    # are excluded from every downstream consumer (brand/category results, recommend
+    # candidates, related) — not merely dropped from the positive concepts. Default
+    # [] so every non-negation path carries the field without implying an exclusion.
+    excluded_product_ids: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -220,6 +241,7 @@ class QueryInterpretation:
             "warnings": list(self.warnings),
             "profile_refs": list(self.profile_refs),
             "ingredient_constraints": [c.to_dict() for c in self.ingredient_constraints],
+            "excluded_product_ids": list(self.excluded_product_ids),
         }
 
 
@@ -408,6 +430,8 @@ def _build_system_prompt() -> str:
 def _negated_ingredients(
     query: str,
     products: list[dict[str, Any]],
+    *,
+    skip_surfaces: set[str] | None = None,
 ) -> tuple[list[str], list[str], list[str], list[str]]:
     """Detect conservative ingredient negation in the RAW query and validate each
     negated term through the SAME gate the rest of the pipeline uses
@@ -427,7 +451,14 @@ def _negated_ingredients(
       dropped from the unresolved chips — an already-applied avoidance is not an
       "unmapped" expression. Only RESOLVED surfaces are returned, so a genuinely
       unmapped negation ("제라늄업는") is never used as a drop key.
+
+    ``skip_surfaces`` (F7): normalized group-1 surfaces whose negation the PRODUCT
+    axis already resolved (``_negated_products``). Such a match is skipped entirely
+    — no avoid, no unresolved chip, no warning — so a negated PRODUCT name
+    ("헤라 블랙 쿠션 빼고") does not also produce a spurious "not an ingredient"
+    warning/chip.
     """
+    skip = skip_surfaces or set()
     avoided: list[str] = []
     seen_ids: set[str] = set()
     unresolved: list[str] = []
@@ -441,6 +472,8 @@ def _negated_ingredients(
         if not norm or norm in seen_terms:
             continue
         seen_terms.add(norm)
+        if norm in skip:
+            continue  # F7: this negation was consumed by the product axis
         # Ingredient axis only: reuse the same catalog-membership gate, never a
         # bare resolver (C3), so an unknown surface cannot be forged into an id.
         ingredient_ids = [
@@ -460,6 +493,107 @@ def _negated_ingredients(
                 seen_ids.add(cid)
                 avoided.append(cid)
     return avoided, unresolved, warnings, avoided_surfaces
+
+
+_PRODUCT_NEGATION_MAX_SPAN = 4
+
+
+def _negated_products(
+    query: str,
+    products: list[dict[str, Any]],
+) -> tuple[list[str], set[str]]:
+    """[A1] Product ids the RAW query negated by NAME, plus the group-1 surfaces
+    consumed (for F7). SPAN-based (F2): a product name is a multi-token compound,
+    but the shared negation regex captures only the single token before the marker,
+    so for each negation the text BEFORE the marker is tokenised and 1..N-token
+    SUFFIX candidates are built from the end ("쿠션" → "블랙 쿠션" → "헤라 블랙 쿠션").
+    Each candidate is resolved IN ISOLATION through the product axis (no marker in
+    isolation → the name forward/reverse-match fires normally); the LONGEST
+    candidate that resolves wins (it captures the full product name). "헤라 블랙
+    쿠션 빼고" therefore excludes that product even though the regex captured only
+    "쿠션".
+
+    Returns ``(excluded_ids, consumed_group1_surfaces)``: ``excluded_ids`` are
+    catalog-validated product ids (dedup, first-appearance order); a negation that
+    resolves to no product contributes nothing (it may be an ingredient/other
+    negation handled elsewhere). ``consumed_group1_surfaces`` are the normalized
+    group-1 tokens of negations that DID resolve to a product, fed to
+    ``_negated_ingredients(skip_surfaces=…)`` so a product negation is not also
+    flagged as an unmapped ingredient negation (F7)."""
+    excluded: list[str] = []
+    seen_ids: set[str] = set()
+    consumed: set[str] = set()
+    seen_g1: set[str] = set()
+    for match in (*_NEGATION_KO_RE.finditer(query), *_NEGATION_FREE_RE.finditer(query)):
+        g1_norm = normalize_text(match.group(1))
+        if not g1_norm or g1_norm in seen_g1:
+            continue
+        seen_g1.add(g1_norm)
+        prefix_tokens = query[: match.start(2)].split()
+        if not prefix_tokens:
+            continue
+        # Longest suffix candidate that resolves to a product wins (full name).
+        for n in range(min(_PRODUCT_NEGATION_MAX_SPAN, len(prefix_tokens)), 0, -1):
+            candidate = " ".join(prefix_tokens[-n:])
+            product_ids = [
+                concept.concept_id
+                for concept in resolve_query_concepts(candidate, products)
+                if concept.concept_type == "product"
+            ]
+            if not product_ids:
+                continue
+            consumed.add(g1_norm)
+            for pid in product_ids:
+                if pid not in seen_ids:
+                    seen_ids.add(pid)
+                    excluded.append(pid)
+            break
+    return excluded, consumed
+
+
+def _apply_brand_product_guard(
+    resolved_concepts: list[MatchedConcept],
+    products: list[dict[str, Any]],
+) -> list[MatchedConcept]:
+    """[A1] Brand-contradiction guard, applied AFTER raw+LLM concept merge (codex 1):
+    when the query resolved a BRAND concept, drop any product concept whose product
+    belongs to a DIFFERENT brand.
+
+    Product→brand is judged on the product's own ``brand_concept_ids`` (primary join
+    key) with ``brand_name`` as a fallback, compared against the resolved brand
+    concepts (ids) and their labels (brand names). A product concept is dropped ONLY
+    when the brand can be positively determined AND does not match; a product with no
+    brand information on its profile is kept (conservative — never a false drop). No
+    brand in the query → guard is a no-op (returns the input unchanged)."""
+    brand_ids = {c.concept_id for c in resolved_concepts if c.concept_type == "brand"}
+    if not brand_ids:
+        return resolved_concepts
+    brand_labels = {
+        normalize_text(c.label)
+        for c in resolved_concepts
+        if c.concept_type == "brand" and c.label
+    }
+    products_by_id = {str(p.get("product_id") or ""): p for p in products}
+
+    kept: list[MatchedConcept] = []
+    for concept in resolved_concepts:
+        if concept.concept_type != "product":
+            kept.append(concept)
+            continue
+        product = products_by_id.get(concept.concept_id)
+        if product is None:
+            kept.append(concept)  # cannot judge → keep
+            continue
+        product_brand_ids = {str(b) for b in (product.get("brand_concept_ids") or [])}
+        product_brand_name = normalize_text(str(product.get("brand_name") or ""))
+        has_brand_info = bool(product_brand_ids) or bool(product_brand_name)
+        matches = bool(product_brand_ids & brand_ids) or (
+            bool(product_brand_name) and product_brand_name in brand_labels
+        )
+        if has_brand_info and not matches:
+            continue  # brand contradiction → drop the product concept
+        kept.append(concept)
+    return kept
 
 
 def _negation_consumed_surfaces(query: str) -> list[str]:
@@ -721,15 +855,29 @@ def _fallback(query: str, products: list[dict[str, Any]]) -> QueryInterpretation
     read the negation on its own, so ``_negated_ingredients`` supplies it.
     """
     resolved = resolve_query_concepts(query, products)
-    avoided_ids, unresolved, warnings, avoided_surfaces = _negated_ingredients(query, products)
-    # An avoided ingredient must not also surface as a positive concept: the
-    # substring gate resolves "레티놀" positively even inside "레티놀 없는".
+    # [A1] Product ids the query negated by name — excluded everywhere downstream.
+    # Resolved BEFORE ingredient negation so its consumed group-1 surfaces suppress
+    # the spurious "not an ingredient" warning/chip for a negated product (F7).
+    excluded_product_ids, product_neg_surfaces = _negated_products(query, products)
+    avoided_ids, unresolved, warnings, avoided_surfaces = _negated_ingredients(
+        query, products, skip_surfaces=product_neg_surfaces
+    )
+    # An avoided ingredient / negated product must not also surface as a positive
+    # concept: the substring gate resolves "레티놀" positively even inside "레티놀
+    # 없는" (the product axis' negation guard covers most product cases, but the
+    # subtraction is the robust twin for a name spanning multiple tokens).
     avoided_set = {("ingredient", cid) for cid in avoided_ids}
+    excluded_product_set = {("product", pid) for pid in excluded_product_ids}
     positive = [
         concept
         for concept in resolved
         if (concept.concept_type, concept.concept_id) not in avoided_set
+        and (concept.concept_type, concept.concept_id) not in excluded_product_set
     ]
+    # [A1] Brand-contradiction guard (post-merge; trivially post-merge here — the
+    # fallback has no LLM layer to merge): drop products whose brand contradicts a
+    # resolved brand concept.
+    positive = _apply_brand_product_guard(positive, products)
 
     # [F2] Surface meaningful query tokens the dictionary path reflected NOWHERE
     # (previously dropped silently, so "피부에 맞는 스킨케어" and "성분이 좋은
@@ -760,6 +908,8 @@ def _fallback(query: str, products: list[dict[str, Any]]) -> QueryInterpretation
         profile_refs=_fallback_profile_refs(query),
         # [B2] Ingredient families built from the post-avoided positive concepts.
         ingredient_constraints=_build_ingredient_constraints(query, products, positive),
+        # [A1] Products the query negated by name — excluded everywhere downstream.
+        excluded_product_ids=excluded_product_ids,
     )
 
 
@@ -783,9 +933,17 @@ def _interpret_with_llm(
             seen_unresolved.add(norm)
             unresolved.append(term)
 
-    # Positive axes: every LLM term must pass the dictionary/catalog gate.
+    # Positive axes: every LLM term must pass the dictionary/catalog gate AND
+    # resolve to the concept TYPE that slot is about (F3). Without the type filter a
+    # slot leaks cross-type concepts — ``ingredients_wanted=["콜라겐"]`` would pin a
+    # "콜라겐 크림" PRODUCT, and a ``product_names`` term that also matches a brand
+    # would inject a brand concept that neutralises the post-merge brand guard. A
+    # term that resolves but to no allowed-type concept is dropped from adoption
+    # (its raw floor / another slot may still carry it); a term that resolves to
+    # nothing at all is surfaced as unresolved (unchanged).
     seen_terms: set[str] = set()
     for field_name in _POSITIVE_FIELDS:
+        allowed_types = _SLOT_CONCEPT_TYPES.get(field_name)
         for term in _string_list(raw.get(field_name)):
             norm = normalize_text(term)
             if not norm or norm in seen_terms:
@@ -796,6 +954,8 @@ def _interpret_with_llm(
                 _mark_unresolved(term)
                 continue
             for concept in resolved:
+                if allowed_types is not None and concept.concept_type not in allowed_types:
+                    continue
                 concept_map.setdefault((concept.concept_type, concept.concept_id), concept)
 
     # Avoided ingredients: reuse the ingredient axis of the same gate; keep only
@@ -813,9 +973,16 @@ def _interpret_with_llm(
                 seen_avoided.add(cid)
                 avoided_ids.append(cid)
 
+    # [A1] Product negation (span-based) — resolved BEFORE ingredient negation so
+    # its consumed group-1 surfaces suppress the spurious ingredient-failure
+    # warning/chip for a negated product (F7).
+    excluded_product_ids, product_neg_surfaces = _negated_products(query, products)
+
     # Path-common negation preprocessing: union the raw query's own "X 없는/프리/…"
     # markers with the LLM's ingredients_avoided (duplicate ids are harmless).
-    neg_avoided, neg_unresolved, warnings, neg_avoided_surfaces = _negated_ingredients(query, products)
+    neg_avoided, neg_unresolved, warnings, neg_avoided_surfaces = _negated_ingredients(
+        query, products, skip_surfaces=product_neg_surfaces
+    )
     for cid in neg_avoided:
         if cid not in seen_avoided:
             seen_avoided.add(cid)
@@ -832,12 +999,20 @@ def _interpret_with_llm(
         if len(term) <= _MAX_UNRESOLVED_TERM_LEN:
             _mark_unresolved(term)
 
-    # An avoided ingredient must not also surface as a desired concept: the
-    # substring gate resolves "레티놀" positively even inside "레티놀 없는".
+    # An avoided ingredient / negated product must not also surface as a desired
+    # concept: the substring gate resolves "레티놀" positively even inside "레티놀
+    # 없는", and the LLM may re-declare a negated product in ``product_names``.
+    # ``excluded_product_ids`` was computed above (before ingredient negation, F7).
     for cid in avoided_ids:
         concept_map.pop(("ingredient", cid), None)
+    for pid in excluded_product_ids:
+        concept_map.pop(("product", pid), None)
 
     resolved_concepts = list(concept_map.values())
+    # [A1] Brand-contradiction guard, applied AFTER the raw+LLM merge (codex 1): a
+    # product concept whose brand contradicts a resolved brand concept is dropped,
+    # so every downstream consumer sees a consistent interpretation.
+    resolved_concepts = _apply_brand_product_guard(resolved_concepts, products)
     # [B1] Drop any unresolved term reflected by an adopted ingredient alias surface
     # (LLM re-declaring "히알루론") OR by an avoided-resolved negation surface (LLM
     # emitting the whole typo blob "알콜업는" that contains the avoided '알콜') — a
@@ -860,6 +1035,8 @@ def _interpret_with_llm(
         # family whose surface is absent from the RAW query (LLM-only recall
         # expansion via ingredients_wanted) is provenance="llm" → soft boost only.
         ingredient_constraints=_build_ingredient_constraints(query, products, resolved_concepts),
+        # [A1] Products the query negated by name — excluded everywhere downstream.
+        excluded_product_ids=excluded_product_ids,
     )
 
 

@@ -16,9 +16,9 @@ to parse arbitrary syntax; markers the regex misses are left to the LLM.
 Two patterns because the loanword "free" marker is dangerous without a
 separator: many brand/compound names simply end in 프리 (이니스프리 = Innisfree),
 so requiring a space/hyphen before 프리/free avoids that whole false-positive
-class. Korean grammatical markers (없는/업는/없이/빼고/제외(한)) legitimately attach
-with or without a space ("레티놀 없는" / "레티놀없는"), so they allow an optional
-space. ``제외한?`` matches "제외" or "제외한"; ``free`` is case-insensitive
+class. Korean grammatical markers (없는/업는/없이/빼고/제외(한)/말고) legitimately
+attach with or without a space ("레티놀 없는" / "레티놀없는"), so they allow an
+optional space. ``제외한?`` matches "제외" or "제외한"; ``free`` is case-insensitive
 ("retinol-free").
 
 ``업는`` is the frequent misspelling of ``없는``. Adding it is safe because a
@@ -27,6 +27,12 @@ dictionary/catalog gate before it counts as a real avoidance (the "수" in "수�
 resolves to no ingredient and is dropped), so the false-positive cost is ~0.
 Omitting it, by contrast, lets a typo'd negation ("알콜업는") flip into a POSITIVE
 hard filter on the dictionary-fallback path — the exact bug this fixes.
+
+``말고`` ("X 말고 …" = "not X, but …") is the natural exclusion phrasing the
+dictionary path previously missed (search-absorption A1). It is the same
+candidate-then-gate design: "돼지고기말고" produces the candidate "돼지고기고기",
+which resolves to no catalog ingredient/product and is dropped, so the
+false-positive cost stays ~0 while "레티놀 말고" / "윤조에센스 말고" now register.
 """
 
 from __future__ import annotations
@@ -35,7 +41,7 @@ import re
 
 from src.common.text_normalize import normalize_text
 
-NEGATION_KO_RE = re.compile(r"([0-9A-Za-z가-힣]+?)\s*(없는|업는|없이|빼고|제외한?)")
+NEGATION_KO_RE = re.compile(r"([0-9A-Za-z가-힣]+?)\s*(없는|업는|없이|빼고|제외한?|말고)")
 NEGATION_FREE_RE = re.compile(r"([0-9A-Za-z가-힣]+?)[\s-]+(프리|free)", re.IGNORECASE)
 
 
