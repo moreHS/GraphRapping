@@ -1,0 +1,687 @@
+# Retrieval-quality evaluation dataset (search-absorption track A5).
+#
+# Plan: fable_doc/plans/2026-07-23_search_absorption.md §A5.
+#
+# Every query is grounded in the SERVING catalog facts of
+# mockdata/product_catalog_es.json (517 products, 39 brands, 111 categories,
+# category groups skincare=271 / makeup=95 / bodycare=52 / haircare=50 /
+# fragrance=10 / other=39). Only product ids / brands / ingredients that exist in
+# that catalog are used; the legit_zero pair is intentionally out-of-domain.
+#
+# Judgment rules are INTENT-FAITHFUL (A5 review F1): a product earns
+#   gain 2 (expected_top) only if it is the EXACT named product — an explicit
+#          `product_ids` list, or ALL of `product_name_contains` (AND) present;
+#   gain 1 (relevant) only if it satisfies EVERY checkable query constraint
+#          (brand ∧ category_surface/category_group ∧ name_contains ∧
+#           must_contain_ingredient ∧ profile_brand — all AND-combined);
+#   gain 0 otherwise.
+# Violations (must_not_brand / must_not_contain_ingredient /
+# must_not_category_surface / must_not_category_group) flag a hard breach if
+# present in the results. `expect_zero: true` marks the out-of-domain pair.
+#
+# Schema per item:
+#   id · stratum · query · mode(anon|login) · holdout(bool) ·
+#   gold_interpretation (surface-string slots the harness assembles through the
+#     production _interpret_with_llm gate) · judgment (declarative rules above).
+#
+# holdout ≥30% (14/44), ≥1 per stratum — frozen dev discipline; excluded from the
+# default baseline (surfaced only with --holdout).
+
+# =========================================================================
+# exact_product (5) — a named product should lead (gain-2 via explicit ids)
+# =========================================================================
+- id: q001
+  stratum: exact_product
+  query: "설화수 윤조에센스 어때"
+  mode: anon
+  holdout: false
+  gold_interpretation:
+    intent: recommend
+    products: ["설화수 윤조에센스"]
+    brands: ["설화수"]
+  judgment:
+    expected_top:
+      product_ids: ["62214", "62242"]
+    relevant:
+      brand: "설화수"
+
+- id: q002
+  stratum: exact_product
+  query: "라네즈 워터뱅크 라인 어때"
+  mode: anon
+  holdout: false
+  gold_interpretation:
+    intent: recommend
+    products: ["라네즈 워터뱅크"]
+    brands: ["라네즈"]
+  judgment:
+    expected_top:
+      product_ids: ["52644", "69632"]
+    relevant:
+      brand: "라네즈"
+
+- id: q003
+  stratum: exact_product
+  query: "한율 어린쑥 토너 추천"
+  mode: anon
+  holdout: false
+  gold_interpretation:
+    intent: recommend
+    products: ["한율 어린쑥"]
+    brands: ["한율"]
+  judgment:
+    expected_top:
+      product_ids: ["17949"]
+    relevant:
+      brand: "한율"
+      category_surface: ["토너", "스킨"]
+
+- id: q004
+  stratum: exact_product
+  query: "아이오페 슈퍼바이탈 세럼 어떤가요"
+  mode: anon
+  holdout: false
+  gold_interpretation:
+    intent: recommend
+    products: ["아이오페 슈퍼바이탈"]
+    brands: ["아이오페"]
+  judgment:
+    expected_top:
+      product_ids: ["18621"]
+    relevant:
+      brand: "아이오페"
+
+- id: q005
+  stratum: exact_product
+  query: "헤라 블랙쿠션 사고싶어"
+  mode: anon
+  holdout: true
+  gold_interpretation:
+    intent: recommend
+    products: ["헤라 블랙쿠션"]
+    brands: ["헤라"]
+  judgment:
+    expected_top:
+      product_ids: ["61257", "61258", "61289"]
+    relevant:
+      brand: "헤라"
+
+# =========================================================================
+# brand_category (6) — brand + a specific category subtype
+# =========================================================================
+- id: q010
+  stratum: brand_category
+  query: "헤라 쿠션 추천"
+  mode: anon
+  holdout: false
+  gold_interpretation:
+    intent: recommend
+    brands: ["헤라"]
+    categories: ["쿠션"]
+  judgment:
+    relevant:
+      brand: "헤라"
+      category_surface: ["쿠션"]
+
+- id: q011
+  stratum: brand_category
+  query: "프리메라 크림 추천해줘"
+  mode: anon
+  holdout: false
+  gold_interpretation:
+    intent: recommend
+    brands: ["프리메라"]
+    categories: ["크림"]
+  judgment:
+    relevant:
+      brand: "프리메라"
+      category_surface: ["크림"]
+
+- id: q012
+  stratum: brand_category
+  query: "한율 토너 추천"
+  mode: anon
+  holdout: false
+  gold_interpretation:
+    intent: recommend
+    brands: ["한율"]
+    categories: ["토너"]
+  judgment:
+    relevant:
+      brand: "한율"
+      category_surface: ["토너", "스킨"]
+
+- id: q013
+  stratum: brand_category
+  query: "일리윤 바디워시 추천"
+  mode: anon
+  holdout: true
+  gold_interpretation:
+    intent: recommend
+    brands: ["일리윤"]
+    categories: ["바디워시"]
+  judgment:
+    relevant:
+      brand: "일리윤"
+      category_surface: ["바디워시"]
+
+- id: q014
+  stratum: brand_category
+  query: "라네즈 스킨 추천"
+  mode: anon
+  holdout: true
+  gold_interpretation:
+    intent: recommend
+    brands: ["라네즈"]
+    categories: ["스킨"]
+  judgment:
+    relevant:
+      brand: "라네즈"
+      category_surface: ["스킨", "토너"]
+
+- id: q015
+  stratum: brand_category
+  query: "아이오페 에센스 추천"
+  mode: anon
+  holdout: false
+  gold_interpretation:
+    intent: recommend
+    brands: ["아이오페"]
+    categories: ["에센스"]
+  judgment:
+    relevant:
+      brand: "아이오페"
+      category_surface: ["에센스", "세럼", "앰플"]
+
+# =========================================================================
+# ingredient_required (7) — a hard ingredient need + category intent
+# =========================================================================
+- id: q020
+  stratum: ingredient_required
+  query: "히알루론 들어간 크림 추천"
+  mode: anon
+  holdout: false
+  gold_interpretation:
+    intent: recommend
+    categories: ["크림"]
+    ingredients_required: ["히알루론"]
+  judgment:
+    relevant:
+      must_contain_ingredient: ["히알루론"]
+      category_surface: ["크림"]
+
+- id: q021
+  stratum: ingredient_required
+  query: "나이아신아마이드 세럼 추천"
+  mode: anon
+  holdout: false
+  gold_interpretation:
+    intent: recommend
+    categories: ["세럼"]
+    ingredients_required: ["나이아신아마이드"]
+  judgment:
+    relevant:
+      must_contain_ingredient: ["나이아신아마이드"]
+      category_surface: ["세럼", "에센스", "앰플"]
+
+- id: q022
+  stratum: ingredient_required
+  query: "스쿠알란 들어간 크림"
+  mode: anon
+  holdout: false
+  gold_interpretation:
+    intent: recommend
+    categories: ["크림"]
+    ingredients_required: ["스쿠알란"]
+  judgment:
+    relevant:
+      must_contain_ingredient: ["스쿠알란"]
+      category_surface: ["크림"]
+
+- id: q023
+  stratum: ingredient_required
+  query: "레티놀 들어간 세럼 추천"
+  mode: anon
+  holdout: false
+  gold_interpretation:
+    intent: recommend
+    categories: ["세럼"]
+    ingredients_required: ["레티놀"]
+  judgment:
+    relevant:
+      must_contain_ingredient: ["레티놀"]
+      category_surface: ["세럼", "에센스", "앰플"]
+
+- id: q024
+  stratum: ingredient_required
+  query: "비타민C 들어간 세럼"
+  mode: anon
+  holdout: true
+  gold_interpretation:
+    intent: recommend
+    categories: ["세럼"]
+    ingredients_required: ["비타민C"]
+  judgment:
+    relevant:
+      must_contain_ingredient: ["비타민C"]
+      category_surface: ["세럼", "에센스", "앰플"]
+
+- id: q025
+  stratum: ingredient_required
+  query: "스쿠알란 들어간 세럼 추천"
+  mode: anon
+  holdout: true
+  gold_interpretation:
+    intent: recommend
+    categories: ["세럼"]
+    ingredients_required: ["스쿠알란"]
+  judgment:
+    relevant:
+      must_contain_ingredient: ["스쿠알란"]
+      category_surface: ["세럼", "에센스", "앰플"]
+
+- id: q026
+  stratum: ingredient_required
+  query: "히알루론 들어간 세럼 추천"
+  mode: anon
+  holdout: true
+  gold_interpretation:
+    intent: recommend
+    categories: ["세럼"]
+    ingredients_required: ["히알루론"]
+  judgment:
+    relevant:
+      must_contain_ingredient: ["히알루론"]
+      category_surface: ["세럼", "에센스", "앰플"]
+
+# =========================================================================
+# ingredient_avoided (5) — ingredient must be absent + positive category intent
+# =========================================================================
+- id: q030
+  stratum: ingredient_avoided
+  query: "레티놀 없는 세럼 추천"
+  mode: anon
+  holdout: false
+  gold_interpretation:
+    intent: recommend
+    categories: ["세럼"]
+    ingredients_avoided: ["레티놀"]
+  judgment:
+    relevant:
+      category_surface: ["세럼", "에센스", "앰플"]
+    violations:
+      must_not_contain_ingredient: ["레티놀"]
+
+- id: q031
+  stratum: ingredient_avoided
+  query: "알코올 없는 토너 추천"
+  mode: anon
+  holdout: false
+  gold_interpretation:
+    intent: recommend
+    categories: ["토너"]
+    ingredients_avoided: ["알코올"]
+  judgment:
+    relevant:
+      category_surface: ["토너", "스킨"]
+    violations:
+      must_not_contain_ingredient: ["알코올"]
+
+- id: q032
+  stratum: ingredient_avoided
+  query: "실리콘 없는 크림 추천"
+  mode: anon
+  holdout: false
+  gold_interpretation:
+    intent: recommend
+    categories: ["크림"]
+    ingredients_avoided: ["실리콘"]
+  judgment:
+    relevant:
+      category_surface: ["크림"]
+    violations:
+      must_not_contain_ingredient: ["실리콘"]
+
+- id: q033
+  stratum: ingredient_avoided
+  query: "나이아신아마이드 없는 크림"
+  mode: anon
+  holdout: false
+  gold_interpretation:
+    intent: recommend
+    categories: ["크림"]
+    ingredients_avoided: ["나이아신아마이드"]
+  judgment:
+    relevant:
+      category_surface: ["크림"]
+    violations:
+      must_not_contain_ingredient: ["나이아신아마이드"]
+
+- id: q034
+  stratum: ingredient_avoided
+  query: "비타민C 없는 세럼"
+  mode: anon
+  holdout: true
+  gold_interpretation:
+    intent: recommend
+    categories: ["세럼"]
+    ingredients_avoided: ["비타민C"]
+  judgment:
+    relevant:
+      category_surface: ["세럼", "에센스", "앰플"]
+    violations:
+      must_not_contain_ingredient: ["비타민C"]
+
+# =========================================================================
+# ingredient_preferred (3) — "있으면 더 좋고" (soft) + category intent
+# =========================================================================
+- id: q040
+  stratum: ingredient_preferred
+  query: "히알루론 있으면 더 좋은 크림 추천"
+  mode: anon
+  holdout: false
+  gold_interpretation:
+    intent: recommend
+    categories: ["크림"]
+    ingredients_preferred: ["히알루론"]
+  judgment:
+    relevant:
+      must_contain_ingredient: ["히알루론"]
+      category_surface: ["크림"]
+
+- id: q041
+  stratum: ingredient_preferred
+  query: "나이아신아마이드 들어가면 더 좋은 세럼"
+  mode: anon
+  holdout: false
+  gold_interpretation:
+    intent: recommend
+    categories: ["세럼"]
+    ingredients_preferred: ["나이아신아마이드"]
+  judgment:
+    relevant:
+      must_contain_ingredient: ["나이아신아마이드"]
+      category_surface: ["세럼", "에센스", "앰플"]
+
+- id: q042
+  stratum: ingredient_preferred
+  query: "스쿠알란 있으면 좋은 크림 추천"
+  mode: anon
+  holdout: true
+  gold_interpretation:
+    intent: recommend
+    categories: ["크림"]
+    ingredients_preferred: ["스쿠알란"]
+  judgment:
+    relevant:
+      must_contain_ingredient: ["스쿠알란"]
+      category_surface: ["크림"]
+
+# =========================================================================
+# brand_category_excluded (5) — polarity: brand / category exclusion
+# =========================================================================
+- id: q050
+  stratum: brand_category_excluded
+  query: "이니스프리 말고 크림 추천"
+  mode: anon
+  holdout: false
+  gold_interpretation:
+    intent: recommend
+    categories: ["크림"]
+    brands_excluded: ["이니스프리"]
+  judgment:
+    relevant:
+      category_surface: ["크림"]
+    violations:
+      must_not_brand: "이니스프리"
+
+- id: q051
+  stratum: brand_category_excluded
+  query: "선크림 빼고 세럼"
+  mode: anon
+  holdout: false
+  gold_interpretation:
+    intent: recommend
+    categories: ["세럼"]
+    categories_excluded: ["선크림"]
+  judgment:
+    relevant:
+      category_surface: ["세럼", "에센스", "앰플"]
+    violations:
+      must_not_category_surface: ["선크림"]
+
+- id: q052
+  stratum: brand_category_excluded
+  query: "설화수 빼고 에센스 추천"
+  mode: anon
+  holdout: false
+  gold_interpretation:
+    intent: recommend
+    categories: ["에센스"]
+    brands_excluded: ["설화수"]
+  judgment:
+    relevant:
+      category_surface: ["에센스", "세럼", "앰플"]
+    violations:
+      must_not_brand: "설화수"
+
+- id: q053
+  stratum: brand_category_excluded
+  query: "이니스프리 선크림 빼고 세럼"
+  mode: anon
+  holdout: false
+  gold_interpretation:
+    intent: recommend
+    categories: ["세럼"]
+    categories_excluded: ["선크림"]
+  judgment:
+    relevant:
+      category_surface: ["세럼", "에센스", "앰플"]
+    violations:
+      must_not_category_surface: ["선크림"]
+
+- id: q054
+  stratum: brand_category_excluded
+  query: "스킨케어 빼고 추천"
+  mode: anon
+  holdout: true
+  gold_interpretation:
+    intent: recommend
+    categories_excluded: ["스킨케어"]
+  judgment:
+    violations:
+      must_not_category_group: ["skincare"]
+
+# =========================================================================
+# multi_constraint (4) — brand + ingredient / exclusion combined
+# =========================================================================
+- id: q060
+  stratum: multi_constraint
+  query: "히알루론 들어간 이니스프리 크림"
+  mode: anon
+  holdout: false
+  gold_interpretation:
+    intent: recommend
+    brands: ["이니스프리"]
+    categories: ["크림"]
+    ingredients_required: ["히알루론"]
+  judgment:
+    relevant:
+      brand: "이니스프리"
+      must_contain_ingredient: ["히알루론"]
+      category_surface: ["크림"]
+
+- id: q061
+  stratum: multi_constraint
+  query: "이니스프리 세럼인데 레티놀 없는거"
+  mode: anon
+  holdout: false
+  gold_interpretation:
+    intent: recommend
+    brands: ["이니스프리"]
+    categories: ["세럼"]
+    ingredients_avoided: ["레티놀"]
+  judgment:
+    relevant:
+      brand: "이니스프리"
+      category_group: "skincare"
+    violations:
+      must_not_contain_ingredient: ["레티놀"]
+
+- id: q062
+  stratum: multi_constraint
+  query: "나이아신아마이드 들어간 이니스프리 제품"
+  mode: anon
+  holdout: false
+  gold_interpretation:
+    intent: recommend
+    brands: ["이니스프리"]
+    ingredients_required: ["나이아신아마이드"]
+  judgment:
+    relevant:
+      brand: "이니스프리"
+      must_contain_ingredient: ["나이아신아마이드"]
+
+- id: q063
+  stratum: multi_constraint
+  query: "이니스프리 말고 히알루론 세럼"
+  mode: anon
+  holdout: true
+  gold_interpretation:
+    intent: recommend
+    categories: ["세럼"]
+    ingredients_required: ["히알루론"]
+    brands_excluded: ["이니스프리"]
+  judgment:
+    relevant:
+      must_contain_ingredient: ["히알루론"]
+      category_surface: ["세럼", "에센스", "앰플"]
+    violations:
+      must_not_brand: "이니스프리"
+
+# =========================================================================
+# profile_ref (3, login) — reference the logged-in user's own profile
+# (gain 1 = a product of the user's OWN profile brands; the harness also records
+#  profile_applied — false when the personalization did not fire. See F4.)
+# =========================================================================
+- id: q070
+  stratum: profile_ref
+  query: "내가 자주 쓰는 브랜드로 크림 추천"
+  mode: login
+  holdout: false
+  gold_interpretation:
+    intent: recommend
+    categories: ["크림"]
+    profile_refs: ["repurchase"]
+  judgment:
+    relevant:
+      profile_brand: true
+      category_group: "skincare"
+
+- id: q071
+  stratum: profile_ref
+  query: "내 취향 브랜드 위주로 추천해줘"
+  mode: login
+  holdout: false
+  gold_interpretation:
+    intent: recommend
+    profile_refs: ["preferred_brands"]
+  judgment:
+    relevant:
+      profile_brand: true
+
+- id: q072
+  stratum: profile_ref
+  query: "내 피부 고민에 맞는 크림 추천"
+  mode: login
+  holdout: true
+  gold_interpretation:
+    intent: recommend
+    categories: ["크림"]
+    profile_refs: ["concerns", "skin"]
+  judgment:
+    relevant:
+      profile_brand: true
+      category_group: "skincare"
+
+# =========================================================================
+# legit_zero (2) — out-of-domain; an honest empty result is correct
+# =========================================================================
+- id: q080
+  stratum: legit_zero
+  query: "강아지 사료 추천해줘"
+  mode: anon
+  holdout: false
+  gold_interpretation:
+    intent: search
+  judgment:
+    expect_zero: true
+
+- id: q081
+  stratum: legit_zero
+  query: "노트북 추천"
+  mode: anon
+  holdout: true
+  gold_interpretation:
+    intent: search
+  judgment:
+    expect_zero: true
+
+# =========================================================================
+# typo (4) — a misspelt / abbreviated ingredient the gold corrects
+# =========================================================================
+- id: q090
+  stratum: typo
+  query: "히아루론 크림 추천"
+  mode: anon
+  holdout: false
+  gold_interpretation:
+    intent: recommend
+    categories: ["크림"]
+    ingredients_required: ["히알루론"]
+  judgment:
+    relevant:
+      must_contain_ingredient: ["히알루론"]
+      category_surface: ["크림"]
+
+- id: q091
+  stratum: typo
+  query: "나이아신 크림 추천"
+  mode: anon
+  holdout: false
+  gold_interpretation:
+    intent: recommend
+    categories: ["크림"]
+    ingredients_required: ["나이아신아마이드"]
+  judgment:
+    relevant:
+      must_contain_ingredient: ["나이아신아마이드"]
+      category_surface: ["크림"]
+
+- id: q092
+  stratum: typo
+  query: "히알루로닉 크림 추천"
+  mode: anon
+  holdout: true
+  gold_interpretation:
+    intent: recommend
+    categories: ["크림"]
+    ingredients_required: ["히알루론"]
+  judgment:
+    relevant:
+      must_contain_ingredient: ["히알루론"]
+      category_surface: ["크림"]
+
+- id: q093
+  stratum: typo
+  query: "나이아신 세럼 추천"
+  mode: anon
+  holdout: true
+  gold_interpretation:
+    intent: recommend
+    categories: ["세럼"]
+    ingredients_required: ["나이아신아마이드"]
+  judgment:
+    relevant:
+      must_contain_ingredient: ["나이아신아마이드"]
+      category_surface: ["세럼", "에센스", "앰플"]
