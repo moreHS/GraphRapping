@@ -48,6 +48,7 @@ from src.rec.search import search_products
 # reimplemented, and search.py itself is unmodified beyond search_products' sig).
 from src.rec.search import MatchedConcept, _concept_suffix, _product_overlap
 from src.rec.ingredient_constraint import (
+    count_evidence_unknown_products,
     matched_name_labels,
     product_passes_constraints,
 )
@@ -1865,17 +1866,26 @@ def _ingredient_filter_meta(
     matched_products: int,
     relaxed: bool,
     reason: str | None,
+    evidence_unknown: int = 0,
 ) -> dict[str, Any]:
     """The ``ingredient_filter`` response block (plan §B2). ``applied`` is True only
-    when a raw ingredient family constrained the returned results (labels present
-    AND not relaxed): an LLM-only family (no labels here) or a relaxed gate both
-    report ``applied=False`` while ``labels`` still names what was requested."""
+    when a raw+required ingredient family constrained the returned results (labels
+    present AND not relaxed): an LLM-only/preferred family (no labels here) or a
+    relaxed gate both report ``applied=False`` while ``labels`` still names what was
+    requested.
+
+    [A4] ``evidence_unknown_products`` is the count of gate-eliminated products with
+    no ingredient evidence for at least one required family ("확인 불가"). It is
+    meaningful ONLY when the filter is applied; when not applied / relaxed it is
+    forced to 0 (fixed rule so the frontend never renders a stale count)."""
+    applied = bool(labels) and not relaxed
     return {
-        "applied": bool(labels) and not relaxed,
+        "applied": applied,
         "labels": list(labels),
         "matched_products": matched_products,
         "relaxed": relaxed,
         "reason": reason,
+        "evidence_unknown_products": evidence_unknown if applied else 0,
     }
 
 
@@ -1904,7 +1914,23 @@ async def _anonymous_ask_payload(
     when it empties the results), the avoided-ingredient hard filter, and the same
     matcher filter on related products; returns the unified anonymous payload
     (ask shape + the ``message`` no-concept rule /api/search keeps)."""
-    raw_constraints = [c for c in interp.ingredient_constraints if c.provenance == "raw"]
+    # [A3] Hard gate = provenance=="raw" AND strength=="required". A preferred family
+    # ("있으면 더 좋고") never hard-gates — its ingredient concept still rides the
+    # search overlap/boost and is surfaced under ``ingredient_preferences`` (below).
+    raw_constraints = [
+        c for c in interp.ingredient_constraints
+        if c.provenance == "raw" and c.strength == "required"
+    ]
+    # [A3] Preferred families (any provenance) — soft boost only; surfaced as a
+    # "선호 반영" list, never a hard filter. NOTE the documented anonymous
+    # degeneracy: search qualification is "overlap ≥ 1", so a preferred-only query
+    # structurally returns only carriers (the preferred ingredient is the only
+    # overlap axis) — surfaced honestly here as a preference, with
+    # ``ingredient_filter.applied`` staying False. No full-catalog ranking of
+    # non-carriers is introduced (that would be more dishonest, not less).
+    ingredient_preferences = [
+        c.label for c in interp.ingredient_constraints if c.strength == "preferred"
+    ]
     avoided_ids = interp.avoided_ingredient_concept_ids
     query_avoided = {str(cid) for cid in (avoided_ids or []) if cid}
     max_results = _clamp_search_top_k(top_k)
@@ -1969,6 +1995,7 @@ async def _anonymous_ask_payload(
         )
 
     ingredient_relaxed = False
+    ingredient_evidence_unknown = 0
     if raw_constraints:
         # F4: honour the category gate for the ingredient universe (login parity)
         # — a "히알루론 수분크림" must not surface a lipstick hyaluron carrier.
@@ -1979,17 +2006,27 @@ async def _anonymous_ask_payload(
             ]
         else:
             universe = products
-        # F5: matched = carriers in the (category) universe AFTER removing avoided
-        # AND negated-product carriers, so applied/relaxed reflect what
-        # search_products actually returns — never applied=true with 0 results.
-        matched_products = [
+        # [A4] Gate DENOMINATOR: the (category) universe AFTER removing avoided AND
+        # explicitly-excluded (A1 product / A2 brand·category) products — the exact
+        # stage the hard gate runs at. matched_products is the passing subset;
+        # evidence-unknown is counted over the eliminated remainder.
+        gate_universe = [
             p for p in universe
             if not _carries_avoided(p)
             and str(p.get("product_id") or "") not in excluded_product_ids
             and str(p.get("product_id") or "") not in axis_excluded_pids
-            and product_passes_constraints(p, raw_constraints)
+        ]
+        # F5: matched = carriers in the denominator, so applied/relaxed reflect what
+        # search_products actually returns — never applied=true with 0 results.
+        matched_products = [
+            p for p in gate_universe if product_passes_constraints(p, raw_constraints)
         ]
         ingredient_relaxed = not matched_products
+        # [A4] Evidence-unknown only meaningful when the gate stays applied.
+        if not ingredient_relaxed:
+            ingredient_evidence_unknown = count_evidence_unknown_products(
+                gate_universe, raw_constraints
+            )
         outcome = search_products(
             query,
             universe,
@@ -2011,6 +2048,7 @@ async def _anonymous_ask_payload(
             len(matched_products),
             ingredient_relaxed,
             _INGREDIENT_RELAX_REASON if ingredient_relaxed else None,
+            ingredient_evidence_unknown,
         )
     else:
         outcome = search_products(
@@ -2096,6 +2134,10 @@ async def _anonymous_ask_payload(
         "preset_used": None,
         "message": message,
         "ingredient_filter": ingredient_filter,
+        # [A3] Preferred ingredient labels ("있으면 더 좋고") — soft, never a hard
+        # filter; the frontend renders these as a "선호 반영" note (see the
+        # documented anonymous preferred-only degeneracy above).
+        "ingredient_preferences": ingredient_preferences,
         # [A1] Pin trace (same shape as the recommend branch): named products
         # pinned into the results, and any pin removed (excluded / filtered).
         "pinned_product_ids": pinned_applied,
@@ -2185,14 +2227,24 @@ async def ask(req: AskRequest):
             pid for pid in category_universe_ids if pid not in universe_excluded
         ]
 
-    # Ingredient HARD gate (raw-provenance families only), applied INSIDE the
-    # category universe, BEFORE soft narrowing (plan §B2 order). A product passes
-    # via the structured OR product-name axis (AND across families). 0 matches →
-    # relax the ingredient condition ONLY (keep the category universe; category /
-    # avoided / other conditions untouched); ≥1 → keep the gate (honest).
-    raw_constraints = [c for c in interp.ingredient_constraints if c.provenance == "raw"]
+    # Ingredient HARD gate — [A3] provenance=="raw" AND strength=="required" families
+    # only — applied INSIDE the category universe, BEFORE soft narrowing (plan §B2
+    # order). A product passes via the structured OR product-name axis (AND across
+    # families). 0 matches → relax the ingredient condition ONLY (keep the category
+    # universe; category / avoided / other conditions untouched); ≥1 → keep the gate.
+    raw_constraints = [
+        c for c in interp.ingredient_constraints
+        if c.provenance == "raw" and c.strength == "required"
+    ]
+    # [A3] Preferred families ("있으면 더 좋고") — never hard-gate; their ingredient
+    # concept already earns the injected PREFERS_INGREDIENT boost, and the labels are
+    # surfaced as a "선호 반영" list in the payload below.
+    ingredient_preferences = [
+        c.label for c in interp.ingredient_constraints if c.strength == "preferred"
+    ]
     ingredient_relaxed = False
     ingredient_matched_count = 0
+    ingredient_evidence_unknown = 0
     ingredient_name_labels: dict[str, list[str]] = {}
     if raw_constraints:
         # F5: exclude avoided carriers from the gate universe BEFORE counting, so
@@ -2200,11 +2252,12 @@ async def ask(req: AskRequest):
         # every carrier is dropped by the avoided filter (→ 0 results). Negated
         # products + axis-excluded (A1/A2) are ALREADY gone from category_universe_ids
         # (F4 single-point removal above), so only the avoided filter remains here.
+        # [A4] This same avoided-removed universe is the evidence-unknown DENOMINATOR.
+        gate_universe_ids = [pid for pid in category_universe_ids if pid not in avoided_pids]
         gated_ids = [
             pid
-            for pid in category_universe_ids
-            if pid not in avoided_pids
-            and product_passes_constraints(product_map[pid], raw_constraints)
+            for pid in gate_universe_ids
+            if product_passes_constraints(product_map[pid], raw_constraints)
         ]
         ingredient_matched_count = len(gated_ids)
         if ingredient_matched_count == 0:
@@ -2219,6 +2272,11 @@ async def ask(req: AskRequest):
                 labels = matched_name_labels(product_map[pid], raw_constraints)
                 if labels:
                     ingredient_name_labels[pid] = labels
+            # [A4] Evidence-unknown count over the same denominator (only when the
+            # gate stays applied — a relaxed gate forces 0 in the meta).
+            ingredient_evidence_unknown = count_evidence_unknown_products(
+                [product_map[pid] for pid in gate_universe_ids], raw_constraints
+            )
     else:
         ingredient_universe_ids = category_universe_ids
 
@@ -2381,6 +2439,7 @@ async def ask(req: AskRequest):
         ingredient_matched_count,
         ingredient_relaxed,
         _INGREDIENT_RELAX_REASON if ingredient_relaxed else None,
+        ingredient_evidence_unknown,
     )
 
     return {
@@ -2389,6 +2448,9 @@ async def ask(req: AskRequest):
         "resolved_mode": "recommend",
         "relaxed": relaxed,
         "ingredient_filter": ingredient_filter,
+        # [A3] Preferred ingredient labels ("있으면 더 좋고") — soft, surfaced as a
+        # "선호 반영" note; the hard filter above only fires for required families.
+        "ingredient_preferences": ingredient_preferences,
         "category_group": category_group,
         # KPI meta (parity with /api/recommend) so the frontend dashboard can show
         # real counts instead of placeholders. category_filtered_count is the tab

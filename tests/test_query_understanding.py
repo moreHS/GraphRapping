@@ -827,6 +827,123 @@ def test_constraint_direct_inci_name_surfaces_include_typed_and_suffix(
     assert match_ingredient_constraint(name_only, retinol[0]) == "name"
 
 
+# ---------------------------------------------------------------------------
+# [A3] Ingredient strength (required/preferred) — the "있으면 더 좋고" slot + the
+# strength-source threading through the concept_map flatten.
+# ---------------------------------------------------------------------------
+
+
+def _hya_of(interp: QueryInterpretation) -> Any:
+    """The single hyaluron family constraint (tests below build exactly one)."""
+    hya = [
+        c for c in interp.ingredient_constraints
+        if "concept:Ingredient:소듐하이알루로네이트" in c.inci_concept_ids
+    ]
+    assert len(hya) == 1, interp.ingredient_constraints
+    return hya[0]
+
+
+def test_a3_preferred_slot_classifies_constraint_preferred() -> None:
+    """The LLM routes a family to ingredients_preferred → strength="preferred" even
+    though the raw query surfaces it (raw-floor default of required must NOT override
+    an explicit preferred classification). provenance stays "raw" (the surface is in
+    the query); only the strength distinguishes it from a hard need."""
+    fake = FakeLLMClient(_fake_json(ingredients_preferred=["히알루론"], desired_attributes=["보습"]))
+    interp = understand_query("히알루론 들어있으면 더 좋고 보습 크림", _hyaluron_products(), llm=fake)
+    c = _hya_of(interp)
+    assert c.provenance == "raw"  # surface literally in the query
+    assert c.strength == "preferred"  # ...but a preference, never a hard gate
+
+
+def test_a3_wanted_slot_stays_required_regression() -> None:
+    """ingredients_wanted keeps strength="required" (the existing hard-gate axis)."""
+    fake = FakeLLMClient(_fake_json(ingredients_wanted=["히알루론"]))
+    interp = understand_query("히알루론 든거", _hyaluron_products(), llm=fake)
+    c = _hya_of(interp)
+    assert c.strength == "required"
+
+
+def test_a3_required_and_preferred_same_family_promotes_required() -> None:
+    """A family named by BOTH slots resolves to required (required-wins), regardless
+    of raw surface. Order in _POSITIVE_FIELDS ensures wanted is recorded first."""
+    fake = FakeLLMClient(
+        _fake_json(ingredients_wanted=["히알루론"], ingredients_preferred=["히알루론"])
+    )
+    interp = understand_query("보습 크림", _hyaluron_products(), llm=fake)
+    assert _hya_of(interp).strength == "required"
+
+
+def test_a3_raw_floor_default_is_required_llm_path() -> None:
+    """A raw-surface family with NO explicit slot classification (the LLM omitted it,
+    only the raw floor resolved it) defaults to strength="required"."""
+    fake = FakeLLMClient(_fake_json())  # no ingredient slots at all
+    interp = understand_query("히알루론 든거", _hyaluron_products(), llm=fake)
+    c = _hya_of(interp)
+    assert c.provenance == "raw" and c.strength == "required"
+
+
+def test_a3_fallback_family_is_required() -> None:
+    """Dictionary fallback (LLM off) has no preference slot → every family required
+    (documented degradation)."""
+    fake = FakeLLMClient(raises=RuntimeError("llm down"))
+    interp = understand_query("히알루론 든거", _hyaluron_products(), llm=fake)
+    assert interp.llm_used is False
+    assert _hya_of(interp).strength == "required"
+
+
+def test_a3_avoided_wins_over_preferred() -> None:
+    """기피 우선: an avoided family produces NO constraint even if the LLM also puts it
+    in ingredients_preferred (avoided > required > preferred; avoided subtraction runs
+    before constraint building)."""
+    fake = FakeLLMClient(_fake_json(ingredients_preferred=["히알루론"]))
+    interp = understand_query("히알루론 없는 크림", _hyaluron_products(), llm=fake)
+    assert interp.avoided_ingredient_concept_ids  # recorded as avoided
+    assert interp.ingredient_constraints == []  # never a wanted/preferred constraint
+
+
+def test_a3_to_dict_includes_strength() -> None:
+    """The constraint to_dict carries the additive strength field (query-response
+    shape contract)."""
+    fake = FakeLLMClient(_fake_json(ingredients_preferred=["히알루론"]))
+    interp = understand_query("히알루론 크림", _hyaluron_products(), llm=fake)
+    payload = interp.to_dict()["ingredient_constraints"][0]
+    assert payload["strength"] == "preferred"
+    assert set(payload) == {"label", "inci_concept_ids", "name_surfaces", "provenance", "strength"}
+
+
+def test_a3_prompt_advertises_preferred_slot() -> None:
+    from src.rec.query_understanding import _build_system_prompt
+
+    prompt = _build_system_prompt()
+    assert '"ingredients_preferred": []' in prompt
+    assert "ingredients_preferred" in prompt
+
+
+def test_a3_dup_term_in_earlier_slot_does_not_lose_preferred_strength() -> None:
+    """[F1] The LLM puts the SAME family in a non-strength slot (desired_attributes)
+    AND ingredients_preferred. The earlier slot consumes the adoption dedupe first;
+    the strength signal must still be recorded from the preferred slot → the raw
+    surface stays preferred (never promoted to the required raw-floor default →
+    spurious hard gate)."""
+    fake = FakeLLMClient(
+        _fake_json(desired_attributes=["히알루론"], ingredients_preferred=["히알루론"])
+    )
+    interp = understand_query("히알루론 크림", _hyaluron_products(), llm=fake)
+    c = _hya_of(interp)
+    assert c.provenance == "raw"
+    assert c.strength == "preferred"  # F1: NOT promoted to required
+
+
+def test_a3_dup_wanted_and_preferred_still_promotes_required() -> None:
+    """[F1] The inverse still holds: wanted + preferred on the same family → required
+    (required-wins), regardless of dedupe order."""
+    fake = FakeLLMClient(
+        _fake_json(ingredients_wanted=["히알루론"], ingredients_preferred=["히알루론"])
+    )
+    interp = understand_query("히알루론 크림", _hyaluron_products(), llm=fake)
+    assert _hya_of(interp).strength == "required"
+
+
 def _alcohol_products() -> list[dict[str, Any]]:
     """Catalog carrying the volatile solvent (변성알코올) + a fatty alcohol (세틸알코올,
     deliberately NOT swept in by the alcohol alias)."""

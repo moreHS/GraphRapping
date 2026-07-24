@@ -905,7 +905,11 @@ def test_ask_anonymous_payload_carries_ingredient_filter_and_message(
     assert payload["ingredient_filter"] == {
         "applied": False, "labels": [], "matched_products": 0,
         "relaxed": False, "reason": None,
+        # [A4] additive evidence-unknown count (0 while the filter is not applied).
+        "evidence_unknown_products": 0,
     }
+    # [A3] additive preferred-ingredient surface (empty for a no-preference query).
+    assert payload["ingredient_preferences"] == []
 
 
 def test_ask_search_mode_ingredient_gate_honours_category_universe(

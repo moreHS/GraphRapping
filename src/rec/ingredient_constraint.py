@@ -68,13 +68,22 @@ class IngredientConstraint:
       product-NAME axis.
     - ``provenance``: "raw" (a family surface is literally present in the raw
       query, outside a negation span → hard-filter eligible) or "llm" (the LLM
-      adopted it as ``ingredients_wanted`` with no raw surface → soft boost only).
+      adopted it as ``ingredients_wanted``/``ingredients_preferred`` with no raw
+      surface → soft boost only).
+    - ``strength`` [A3]: "required" (default — the user needs this family: hard-gate
+      eligible when also ``provenance == "raw"``) or "preferred" (the user would
+      like it "있으면 더 좋고": never hard-gates, only the PREFERS_INGREDIENT boost +
+      an ``ingredient_preferences`` surface). The hard gate fires iff
+      ``provenance == "raw" AND strength == "required"``; every other combination is
+      soft. The dictionary-fallback path (LLM off) has no preference slot, so every
+      fallback constraint is ``required`` (documented degradation).
     """
 
     label: str
     inci_concept_ids: list[str]
     name_surfaces: list[str]
     provenance: str  # "raw" | "llm"
+    strength: str = "required"  # "required" | "preferred" (A3; additive default)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -82,6 +91,7 @@ class IngredientConstraint:
             "inci_concept_ids": list(self.inci_concept_ids),
             "name_surfaces": list(self.name_surfaces),
             "provenance": self.provenance,
+            "strength": self.strength,
         }
 
 
@@ -172,3 +182,76 @@ def matched_name_labels(
             seen.add(c.label)
             labels.append(c.label)
     return labels
+
+
+# ---------------------------------------------------------------------------
+# [A4] Evidence-state transparency (aggregation only — the pass/exclude verdict of
+# ``match_ingredient_constraint`` / ``product_passes_constraints`` is UNCHANGED).
+# ---------------------------------------------------------------------------
+#
+# MAIN_INGREDIENT (the structured ingredient axis) is NOT a full 전성분 list: a
+# non-empty ingredient set does not prove ingredient X is ABSENT. So a
+# non-matching product is one of two honestly-distinct states, never a clean "no":
+#   - ``unmatched_in_available_evidence``: the product HAS an ingredient list, and X
+#     is not in it — but that is not proof of absence (the list is partial).
+#   - ``no_evidence``: the product carries NO structured/raw ingredient field at all,
+#     and its NAME did not match either — we simply cannot say ("확인 불가"). Had the
+#     evidence existed, it might well have matched.
+# The product NAME is deliberately NOT counted as ingredient evidence for the
+# no/unmatched split: a name is not an ingredient list. It only ever produces
+# ``matched`` (via the name axis in ``match_ingredient_constraint``), so an X-free
+# name ("레티놀프리 크림", guarded to non-match) with no structured field is
+# ``no_evidence`` — we still have no ingredient list to reason over.
+
+_EVIDENCE_MATCHED = "matched"
+_EVIDENCE_UNMATCHED = "unmatched_in_available_evidence"
+_EVIDENCE_NONE = "no_evidence"
+
+
+def ingredient_evidence_state(
+    product: dict[str, Any],
+    constraint: IngredientConstraint,
+) -> str:
+    """Return the 3-state A4 evidence verdict for one family (pure read).
+
+    ``matched`` iff ``match_ingredient_constraint`` matches (any axis). Otherwise
+    ``unmatched_in_available_evidence`` when the product carries ANY structured/raw
+    ingredient field (evidence exists, X just is not in it), else ``no_evidence``
+    (the ingredient fields are entirely blank → absence is unproven, "확인 불가")."""
+    if match_ingredient_constraint(product, constraint) is not None:
+        return _EVIDENCE_MATCHED
+    # F2: presence is a NON-BLANK value, not list truthiness — a placeholder like
+    # ``[""]`` / ``["  "]`` is NOT ingredient evidence (it would never match, so it
+    # cannot prove absence either → no_evidence, not unmatched).
+    def _has_nonblank(values: Any) -> bool:
+        return any(normalize_text(str(v)) for v in (values or []))
+
+    has_ingredient_evidence = _has_nonblank(
+        product.get("ingredient_concept_ids")
+    ) or _has_nonblank(product.get("ingredient_ids"))
+    return _EVIDENCE_UNMATCHED if has_ingredient_evidence else _EVIDENCE_NONE
+
+
+def count_evidence_unknown_products(
+    products: list[dict[str, Any]],
+    constraints: list[IngredientConstraint],
+) -> int:
+    """[A4] Among the gate DENOMINATOR ``products`` (the caller passes the universe
+    AFTER the category gate + explicit exclusion + avoided removal — the same stage
+    the hard ingredient gate runs at), count the products the gate ELIMINATED (fail
+    ``product_passes_constraints``) for which AT LEAST ONE constraint is
+    ``no_evidence`` — the honest "could have matched had evidence existed" set.
+
+    A product the gate KEEPS (passes every family) is never counted. Empty
+    ``constraints`` returns 0 (callers gate on a non-empty raw+required set)."""
+    if not constraints:
+        return 0
+    count = 0
+    for product in products:
+        if product_passes_constraints(product, constraints):
+            continue  # kept by the gate — not an eliminated/unknown product
+        if any(
+            ingredient_evidence_state(product, c) == _EVIDENCE_NONE for c in constraints
+        ):
+            count += 1
+    return count

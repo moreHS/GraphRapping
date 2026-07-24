@@ -99,9 +99,21 @@ _POSITIVE_FIELDS = (
     "product_names",
     "desired_attributes",
     "ingredients_wanted",
+    "ingredients_preferred",
     "concerns",
     "goals",
 )
+
+# [A3] Ingredient positive slot → strength. ``ingredients_wanted`` is a hard need
+# ("required"); ``ingredients_preferred`` is a soft wish ("있으면 더 좋고" →
+# "preferred": never hard-gates, only boosts). Order in ``_POSITIVE_FIELDS`` places
+# ``ingredients_wanted`` BEFORE ``ingredients_preferred`` so, when a concept is
+# named by both slots, the required classification is recorded first and never
+# downgraded (required-wins). Slots absent from this map carry no strength signal.
+_SLOT_STRENGTH: dict[str, str] = {
+    "ingredients_wanted": "required",
+    "ingredients_preferred": "preferred",
+}
 
 # [A1 F3] LLM positive slot → the concept type(s) that slot is authorised to
 # adopt. A term is validated through ``resolve_query_concepts`` and only the
@@ -114,6 +126,9 @@ _SLOT_CONCEPT_TYPES: dict[str, frozenset[str]] = {
     "product_names": frozenset({"product"}),
     "desired_attributes": frozenset({"keyword"}),
     "ingredients_wanted": frozenset({"ingredient"}),
+    # [A3] "있으면 더 좋고" preference slot — same ingredient axis as
+    # ``ingredients_wanted``; distinguished only by ``_SLOT_STRENGTH`` (preferred).
+    "ingredients_preferred": frozenset({"ingredient"}),
     "concerns": frozenset({"concern"}),
     "goals": frozenset({"goal"}),
     # [A2] Exclusion slots — DOCUMENTATION ONLY (allowed axis per exclusion slot,
@@ -435,8 +450,8 @@ def _profile_ref_prompt_block() -> str:
 def _build_system_prompt() -> str:
     return (
         "당신은 한국어 화장품 검색/추천 질의를 구조화된 JSON으로 변환하는 번역기입니다.\n"
-        "질의에서 카테고리·브랜드·제품명·원하는 속성·원하는 성분·피하고 싶은 성분·"
-        "제외할 브랜드·제외할 카테고리·피부고민·목표를 추출하세요.\n"
+        "질의에서 카테고리·브랜드·제품명·원하는 속성·꼭 필요한 성분·선호 성분·"
+        "피하고 싶은 성분·제외할 브랜드·제외할 카테고리·피부고민·목표를 추출하세요.\n"
         "가능하면 아래 폐쇄 어휘의 표현으로 정규화하고, 목록에 없는 근거를 새로 만들지 마세요.\n\n"
         + _closed_vocab_hint()
         + "\n\n"
@@ -445,9 +460,16 @@ def _build_system_prompt() -> str:
         "출력은 아래 스키마의 JSON 객체 하나만 반환하세요 (설명·코드펜스 없이 JSON만):\n"
         '{"intent": "recommend|search|question", "categories": [], "brands": [], '
         '"product_names": [], "desired_attributes": [], "ingredients_wanted": [], '
+        '"ingredients_preferred": [], '
         '"ingredients_avoided": [], "brands_excluded": [], "categories_excluded": [], '
         '"concerns": [], "goals": [], '
         '"profile_refs": [], "unresolved_terms": []}\n\n'
+        "성분 슬롯 구분: 꼭 있어야 하는 성분(\"~든거\", \"~함유\")은 ingredients_wanted, "
+        "있으면 더 좋은 정도의 선호 성분(\"~들어있으면 더 좋고\", \"~있으면 좋겠어\")은 "
+        "ingredients_preferred에 담으세요. "
+        '예: "히알루론 들어있으면 더 좋고 보습 크림" → '
+        '{"ingredients_preferred": ["히알루론"], "desired_attributes": ["보습"], '
+        '"categories": ["크림"]}.\n'
         "제외 표현(말고/빼고/제외/없이 등)으로 배제된 대상을 축별로 담으세요: 성분은 "
         "ingredients_avoided, 브랜드는 brands_excluded, 카테고리는 categories_excluded. "
         '예: "이니스프리 말고 보습크림" → {"brands_excluded": ["이니스프리"], '
@@ -1064,10 +1086,24 @@ def _build_ingredient_constraints(
     query: str,
     products: list[dict[str, Any]],
     resolved_concepts: list[MatchedConcept],
+    strength_by_cid: dict[str, str] | None = None,
 ) -> list[IngredientConstraint]:
     """Group the (post-avoided) resolved INGREDIENT concepts into 성분군 constraints,
     ONE per user EXPRESSION (the concept's ``matched_text``), and build an
     ``IngredientConstraint`` for each.
+
+    [A3] ``strength_by_cid`` maps a resolved ingredient concept id → the LLM slot
+    strength it was adopted under ("required" from ``ingredients_wanted`` /
+    "preferred" from ``ingredients_preferred``), collected in ``_interpret_with_llm``
+    BEFORE the concept_map flatten (the raw floor inserts a concept first, so the
+    slot classification must be recorded separately, never inferred from adoption
+    order). A family's strength is decided AFTER slot classification:
+    ``required`` if ANY of its concepts was classified required (required-wins over
+    preferred), else ``preferred`` if any was classified preferred, else the
+    ``required`` raw-floor default — so a raw surface with no explicit slot is
+    required, but a raw surface the LLM deliberately put in ``ingredients_preferred``
+    stays preferred (the raw default never overrides an explicit classification).
+    The dictionary fallback passes ``None`` → every family is ``required``.
 
     Grouping key = the surface the user actually typed (``matched_text``): an alias
     hit carries the 관용어 ("히알루론"), a bare hit the INCI suffix ("레티놀"), a Tier 3
@@ -1092,6 +1128,7 @@ def _build_ingredient_constraints(
     resolved_ing = [c for c in resolved_concepts if c.concept_type == "ingredient"]
     if not resolved_ing:
         return []
+    strength_by_cid = strength_by_cid or {}
 
     catalog_ids = {
         str(cid)
@@ -1169,12 +1206,25 @@ def _build_ingredient_constraints(
         inci_surfaces = [_concept_suffix(cid) for cid in inci_ids]
         name_surfaces = {label, *inci_surfaces} | extra_surfaces
         provenance = "raw" if _has_raw_surface([label, *inci_surfaces]) else "llm"
+        # [A3] Family strength from the slot classification of its resolved concepts
+        # (the grouped, pre-family-expansion ``resolved_cids`` — those are the ids
+        # ``strength_by_cid`` is keyed by). required-wins > preferred > raw-floor
+        # default (required). A concept unclassified by any slot contributes no
+        # strength, so a purely raw-floor family falls through to the default.
+        group_strengths = {strength_by_cid.get(cid) for cid in resolved_cids}
+        if "required" in group_strengths:
+            strength = "required"
+        elif "preferred" in group_strengths:
+            strength = "preferred"
+        else:
+            strength = "required"  # raw-floor default (no explicit slot classification)
         constraints.append(
             IngredientConstraint(
                 label=label,
                 inci_concept_ids=inci_ids,
                 name_surfaces=sorted(name_surfaces),
                 provenance=provenance,
+                strength=strength,
             )
         )
 
@@ -1259,6 +1309,9 @@ def _fallback(query: str, products: list[dict[str, Any]]) -> QueryInterpretation
         # than the schema-driven LLM path; never guesses values, only classes.
         profile_refs=_fallback_profile_refs(query),
         # [B2] Ingredient families built from the post-avoided positive concepts.
+        # [A3] No LLM → no preference slot, so ``strength_by_cid`` is omitted and
+        # every fallback family defaults to strength="required" (documented
+        # LLM-off degradation).
         ingredient_constraints=_build_ingredient_constraints(query, products, positive),
         # [A1] Products the query negated by name — excluded everywhere downstream.
         excluded_product_ids=excluded_product_ids,
@@ -1297,19 +1350,42 @@ def _interpret_with_llm(
     # term that resolves but to no allowed-type concept is dropped from adoption
     # (its raw floor / another slot may still carry it); a term that resolves to
     # nothing at all is surfaced as unresolved (unchanged).
+    # [A3] concept_id → ingredient slot strength ("required"|"preferred"), collected
+    # HERE (before the concept_map flatten below loses slot origin). Recorded even
+    # when ``setdefault`` is a no-op (the raw floor already inserted the concept):
+    # the classification must reflect the LLM slot, not adoption order. Never
+    # downgraded from required (``ingredients_wanted`` runs before
+    # ``ingredients_preferred`` in ``_POSITIVE_FIELDS``, so required-wins holds).
+    strength_by_cid: dict[str, str] = {}
     seen_terms: set[str] = set()
     for field_name in _POSITIVE_FIELDS:
         allowed_types = _SLOT_CONCEPT_TYPES.get(field_name)
+        slot_strength = _SLOT_STRENGTH.get(field_name)
         for term in _string_list(raw.get(field_name)):
             norm = normalize_text(term)
-            if not norm or norm in seen_terms:
+            if not norm:
+                continue
+            # Adoption dedupe: a term already processed by an earlier slot is not
+            # re-adopted or re-marked-unresolved. EXCEPTION (F1): an ingredient
+            # STRENGTH slot must still record its strength signal for a duplicate
+            # term — otherwise a family the LLM ALSO placed in a non-strength slot
+            # (e.g. desired_attributes), which consumes seen_terms FIRST, would lose
+            # its preferred/required classification and wrongly fall to the raw-floor
+            # required default → spurious hard gate. setdefault keeps adoption
+            # idempotent, so re-running it for a seen term is harmless.
+            already_seen = norm in seen_terms
+            if already_seen and slot_strength is None:
                 continue
             seen_terms.add(norm)
             resolved = resolve_query_concepts(term, products)
             if not resolved:
-                _mark_unresolved(term)
+                if not already_seen:
+                    _mark_unresolved(term)
                 continue
             for concept in resolved:
+                if slot_strength is not None and concept.concept_type == "ingredient":
+                    if strength_by_cid.get(concept.concept_id) != "required":
+                        strength_by_cid[concept.concept_id] = slot_strength
                 if allowed_types is not None and concept.concept_type not in allowed_types:
                     continue
                 concept_map.setdefault((concept.concept_type, concept.concept_id), concept)
@@ -1459,7 +1535,12 @@ def _interpret_with_llm(
         # [B2] Ingredient families from the post-avoided resolved concepts. A
         # family whose surface is absent from the RAW query (LLM-only recall
         # expansion via ingredients_wanted) is provenance="llm" → soft boost only.
-        ingredient_constraints=_build_ingredient_constraints(query, products, resolved_concepts),
+        # [A3] ``strength_by_cid`` threads the wanted/preferred slot classification
+        # so a preference family ("있으면 더 좋고") is strength="preferred" (never
+        # hard-gates); a raw-floor family with no slot stays required.
+        ingredient_constraints=_build_ingredient_constraints(
+            query, products, resolved_concepts, strength_by_cid
+        ),
         # [A1] Products the query negated by name — excluded everywhere downstream.
         excluded_product_ids=excluded_product_ids,
         # [A2] Brand / literal-category-surface / category-group exclusions (raw ∪ LLM).

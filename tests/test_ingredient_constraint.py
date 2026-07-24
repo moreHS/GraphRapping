@@ -184,7 +184,11 @@ def test_matched_name_labels_dedups() -> None:
 
 def test_constraint_to_dict_shape() -> None:
     payload = _hya().to_dict()
-    assert set(payload) == {"label", "inci_concept_ids", "name_surfaces", "provenance"}
+    # [A3] ``strength`` is an additive field (defaults to "required").
+    assert set(payload) == {
+        "label", "inci_concept_ids", "name_surfaces", "provenance", "strength"
+    }
     assert payload["label"] == "히알루론"
     assert payload["provenance"] == "raw"
+    assert payload["strength"] == "required"
     assert payload["inci_concept_ids"] == [_HYA_S, _HYA_A]
