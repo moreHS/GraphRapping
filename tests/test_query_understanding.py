@@ -554,6 +554,9 @@ def test_to_dict_shape() -> None:
         "profile_refs",
         "ingredient_constraints",
         "excluded_product_ids",
+        "excluded_brand_ids",
+        "excluded_category_surfaces",
+        "excluded_category_groups",
     }
     assert payload["intent"] == "recommend"
     assert payload["llm_used"] is True
@@ -569,6 +572,11 @@ def test_to_dict_shape() -> None:
     # [A1] excluded_product_ids always present and a list (default []); this query
     # negates no product name, so it is empty here.
     assert payload["excluded_product_ids"] == []
+    # [A2] excluded brand/category/group axes always present and lists (default []);
+    # this query negates nothing, so all empty.
+    assert payload["excluded_brand_ids"] == []
+    assert payload["excluded_category_surfaces"] == []
+    assert payload["excluded_category_groups"] == []
 
 
 # ---------------------------------------------------------------------------
@@ -1012,6 +1020,7 @@ def test_real_llm_smoke(monkeypatch: pytest.MonkeyPatch) -> None:
 
 from src.rec.query_understanding import (  # noqa: E402
     _apply_brand_product_guard,
+    _build_negation_index,
     _negated_products,
 )
 from src.rec.search import MatchedConcept  # noqa: E402
@@ -1032,13 +1041,15 @@ def _named_products() -> list[dict[str, Any]]:
 def test_negated_products_resolves_excluded_ids():
     """_negated_products resolves the negated surface (in isolation) via the product
     axis — '윤조에센스 빼고' excludes BOTH the essence and its mist variant."""
-    excluded, consumed = _negated_products("설화수 윤조에센스 빼고 다른 에센스", _named_products())
+    index = _build_negation_index(_named_products())
+    excluded, consumed, _spans = _negated_products("설화수 윤조에센스 빼고 다른 에센스", index)
     assert set(excluded) == {"50165", "50166"}
     assert "윤조에센스" in consumed  # group-1 surface reported for F7
 
 
 def test_negated_products_empty_without_marker():
-    excluded, consumed = _negated_products("설화수 윤조에센스 어때", _named_products())
+    index = _build_negation_index(_named_products())
+    excluded, consumed, _spans = _negated_products("설화수 윤조에센스 어때", index)
     assert excluded == [] and consumed == set()
 
 
@@ -1048,13 +1059,14 @@ def test_negated_products_span_multiword_name():
     products = _named_products()
     products.append(_product("70002", representative_product_name="헤라 블랙 쿠션",
                              brand_name="헤라", brand_concept_ids=["concept:Brand:헤라"]))
-    excluded, _consumed = _negated_products("헤라 블랙 쿠션 빼고 다른거", products)
+    excluded, _consumed, _spans = _negated_products("헤라 블랙 쿠션 빼고 다른거", _build_negation_index(products))
     assert "70002" in excluded
 
 
 def test_negated_products_malgo_marker():
     """[F2a] '말고' is now a recognised negation marker."""
-    excluded, _consumed = _negated_products("설화수 윤조에센스 말고", _named_products())
+    index = _build_negation_index(_named_products())
+    excluded, _consumed, _spans = _negated_products("설화수 윤조에센스 말고", index)
     assert set(excluded) == {"50165", "50166"}
 
 
@@ -1066,6 +1078,22 @@ def test_fallback_excluded_products_populated_and_subtracted():
     assert set(interp.excluded_product_ids) == {"50165", "50166"}
     product_ids = {c.concept_id for c in interp.resolved_concepts if c.concept_type == "product"}
     assert product_ids == set()  # negated products are not positive
+    # [A2 precedence] A product-NAME negation must NOT also be read as a brand
+    # exclusion just because the span "설화수 윤조에센스" contains the brand token
+    # "설화수" — the product axis claims the span first (product > brand). If this
+    # regressed, the whole 설화수 brand would be wiped.
+    assert interp.excluded_brand_ids == []
+
+
+def test_llm_product_negation_does_not_exclude_brand():
+    """[A2 precedence — LLM twin] The raw-query product-name negation is detected on
+    BOTH paths; on the LLM path too, "설화수 윤조에센스 빼고" is a product exclusion, not
+    a 설화수 brand exclusion (product > brand precedence)."""
+    fake = FakeLLMClient(_fake_json(intent="recommend"))  # empty slots; raw span drives it
+    interp = understand_query("설화수 윤조에센스 빼고 추천", _named_products(), llm=fake)
+    assert interp.llm_used is True
+    assert set(interp.excluded_product_ids) == {"50165", "50166"}
+    assert interp.excluded_brand_ids == []  # brand 설화수 NOT wiped
 
 
 def test_fallback_forward_pin_resolved_positive():
@@ -1175,3 +1203,211 @@ def test_product_negation_does_not_emit_ingredient_warning():
     assert "70002" in interp.excluded_product_ids
     assert not any("쿠션" in w for w in interp.warnings)
     assert "쿠션" not in interp.unresolved_terms
+
+
+# ---------------------------------------------------------------------------
+# Search-absorption A2: polarity generalized to brand / category axes —
+# excluded_brand_ids / excluded_category_ids / excluded_category_groups,
+# _negated_brands / _negated_categories, LLM exclusion slots, non-cancellation.
+# ---------------------------------------------------------------------------
+
+from src.rec.query_understanding import (  # noqa: E402
+    _negated_brands,
+    _negated_categories,
+    _resolve_excluded_category,
+)
+
+
+def _a2_products() -> list[dict[str, Any]]:
+    """Brand-exclusion + literal-subtype + group-fallback fixture.
+
+    - 이니스프리 보습크림 (brand to exclude) + a라네즈 rival 보습크림.
+    - 설화수 선크림 with the COMPOUND catalog label "선크림 & 선블럭" (literal subtype).
+    - 설화수 윤조세럼 (skincare essence — a 세럼/skincare-group carrier, deepest label
+      "에센스" so it does NOT literal-match "스킨케어").
+    - a makeup lipstick (out of skincare group)."""
+    return [
+        _product("P_inni", representative_product_name="이니스프리 보습크림",
+                 brand_name="이니스프리", brand_concept_ids=["concept:Brand:이니스프리"],
+                 category_name="크림", category_concept_ids=["concept:Category:크림"]),
+        _product("P_rival", representative_product_name="라네즈 보습크림",
+                 brand_name="라네즈", brand_concept_ids=["concept:Brand:라네즈"],
+                 category_name="크림", category_concept_ids=["concept:Category:크림"]),
+        _product("P_sun", representative_product_name="설화수 선크림",
+                 brand_name="설화수", brand_concept_ids=["concept:Brand:설화수"],
+                 category_name="선크림 & 선블럭",
+                 category_concept_ids=["concept:Category:선크림 & 선블럭"]),
+        _product("P_serum", representative_product_name="설화수 윤조세럼",
+                 brand_name="설화수", brand_concept_ids=["concept:Brand:설화수"],
+                 category_name="에센스", category_concept_ids=["concept:Category:에센스"]),
+        _product("P_lip", representative_product_name="릴리 립스틱",
+                 brand_name="릴리", brand_concept_ids=["concept:Brand:릴리"],
+                 category_name="립스틱", category_concept_ids=["concept:Category:립스틱"]),
+    ]
+
+
+def test_negated_brands_resolves_excluded_brand():
+    index = _build_negation_index(_a2_products())
+    excluded, consumed, _spans = _negated_brands("이니스프리 말고 보습크림", index)
+    assert excluded == ["concept:Brand:이니스프리"]
+    assert "이니스프리" in consumed  # F7 surface consumed
+
+
+def test_negated_brands_empty_without_marker():
+    index = _build_negation_index(_a2_products())
+    excluded, consumed, _spans = _negated_brands("이니스프리 보습크림", index)
+    assert excluded == [] and consumed == set()
+
+
+def test_negated_brands_strict_equality_no_substring():
+    """[F1] STRICT: a span that merely CONTAINS a brand token ("이니스프리 선크림") is
+    NOT a brand exclusion — the 이니스프리 brand must not be wiped."""
+    index = _build_negation_index(_a2_products())
+    excluded, _consumed, _spans = _negated_brands("이니스프리 선크림 빼고 세럼", index)
+    assert excluded == []
+
+
+def test_resolve_excluded_category_literal_subtype_inclusion():
+    """Layer 1: 표현⊂라벨 — "선크림" ⊂ "선크림 & 선블럭" → the SURFACE (not an id)."""
+    index = _build_negation_index(_a2_products())
+    surfaces, groups = _resolve_excluded_category("선크림", index)
+    assert surfaces == ["선크림"]
+    assert groups == []
+
+
+def test_resolve_excluded_category_group_fallback():
+    """Layer 0: "스킨케어" is a whole-group label → group exclusion (universe reconstruct)."""
+    index = _build_negation_index(_a2_products())
+    surfaces, groups = _resolve_excluded_category("스킨케어", index)
+    assert surfaces == []
+    assert groups == ["skincare"]
+
+
+def test_negated_categories_literal_first():
+    index = _build_negation_index(_a2_products())
+    surfaces, groups, consumed, _spans = _negated_categories("선크림 빼고 세럼", index)
+    assert surfaces == ["선크림"]  # literal surface, not a concept id
+    assert groups == []  # literal matched → no group fallback
+    assert "선크림" in consumed
+
+
+def test_negated_categories_group_fallback():
+    index = _build_negation_index(_a2_products())
+    surfaces, groups, _consumed, _spans = _negated_categories("스킨케어 빼고", index)
+    assert surfaces == []
+    assert groups == ["skincare"]
+
+
+def test_fallback_brand_exclusion_subtracts_positive():
+    """"이니스프리 말고 보습크림": brand excluded + dropped from positive; the keyword
+    survives (하드 배제는 브랜드에만, 키워드 유지)."""
+    interp = understand_query("이니스프리 말고 보습크림", _a2_products(), llm=None)
+    assert interp.excluded_brand_ids == ["concept:Brand:이니스프리"]
+    brands = {c.concept_id for c in interp.resolved_concepts if c.concept_type == "brand"}
+    assert "concept:Brand:이니스프리" not in brands  # negative wins
+    # A positive keyword/category still resolved (보습/크림) → not an empty interp.
+    assert interp.resolved_concepts
+
+
+def test_fallback_literal_category_group_positive_not_cancelled():
+    """[non-cancellation] "선크림 빼고 세럼": skincare GROUP stays positive (from 세럼)
+    while the LITERAL 선크림 category is excluded — concept-id level negative-wins."""
+    interp = understand_query("선크림 빼고 세럼", _a2_products(), llm=None)
+    assert interp.excluded_category_surfaces == ["선크림"]  # surface, not a concept id
+    assert interp.excluded_category_groups == []
+    positive = {(c.concept_type, c.concept_id) for c in interp.resolved_concepts}
+    assert ("category", "concept:Category:skincare") in positive  # group양성 유지
+    assert ("category", "concept:Category:선크림 & 선블럭") not in positive
+
+
+def test_fallback_group_exclusion_subtracts_group_concept():
+    """"스킨케어 빼고": group fallback + the positive skincare group concept subtracted
+    (negative wins at the group concept-id level)."""
+    interp = understand_query("스킨케어 빼고", _a2_products(), llm=None)
+    assert interp.excluded_category_groups == ["skincare"]
+    groups = {c.concept_id for c in interp.resolved_concepts if c.concept_type == "category"}
+    assert "concept:Category:skincare" not in groups
+
+
+def test_fallback_malgo_marker_brand_exclusion():
+    """[fallback marker] '말고' registers as a negation marker on the brand axis."""
+    interp = understand_query("이니스프리 말고 다른거", _a2_products(), llm=None)
+    assert interp.excluded_brand_ids == ["concept:Brand:이니스프리"]
+
+
+def test_brand_exclusion_no_ingredient_warning():
+    """[F7] A negated brand does not also raise a spurious 'not an ingredient' warning."""
+    interp = understand_query("이니스프리 말고 보습크림", _a2_products(), llm=None)
+    assert not any("이니스프리" in w for w in interp.warnings)
+    assert "이니스프리" not in interp.unresolved_terms
+
+
+def test_llm_brands_excluded_slot():
+    """LLM slot path: brands_excluded resolved through the catalog gate."""
+    fake = FakeLLMClient(_fake_json(brands_excluded=["이니스프리"], desired_attributes=["보습"]))
+    interp = understand_query("보습크림 추천", _a2_products(), llm=fake)
+    assert interp.excluded_brand_ids == ["concept:Brand:이니스프리"]
+
+
+def test_llm_categories_excluded_slot_literal_and_group():
+    """LLM slot path: categories_excluded uses the 2-layer literal/group resolution."""
+    fake = FakeLLMClient(_fake_json(categories_excluded=["선크림"]))
+    interp = understand_query("세럼 추천", _a2_products(), llm=fake)
+    assert interp.excluded_category_surfaces == ["선크림"]
+
+    fake2 = FakeLLMClient(_fake_json(categories_excluded=["스킨케어"]))
+    interp2 = understand_query("추천", _a2_products(), llm=fake2)
+    assert interp2.excluded_category_groups == ["skincare"]
+
+
+def test_llm_unresolved_excluded_slot_surfaced():
+    """A brands_excluded term that resolves to no brand is surfaced as unresolved
+    (honest), never a forged exclusion."""
+    fake = FakeLLMClient(_fake_json(brands_excluded=["존재하지않는브랜드zzz"]))
+    interp = understand_query("보습크림", _a2_products(), llm=fake)
+    assert interp.excluded_brand_ids == []
+    assert "존재하지않는브랜드zzz" in interp.unresolved_terms
+
+
+def test_llm_slot_union_with_raw_span():
+    """The raw-query '말고' span and the LLM brands_excluded slot union (dedup)."""
+    fake = FakeLLMClient(_fake_json(brands_excluded=["이니스프리"]))
+    interp = understand_query("이니스프리 말고 보습크림", _a2_products(), llm=fake)
+    assert interp.excluded_brand_ids == ["concept:Brand:이니스프리"]  # one, not duplicated
+
+
+def test_positive_and_negative_brand_negation_wins():
+    """양성∧부정 동시 언급: even if the brand is also positively resolvable, the
+    exclusion wins (the brand is subtracted from the positive concepts)."""
+    # "이니스프리 이니스프리 말고" — brand mentioned then negated; negation wins.
+    interp = understand_query("이니스프리 말고 보습크림", _a2_products(), llm=None)
+    brands = {c.concept_id for c in interp.resolved_concepts if c.concept_type == "brand"}
+    assert "concept:Brand:이니스프리" not in brands
+    assert "concept:Brand:이니스프리" in interp.excluded_brand_ids
+
+
+def test_llm_brand_slot_dropped_when_consumed_by_product_span():
+    """[F2] An LLM brands_excluded term INSIDE a span a higher raw axis already claimed
+    is dropped: raw "설화수 윤조에센스 빼고" is a PRODUCT exclusion, so brands_excluded=
+    ["설화수"] must NOT expand it into a whole-brand exclusion."""
+    fake = FakeLLMClient(_fake_json(brands_excluded=["설화수"]))
+    interp = understand_query("설화수 윤조에센스 빼고 추천", _named_products(), llm=fake)
+    assert set(interp.excluded_product_ids) == {"50165", "50166"}
+    assert interp.excluded_brand_ids == []  # 설화수 brand NOT wiped (consumed-span drop)
+
+
+def test_iter_negation_spans_occurrence_based():
+    """[F6] Two DISTINCT negations ending in the SAME group-1 token are both kept
+    (occurrence-based iteration, not deduped on group1)."""
+    from src.rec.query_understanding import _iter_negation_spans
+    spans = _iter_negation_spans("헤라 쿠션 빼고 설화수 쿠션 빼고")
+    assert [g1 for g1, _cands in spans] == ["쿠션", "쿠션"]  # both occurrences kept
+
+
+def test_negated_categories_gita_maps_to_other_group():
+    """[F8] "기타 빼고" resolves to the OTHER group (기타 is a group label), not caught as
+    an incidental "스킨케어기타"-style literal."""
+    index = _build_negation_index(_a2_products())
+    surfaces, groups, _consumed, _spans = _negated_categories("기타 빼고", index)
+    assert groups == ["other"]
+    assert surfaces == []

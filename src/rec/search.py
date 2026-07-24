@@ -643,6 +643,9 @@ def search_products(
     ingredient_constraints: list[IngredientConstraint] | None = None,
     query_product_ids: set[str] | None = None,
     excluded_product_ids: set[str] | None = None,
+    excluded_brand_ids: set[str] | None = None,
+    excluded_category_surfaces: set[str] | None = None,
+    excluded_category_groups: set[str] | None = None,
 ) -> SearchOutcome:
     """Concept-based product search (evidence-first; no full-text fallback).
 
@@ -687,13 +690,22 @@ def search_products(
     negated product is removed from brand/category results too. ``None`` (default)
     keeps existing callers byte-identical.
 
-    Caller-authority (F1): when EITHER of the two A1 params is passed (i.e. not
+    ``excluded_brand_ids`` / ``excluded_category_surfaces`` / ``excluded_category_groups``
+    — search-absorption A2 exclusions (a negated brand / literal category / category
+    group): any product whose ``brand_concept_ids`` intersects the brand set, whose OWN
+    category label CONTAINS an excluded category SURFACE (F3), or whose
+    ``classify_product_category_group`` is in the group set, is skipped entirely (same
+    hard-filter treatment as an excluded product). ``None`` (default) keeps existing
+    callers byte-identical.
+
+    Caller-authority (F1): when ANY A1/A2 pin/exclusion param is passed (i.e. not
     ``None`` — the server ask/search path always passes them, derived from the
-    brand-guarded interpretation), the caller is authoritative about products, so
-    the internal re-resolution's ``product`` concepts are restricted to the pin set
-    (∩). This prevents a product the interpretation dropped (brand-contradiction
-    guard) or never adopted from being re-introduced by the raw-text re-resolution
-    here. When BOTH are ``None`` (a legacy direct call) internal resolution is
+    brand-guarded interpretation), the caller is authoritative, so the internal
+    re-resolution's ``product`` concepts are restricted to the pin set (∩) AND any
+    resolved brand/category concept the caller excluded is dropped. This prevents a
+    product the interpretation dropped (brand-contradiction guard) or a re-resolved
+    excluded brand/category from being re-introduced by the raw-text re-resolution
+    here. When ALL are ``None`` (a legacy direct call) internal resolution is
     autonomous (byte-identical to pre-A1).
     """
     resolved = resolve_query_concepts(query_text, products)
@@ -701,16 +713,40 @@ def search_products(
     pins = {str(pid) for pid in (query_product_ids or set()) if pid}
     excluded = {str(pid) for pid in (excluded_product_ids or set()) if pid}
     pins -= excluded  # an excluded product is never a pin (exclusion wins)
+    ex_brands = {str(b) for b in (excluded_brand_ids or set()) if b}
+    ex_cat_surfaces = {str(s) for s in (excluded_category_surfaces or set()) if s}
+    ex_groups = {str(g) for g in (excluded_category_groups or set()) if g}
 
-    # F1: caller-authoritative product set. Restrict internally-resolved product
-    # concepts to the pin set so a brand-guard-dropped product cannot re-enter via
-    # the raw re-resolution; the pin synthesis below re-adds any pin the raw text
-    # could not re-resolve. Gated on "caller passed the params" (not None) so legacy
-    # direct callers keep autonomous resolution.
-    if query_product_ids is not None or excluded_product_ids is not None:
+    # F1: caller-authoritative concept set. Restrict internally-resolved product
+    # concepts to the pin set, and drop any resolved brand/category concept the
+    # caller excluded, so a brand-guard-dropped product or a re-resolved excluded
+    # brand/category cannot re-enter via the raw re-resolution; the pin synthesis
+    # below re-adds any pin the raw text could not re-resolve. Gated on "caller
+    # passed a param" (not None) so legacy direct callers keep autonomous resolution.
+    if any(
+        p is not None
+        for p in (
+            query_product_ids,
+            excluded_product_ids,
+            excluded_brand_ids,
+            excluded_category_surfaces,
+            excluded_category_groups,
+        )
+    ):
+        ex_group_concepts = {f"concept:Category:{g}" for g in ex_groups}
+
+        def _cat_concept_excluded(concept: MatchedConcept) -> bool:
+            if concept.concept_id in ex_group_concepts:
+                return True
+            label_norm = normalize_text(concept.matched_text)
+            return any(surface in label_norm for surface in ex_cat_surfaces)
+
         resolved = [
-            c for c in resolved
-            if c.concept_type != "product" or c.concept_id in pins
+            c
+            for c in resolved
+            if not (c.concept_type == "product" and c.concept_id not in pins)
+            and not (c.concept_type == "brand" and c.concept_id in ex_brands)
+            and not (c.concept_type == "category" and _cat_concept_excluded(c))
         ]
 
     # F3: synthesize the constraint families' INCI as ingredient concepts so a
@@ -751,6 +787,20 @@ def search_products(
         # (never ranked), so a negated product name is gone from brand/category
         # results too — checked before any overlap/gate work.
         if excluded and str(product.get("product_id") or "") in excluded:
+            continue
+
+        # A2 negated brand / literal category / category group hard filter: same
+        # treatment (removed entirely, never ranked) so a negated axis is gone from
+        # the results even when the product matches other positive concepts.
+        if ex_brands and ({str(v) for v in (product.get("brand_concept_ids") or [])} & ex_brands):
+            continue
+        if ex_cat_surfaces:
+            cat_label_norm = normalize_text(
+                str(product.get("category_name") or product.get("category_id") or "")
+            )
+            if cat_label_norm and any(s in cat_label_norm for s in ex_cat_surfaces):
+                continue
+        if ex_groups and classify_product_category_group(product) in ex_groups:
             continue
 
         # Avoided-ingredient hard filter (concept-id join, same id space the

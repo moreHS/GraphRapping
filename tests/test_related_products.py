@@ -258,6 +258,8 @@ def test_search_endpoint_carries_related_products(monkeypatch: pytest.MonkeyPatc
         "preset_used", "message", "ingredient_filter", "results", "related_products",
         # [A1] pin trace fields (additive; empty for this no-product query).
         "pinned_product_ids", "pinned_dropped",
+        # [A2] labeled exclusion audit (additive; empty for this no-exclusion query).
+        "excluded",
     }
     assert {r["product_id"] for r in payload["results"]} == {"P1", "P2"}
     # existing search result-item shape unchanged.

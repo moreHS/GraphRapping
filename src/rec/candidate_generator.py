@@ -16,6 +16,7 @@ from typing import Any
 from src.common.config_loader import get_texture_axis
 from src.common.enums import RecommendationMode
 from src.common.concept_resolver import resolve_concern_id, resolve_goal_id
+from src.common.text_normalize import normalize_text
 from src.rec.concern_bridge import compute_bridged_concerns
 from src.rec.category_groups import (
     category_groups_for_values,
@@ -122,6 +123,9 @@ def generate_candidates(
     ingredient_name_labels: dict[str, list[str]] | None = None,
     query_product_ids: set[str] | None = None,
     excluded_product_ids: set[str] | None = None,
+    excluded_brand_ids: set[str] | None = None,
+    excluded_category_surfaces: set[str] | None = None,
+    excluded_category_groups: set[str] | None = None,
 ) -> list[CandidateProduct]:
     """Generate recommendation candidates.
 
@@ -159,9 +163,22 @@ def generate_candidates(
             hard-filtered (``EXCLUDED_PRODUCT``) before any overlap work, so a
             negated product is removed even when it matches on brand/category. None
             (default) → the default path is byte-identical.
+        excluded_brand_ids / excluded_category_surfaces / excluded_category_groups:
+            Search-absorption A2 exclusions — a query-negated brand / literal
+            category / category group. A candidate is hard-filtered
+            (``EXCLUDED_BRAND`` / ``EXCLUDED_CATEGORY`` / ``EXCLUDED_CATEGORY_GROUP``)
+            when its ``brand_concept_ids`` intersects the brand set, its OWN category
+            label CONTAINS an excluded category SURFACE (F3 — surface-keyed, so a
+            concept-link gap can't leak and a shared/parent id can't over-exclude), or
+            its ``classify_product_category_group`` is in the group set — before any
+            overlap/pin work, so the exclusion beats a pin. None (default) → the
+            default path is byte-identical.
     """
     pins = query_product_ids or set()
     excluded_pids = excluded_product_ids or set()
+    excluded_brands = {str(b) for b in (excluded_brand_ids or set())}
+    excluded_cat_surfaces = {str(s) for s in (excluded_category_surfaces or set())}
+    excluded_groups = excluded_category_groups or set()
     # Extract user signals for filtering
     avoided_ingredients = _extract_ids(user_profile.get("avoided_ingredient_ids", []))
     repurchase_brand_ids = _extract_ids(user_profile.get("repurchase_brand_ids", []))
@@ -247,6 +264,31 @@ def generate_candidates(
         if excluded_pids and pid in excluded_pids:
             candidate.hard_filtered = True
             candidate.filter_reason = "EXCLUDED_PRODUCT"
+            candidates.append(candidate)
+            continue
+
+        # 0b. Excluded brand / literal category / category group (A2: query negated
+        # this axis by name). Same top priority as the excluded product — removed
+        # before any overlap/pin work, so an explicit exclusion beats a pin.
+        if excluded_brands and (
+            {str(b) for b in (product.get("brand_concept_ids") or [])} & excluded_brands
+        ):
+            candidate.hard_filtered = True
+            candidate.filter_reason = "EXCLUDED_BRAND"
+            candidates.append(candidate)
+            continue
+        if excluded_cat_surfaces:
+            cat_label_norm = normalize_text(
+                str(product.get("category_name") or product.get("category_id") or "")
+            )
+            if cat_label_norm and any(s in cat_label_norm for s in excluded_cat_surfaces):
+                candidate.hard_filtered = True
+                candidate.filter_reason = "EXCLUDED_CATEGORY"
+                candidates.append(candidate)
+                continue
+        if excluded_groups and product_category_group in excluded_groups:
+            candidate.hard_filtered = True
+            candidate.filter_reason = "EXCLUDED_CATEGORY_GROUP"
             candidates.append(candidate)
             continue
 
@@ -561,6 +603,9 @@ def generate_candidates_prefiltered(
     ingredient_name_labels: dict[str, list[str]] | None = None,
     query_product_ids: set[str] | None = None,
     excluded_product_ids: set[str] | None = None,
+    excluded_brand_ids: set[str] | None = None,
+    excluded_category_surfaces: set[str] | None = None,
+    excluded_category_groups: set[str] | None = None,
 ) -> list[CandidateProduct]:
     """Generate candidates from a pre-filtered set of product IDs.
 
@@ -575,10 +620,11 @@ def generate_candidates_prefiltered(
     ``ingredient_name_labels`` (Phase 6 B2) is forwarded unchanged (keyed on
     candidate pids); None (default) keeps the default path byte-identical.
 
-    ``query_product_ids`` / ``excluded_product_ids`` (search-absorption A1) are
-    forwarded unchanged (keyed on candidate pids); the caller must include any pin
-    in ``prefiltered_product_ids`` (server unions pins into the universe). None
-    (default) keeps the default path byte-identical.
+    ``query_product_ids`` / ``excluded_product_ids`` (search-absorption A1) and
+    ``excluded_brand_ids`` / ``excluded_category_surfaces`` / ``excluded_category_groups``
+    (A2) are forwarded unchanged (keyed on candidate pids); the caller must include
+    any pin in ``prefiltered_product_ids`` (server unions pins into the universe).
+    None (default) keeps the default path byte-identical.
     """
     product_profiles = [
         product_profiles_by_id[pid]
@@ -595,6 +641,9 @@ def generate_candidates_prefiltered(
         ingredient_name_labels=ingredient_name_labels,
         query_product_ids=query_product_ids,
         excluded_product_ids=excluded_product_ids,
+        excluded_brand_ids=excluded_brand_ids,
+        excluded_category_surfaces=excluded_category_surfaces,
+        excluded_category_groups=excluded_category_groups,
     )
 
 

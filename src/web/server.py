@@ -46,13 +46,17 @@ from src.rec.search import search_products
 # to decide "does this product carry these concepts", which /api/ask reuses to
 # narrow the recommend candidate universe to query-relevant products (no logic is
 # reimplemented, and search.py itself is unmodified beyond search_products' sig).
-from src.rec.search import MatchedConcept, _product_overlap
+from src.rec.search import MatchedConcept, _concept_suffix, _product_overlap
 from src.rec.ingredient_constraint import (
     matched_name_labels,
     product_passes_constraints,
 )
 from src.rec.semantic_compatibility import normalize_signal_id
-from src.rec.query_understanding import understand_query, QueryInterpretation
+from src.rec.query_understanding import (
+    understand_query,
+    QueryInterpretation,
+    _category_concept_excluded,
+)
 from src.rec.provenance_provider import (
     DBProvenanceProvider,
     fetch_product_signals,
@@ -68,6 +72,7 @@ from src.rec.category_groups import (
 )
 from src.common.config_loader import load_yaml
 from src.common.enums import RecommendationMode
+from src.common.text_normalize import normalize_text
 from src.web.review_summary_sidecar import fetch_sidecar_summaries
 
 logger = logging.getLogger(__name__)
@@ -655,6 +660,138 @@ def _category_universe_ids(
     ]
 
 
+def _label_has_surface(product: dict[str, Any], surfaces: set[str]) -> bool:
+    """[A2/F3] Whether the product's OWN category label contains any excluded category
+    surface (surface-keyed exclusion — no reliance on concept links)."""
+    if not surfaces:
+        return False
+    label_norm = normalize_text(
+        str(product.get("category_name") or product.get("category_id") or "")
+    )
+    return bool(label_norm) and any(surface in label_norm for surface in surfaces)
+
+
+def _axis_excluded_product_ids(
+    products: list[dict[str, Any]],
+    *,
+    brand_ids: set[str],
+    category_surfaces: set[str],
+    category_groups: set[str],
+) -> set[str]:
+    """[A2] Product ids hard-excluded by a query-negated brand / literal category
+    SURFACE / category group. Mirrors the candidate-generator + search hard filters
+    (category by the product's OWN label containing a surface — F3), so the server can
+    pre-subtract them from the candidate universe, the ingredient relax count, and the
+    related-products exclude set (parity with the A1 ``excluded_product_ids``
+    treatment). Empty exclusion axes → empty set (dormant; no per-product work)."""
+    if not (brand_ids or category_surfaces or category_groups):
+        return set()
+    excluded: set[str] = set()
+    for product in products:
+        pid = str(product.get("product_id") or "")
+        if not pid:
+            continue
+        if brand_ids and ({str(b) for b in (product.get("brand_concept_ids") or [])} & brand_ids):
+            excluded.add(pid)
+            continue
+        if category_surfaces and _label_has_surface(product, category_surfaces):
+            excluded.add(pid)
+            continue
+        if category_groups and classify_product_category_group(product) in category_groups:
+            excluded.add(pid)
+    return excluded
+
+
+def _dedupe_labels(labels: Iterator[str]) -> list[str]:
+    """Order-preserving dedupe for a display-label array (A2 excluded meta): distinct
+    ids can map to the same human label (two SKUs sharing a representative name, or
+    two concept ids sharing a brand/category name), and the surfaced list must not
+    repeat it."""
+    seen: set[str] = set()
+    out: list[str] = []
+    for label in labels:
+        if label not in seen:
+            seen.add(label)
+            out.append(label)
+    return out
+
+
+def _excluded_meta(
+    products: list[dict[str, Any]],
+    interp: QueryInterpretation,
+) -> dict[str, list[str]]:
+    """[A2 surfacing] Labeled ``excluded`` response block derived from the
+    interpretation (categories/groups are already display-ready surfaces/labels;
+    brands/products are ids labeled from the catalog). Groups use the tab label;
+    categories surface the negated expression verbatim (F3 — surface-keyed); brand
+    labels come from any catalog product carrying the id (fallback: id suffix);
+    products use the representative name. Label arrays are order-preserving-deduped
+    (distinct SKUs can share one representative name; ids remain in the
+    interpretation)."""
+    # Groups + category surfaces need NO catalog scan (F3/F1).
+    group_labels = _dedupe_labels(
+        RECOMMEND_CATEGORY_LABELS.get(str(g), str(g)) for g in interp.excluded_category_groups
+    )
+    category_labels = _dedupe_labels(str(s) for s in interp.excluded_category_surfaces if s)
+    brand_ids = {str(b) for b in interp.excluded_brand_ids if b}
+    prod_ids = {str(p) for p in interp.excluded_product_ids if p}
+    # [A2/F1 perf] Skip the per-request catalog loop entirely when there is nothing to
+    # label FROM it — the common no-exclusion /api/ask path (and category/group-only
+    # queries) never touches the 45k-scale product list.
+    if not (brand_ids or prod_ids):
+        return {
+            "brands": [],
+            "categories": category_labels,
+            "category_groups": group_labels,
+            "products": [],
+        }
+
+    brand_labels: dict[str, str] = {}
+    prod_labels: dict[str, str] = {}
+    for product in products:
+        brand_name = product.get("brand_name")
+        if brand_name and brand_ids:
+            for bid in product.get("brand_concept_ids") or []:
+                if str(bid) in brand_ids:
+                    brand_labels.setdefault(str(bid), str(brand_name))
+        pid = str(product.get("product_id") or "")
+        if pid in prod_ids:
+            prod_labels.setdefault(pid, str(product.get("representative_product_name") or pid))
+    return {
+        "brands": _dedupe_labels(brand_labels.get(b, _concept_suffix(b)) for b in sorted(brand_ids)),
+        "categories": category_labels,
+        "category_groups": group_labels,
+        "products": _dedupe_labels(prod_labels.get(p, p) for p in sorted(prod_ids)),
+    }
+
+
+def _is_exclusion_only(interp: QueryInterpretation) -> bool:
+    """[A2 F4/F7] The query resolved ONLY exclusions — no GENUINE positive concept for
+    concept search to rank. A genuine positive is any resolved concept NOT accounted
+    for by an exclusion: a non-category concept is always genuine, and a category
+    concept is genuine UNLESS it is shadowed by a category/group exclusion
+    (``_category_concept_excluded`` — so "이니스프리 말고 세럼" keeps 세럼 as a genuine
+    positive and is NOT exclusion-only, while "스킨케어 빼고" whose only positive is the
+    excluded group's own label IS). Used to surface honest guidance instead of a silent
+    empty result set."""
+    has_exclusion = bool(
+        interp.excluded_brand_ids
+        or interp.excluded_category_surfaces
+        or interp.excluded_category_groups
+        or interp.excluded_product_ids
+    )
+    if not has_exclusion:
+        return False
+    surfaces = list(interp.excluded_category_surfaces)
+    groups = list(interp.excluded_category_groups)
+    for concept in interp.resolved_concepts:
+        if concept.concept_type != "category":
+            return False  # a genuine non-category positive
+        if not _category_concept_excluded(concept, surfaces, groups):
+            return False  # a positive category NOT shadowed by an exclusion
+    return True
+
+
 def _similar_signal_field(sig: Any, key: str) -> Any:
     """Field access for an ungated-similarity sidecar entry.
 
@@ -748,6 +885,9 @@ async def _run_scored_pipeline(
     ingredient_name_labels: dict[str, list[str]] | None = None,
     query_product_ids: set[str] | None = None,
     excluded_product_ids: set[str] | None = None,
+    excluded_brand_ids: set[str] | None = None,
+    excluded_category_surfaces: set[str] | None = None,
+    excluded_category_groups: set[str] | None = None,
 ) -> tuple[list[dict[str, Any]], int, list[str]]:
     """Shared recommend pipeline: prefilter -> candidates -> score -> rerank ->
     explain -> per-path snippets -> result dicts.
@@ -843,6 +983,9 @@ async def _run_scored_pipeline(
         ingredient_name_labels=ingredient_name_labels,
         query_product_ids=query_product_ids,
         excluded_product_ids=excluded_product_ids,
+        excluded_brand_ids=excluded_brand_ids,
+        excluded_category_surfaces=excluded_category_surfaces,
+        excluded_category_groups=excluded_category_groups,
     )
 
     scored = []
@@ -1285,6 +1428,13 @@ _SEARCH_NO_CONCEPT_MESSAGE = (
     "구체적인 표현을 포함해 다시 검색해주세요. (전문 검색이 아닌 concept 기반 검색입니다.)"
 )
 
+# [A2 F4] Exclusion-only anonymous query ("스킨케어 빼고 추천해줘"): the query resolved
+# ONLY exclusions (no positive concept to rank), so concept search has nothing to
+# return. Surface honest guidance instead of a silent empty list.
+_SEARCH_EXCLUSION_ONLY_MESSAGE = (
+    "제외 조건만 해석되었습니다. 원하는 조건(카테고리·성분·효능 등)을 함께 입력해주세요."
+)
+
 
 class SearchRequest(BaseModel):
     # `query` defaults to "" so a missing/blank query behaves the same on POST as
@@ -1386,11 +1536,19 @@ class AskRequest(BaseModel):
 def _ask_category_group(interp: QueryInterpretation, requested: str | None) -> str:
     """Resolve the query's category group: a group concept in the interpretation
     wins over the request hint (first one, if several); otherwise the validated
-    request hint; otherwise "all"."""
+    request hint; otherwise "all".
+
+    [A2] An EXCLUDED category group ("스킨케어 빼고") can never be selected — the
+    exclusion wins over both a positive group concept (the query_understanding layer
+    already subtracts it, so this is belt-and-suspenders) and the request hint, so a
+    request-hinted skincare tab is invalidated when the query negates skincare."""
+    excluded_groups = {str(g) for g in interp.excluded_category_groups}
     for concept in interp.resolved_concepts:
         if concept.concept_type == "category" and concept.concept_id in _GROUP_CATEGORY_CONCEPT_IDS:
-            return concept.concept_id[len("concept:Category:"):]
-    if requested and requested in RECOMMEND_CATEGORY_LABELS:
+            group = concept.concept_id[len("concept:Category:"):]
+            if group not in excluded_groups:
+                return group
+    if requested and requested in RECOMMEND_CATEGORY_LABELS and requested not in excluded_groups:
         return requested
     return "all"
 
@@ -1752,10 +1910,43 @@ async def _anonymous_ask_payload(
     max_results = _clamp_search_top_k(top_k)
     # A1: product pins + exclusions (exclusion wins over pin).
     excluded_product_ids = {str(pid) for pid in interp.excluded_product_ids if pid}
+    # A2: brand / literal-category / category-group exclusions + the product ids they
+    # hard-exclude (parity with excluded_product_ids in the relax count / related set;
+    # search_products applies the actual hard filter).
+    excluded_brand_ids = {str(b) for b in interp.excluded_brand_ids if b}
+    excluded_category_surfaces = {str(s) for s in interp.excluded_category_surfaces if s}
+    excluded_category_groups = {str(g) for g in interp.excluded_category_groups if g}
+    axis_excluded_pids = _axis_excluded_product_ids(
+        products,
+        brand_ids=excluded_brand_ids,
+        category_surfaces=excluded_category_surfaces,
+        category_groups=excluded_category_groups,
+    )
+    products_by_id = {str(p.get("product_id") or ""): p for p in products}
     raw_pins = {
         c.concept_id for c in interp.resolved_concepts if c.concept_type == "product"
     } - excluded_product_ids
-    products_by_id = {str(p.get("product_id") or ""): p for p in products}
+    # A2: a pin hit by an explicit brand/category/group exclusion is dropped with a
+    # specific reason ("명시 배제 > 핀") before the category-group gate below.
+    pin_axis_dropped: list[dict[str, str]] = []
+    for pid in sorted(raw_pins & axis_excluded_pids):
+        product = products_by_id.get(pid)
+        reason = "excluded_category"
+        if product is not None:
+            if excluded_brand_ids and (
+                {str(b) for b in (product.get("brand_concept_ids") or [])} & excluded_brand_ids
+            ):
+                reason = "excluded_brand"
+            elif excluded_category_surfaces and _label_has_surface(
+                product, excluded_category_surfaces
+            ):
+                reason = "excluded_category"
+            elif excluded_category_groups and (
+                classify_product_category_group(product) in excluded_category_groups
+            ):
+                reason = "excluded_category_group"
+        pin_axis_dropped.append({"id": pid, "reason": reason})
+    raw_pins -= axis_excluded_pids
     # F4: the category gate is a hard filter over PINS (parity with login). With an
     # explicit group, a pin classifying to a different group is dropped (reason
     # "category"); general search results are NOT category-gated here (legacy — a
@@ -1795,6 +1986,7 @@ async def _anonymous_ask_payload(
             p for p in universe
             if not _carries_avoided(p)
             and str(p.get("product_id") or "") not in excluded_product_ids
+            and str(p.get("product_id") or "") not in axis_excluded_pids
             and product_passes_constraints(p, raw_constraints)
         ]
         ingredient_relaxed = not matched_products
@@ -1810,6 +2002,9 @@ async def _anonymous_ask_payload(
             # interpretation as authoritative over internal product re-resolution.
             query_product_ids=query_product_ids,
             excluded_product_ids=excluded_product_ids,
+            excluded_brand_ids=excluded_brand_ids,
+            excluded_category_surfaces=excluded_category_surfaces,
+            excluded_category_groups=excluded_category_groups,
         )
         ingredient_filter = _ingredient_filter_meta(
             [c.label for c in raw_constraints],
@@ -1825,6 +2020,9 @@ async def _anonymous_ask_payload(
             avoided_ingredient_concept_ids=avoided_ids,
             query_product_ids=query_product_ids,
             excluded_product_ids=excluded_product_ids,
+            excluded_brand_ids=excluded_brand_ids,
+            excluded_category_surfaces=excluded_category_surfaces,
+            excluded_category_groups=excluded_category_groups,
         )
         ingredient_filter = _ingredient_filter_meta([], 0, False, None)
 
@@ -1844,6 +2042,7 @@ async def _anonymous_ask_payload(
             str(p.get("product_id")) for p in products if _carries_avoided(p)
         )
     exclude_ids |= excluded_product_ids  # A1: a negated product is excluded from related too
+    exclude_ids |= axis_excluded_pids  # A2: negated brand/category/group excluded from related too
     require_ids: set[str] | None = None
     if raw_constraints and not ingredient_relaxed:
         require_ids = {
@@ -1857,9 +2056,11 @@ async def _anonymous_ask_payload(
     result_id_set = set(search_result_pids)
     pinned_applied = [pid for pid in search_result_pids if pid in query_product_ids]
     # Pin trace (F12): the excluded reason is recorded here (excluded products were
-    # never in query_product_ids, so they are added explicitly), plus category-gated
-    # pins (F4), plus any remaining pin that did not reach the results.
+    # never in query_product_ids, so they are added explicitly), plus A2 axis-excluded
+    # pins ("명시 배제 > 핀"), category-gated pins (F4), and any remaining pin that did
+    # not reach the results.
     pinned_dropped = [{"id": pid, "reason": "excluded_product"} for pid in sorted(excluded_product_ids)]
+    pinned_dropped += pin_axis_dropped
     pinned_dropped += pin_category_dropped
     pinned_dropped += [
         {"id": pid, "reason": "filtered"}
@@ -1876,6 +2077,16 @@ async def _anonymous_ask_payload(
         require_ids=require_ids,
     )
 
+    # [A2 F4] message: no-concept guidance when nothing resolved; exclusion-only
+    # guidance when the only resolved signals are exclusions (no positive concept to
+    # rank) AND search returned nothing; else None (honest, consistent placement).
+    if not outcome.resolved:
+        message = _SEARCH_NO_CONCEPT_MESSAGE
+    elif not search_results and _is_exclusion_only(interp):
+        message = _SEARCH_EXCLUSION_ONLY_MESSAGE
+    else:
+        message = None
+
     return {
         "query": query,
         "interpretation": interp.to_dict(),
@@ -1883,12 +2094,14 @@ async def _anonymous_ask_payload(
         "relaxed": ingredient_relaxed,
         "category_group": category_group,
         "preset_used": None,
-        "message": None if outcome.resolved else _SEARCH_NO_CONCEPT_MESSAGE,
+        "message": message,
         "ingredient_filter": ingredient_filter,
         # [A1] Pin trace (same shape as the recommend branch): named products
         # pinned into the results, and any pin removed (excluded / filtered).
         "pinned_product_ids": pinned_applied,
         "pinned_dropped": pinned_dropped,
+        # [A2] Labeled exclusion audit — same shape as the recommend branch.
+        "excluded": _excluded_meta(products, interp),
         "results": search_results,
         "related_products": related,
     }
@@ -1946,9 +2159,31 @@ async def ask(req: AskRequest):
     # Avoided-ingredient carriers (query-injected AVOIDS_INGREDIENT + stored prefs)
     # computed once — reused by both the ingredient gate (F5) and related below.
     avoided_pids = _avoided_ingredient_product_ids(user_scoped, product_map)
-    # A1: products the query negated by name — computed here (before the gate) so
-    # the ingredient relax count excludes them (F5), reused by the pin trace below.
+    # A1: products the query negated by name — reused by the pin trace below.
     excluded_product_ids = {str(pid) for pid in interp.excluded_product_ids if pid}
+    # A2: brand / literal-category-surface / category-group exclusions + the set of
+    # product ids they hard-exclude.
+    excluded_brand_ids = {str(b) for b in interp.excluded_brand_ids if b}
+    excluded_category_surfaces = {str(s) for s in interp.excluded_category_surfaces if s}
+    excluded_category_groups = {str(g) for g in interp.excluded_category_groups if g}
+    axis_excluded_pids = _axis_excluded_product_ids(
+        products,
+        brand_ids=excluded_brand_ids,
+        category_surfaces=excluded_category_surfaces,
+        category_groups=excluded_category_groups,
+    )
+    # [F4] Remove ALL negated products (A1) + axis-excluded products (A2) from the
+    # candidate universe at a SINGLE point — right after the category gate, BEFORE the
+    # ingredient gate and soft narrowing. Otherwise an excluded product that carries a
+    # positive keyword could satisfy the soft-narrow intersection and keep the
+    # narrowed universe non-empty (false-zero: the relax that should fire does not).
+    # Downstream stages (relax count, soft narrow, candidate generation) are then
+    # naturally consistent; candidate_generator still hard-filters as a backstop.
+    universe_excluded = excluded_product_ids | axis_excluded_pids
+    if universe_excluded:
+        category_universe_ids = [
+            pid for pid in category_universe_ids if pid not in universe_excluded
+        ]
 
     # Ingredient HARD gate (raw-provenance families only), applied INSIDE the
     # category universe, BEFORE soft narrowing (plan §B2 order). A product passes
@@ -1960,14 +2195,15 @@ async def ask(req: AskRequest):
     ingredient_matched_count = 0
     ingredient_name_labels: dict[str, list[str]] = {}
     if raw_constraints:
-        # F5: exclude avoided AND negated-product carriers from the gate universe
-        # BEFORE counting, so matched/relaxed reflect the true candidate set — never
-        # applied=true while every carrier is dropped by avoided/excluded (→ 0 results).
+        # F5: exclude avoided carriers from the gate universe BEFORE counting, so
+        # matched/relaxed reflect the true candidate set — never applied=true while
+        # every carrier is dropped by the avoided filter (→ 0 results). Negated
+        # products + axis-excluded (A1/A2) are ALREADY gone from category_universe_ids
+        # (F4 single-point removal above), so only the avoided filter remains here.
         gated_ids = [
             pid
             for pid in category_universe_ids
             if pid not in avoided_pids
-            and pid not in excluded_product_ids
             and product_passes_constraints(product_map[pid], raw_constraints)
         ]
         ingredient_matched_count = len(gated_ids)
@@ -2004,11 +2240,26 @@ async def ask(req: AskRequest):
     for pid in sorted(excluded_product_ids):
         pinned_dropped.append({"id": pid, "reason": "excluded_product"})
     query_product_ids -= excluded_product_ids  # exclusion wins over pin
+    # A2: an explicit brand/category exclusion also beats a pin ("명시 배제 > 핀") —
+    # recorded with a specific reason before the generic hard gates below.
     category_universe_set = set(category_universe_ids)
     pinned_survivors: list[str] = []
     for pid in sorted(query_product_ids):
-        if pid not in product_map:
+        product = product_map.get(pid)
+        if product is None:
             pinned_dropped.append({"id": pid, "reason": "unknown_product"})
+        elif excluded_brand_ids and (
+            {str(b) for b in (product.get("brand_concept_ids") or [])} & excluded_brand_ids
+        ):
+            pinned_dropped.append({"id": pid, "reason": "excluded_brand"})
+        elif excluded_category_surfaces and _label_has_surface(
+            product, excluded_category_surfaces
+        ):
+            pinned_dropped.append({"id": pid, "reason": "excluded_category"})
+        elif excluded_category_groups and (
+            classify_product_category_group(product) in excluded_category_groups
+        ):
+            pinned_dropped.append({"id": pid, "reason": "excluded_category_group"})
         elif pid not in category_universe_set:
             pinned_dropped.append({"id": pid, "reason": "category_mismatch"})
         elif pid in avoided_pids:
@@ -2056,6 +2307,9 @@ async def ask(req: AskRequest):
         ingredient_name_labels=ingredient_name_labels or None,
         query_product_ids=set(pinned_survivors) or None,
         excluded_product_ids=excluded_product_ids or None,
+        excluded_brand_ids=excluded_brand_ids or None,
+        excluded_category_surfaces=excluded_category_surfaces or None,
+        excluded_category_groups=excluded_category_groups or None,
     )
 
     # A1 pin trace. ``pinned_applied`` follows the RESULT order (F10 — the pin block
@@ -2099,6 +2353,7 @@ async def ask(req: AskRequest):
     exclude_ids |= extract_owned_product_ids(user_scoped)
     exclude_ids |= avoided_pids  # computed once above (reused from the gate)
     exclude_ids |= excluded_product_ids  # A1: a negated product is excluded from related too
+    exclude_ids |= axis_excluded_pids  # A2: negated brand/category/group excluded from related too
     # Phase 6 B2: when the wanted-ingredient gate is ACTIVE (raw families, not
     # relaxed), related neighbours must pass the same matcher — a non-containing
     # product must not re-surface beneath a filtered 1차 list.
@@ -2152,6 +2407,10 @@ async def ask(req: AskRequest):
         # resolved product chip from interpretation; this meta is the pin audit.
         "pinned_product_ids": pinned_applied,
         "pinned_dropped": pinned_dropped,
+        # [A2] Labeled exclusion audit (brand/category/group/product) for surfacing —
+        # ids live in interpretation; labels are derived here (front-end batch reads
+        # this to join the exclusion chips into the existing 🚫 avoided flow).
+        "excluded": _excluded_meta(products, interp),
         "results": results,
         "related_products": related,
     }
